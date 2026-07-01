@@ -1,0 +1,116 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# =========================
+# Virtual environments
+# =========================
+venv/
+.venv/
+env/
+ENV/
+
+# =========================
+# Environment / secrets
+# =========================
+.env
+.env.*
+*.env
+config.ini
+secrets.json
+credentials.json
+token.json
+
+# Keep examples
+!.env.example
+!config.example.ini
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+
+# =========================
+# Data files - raw / processed / large outputs
+# =========================
+data/raw/
+data/interim/
+data/processed/
+data/external/
+*.csv
+*.xlsx
+*.xls
+*.parquet
+*.pkl
+*.joblib
+
+# =========================
+# Keep selected documentation reports if needed
+# =========================
+!data/quality_reports/
+!data/quality_reports/**/
+!data/quality_reports/**/*.md
+!data/quality_reports/**/*.txt
+
+# If you want to keep audit CSVs in Git, uncomment this:
+# !data/quality_reports/**/*.csv
+
+# =========================
+# Models
+# =========================
+models/
+*.sav
+
+# =========================
+# Database dumps / backups
+# =========================
+*.sql
+*.dump
+*.backup
+*.bak
+*.sqlite
+*.db
+
+# =========================
+# Power BI / Office exports
+# =========================
+*.pbix
+*.pbit
+~$*
+*.tmp
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================
+# IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# Node / Angular if present
+# =========================
+node_modules/
+dist/
+build/
+.angular/
+coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*config/database.yaml
+notebooks/
