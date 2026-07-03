@@ -1125,12 +1125,44 @@ safe for decision support
 La dimension géographique des sinistres est exploitable pour les analyses par gouvernorat et région, mais la normalisation fine des localités, rues et adresses partielles fera l’objet d’une itération dédiée.
 ```
 
+---
 
+## Project Structure
 
+`IRIS_AUTO_FRAUD` contains only active project code and final documentation.
+Historical experiments, audit scripts, and cleanup utilities are externalized
+to `ArchiveVHS/` and are not part of the active Git project.
 
+### Active VHS pipeline
 
+| Component | Path |
+|-----------|------|
+| VHS compute script | `etl/mart/compute_vhs_v3_candidate.py` |
+| Checkpoint reference loader | `etl/mart/load_dim_checkpoint.py` |
 
+### VHS documentation
 
+| Document | Path |
+|----------|------|
+| Technical specification | `docs/vhs/vhs_calculation_method.md` |
+| Business explanation (FR) | `docs/vhs/vhs_business_explanation.md` |
+| Validation summary (FR) | `docs/vhs/vhs_validation_summary.md` |
+| Technical diagrams | `docs/diagrams/` |
+| Internal cleanup audit trail | `docs/vhs/internal_cleanup/` |
 
+### Final validated reports
 
+All final VHS reports are under `data/quality_reports/vhs/final/`:
 
+- `vhs_v3_audit_summary.md` — distribution of decisions and grades for the final run
+- `vhs_v2_vs_v3_comparison_summary.md` — narrative comparison V2 → V3
+- `dim_checkpoint_immobilizing_update_summary.md` — reference table update log
+- `v3_immobilise_fix_summary.md` — validation of the immobilizing fix (8 checks passed)
+
+### External archive (outside Git)
+
+`ArchiveVHS/` contains all historical VHS material including:
+- pre-deletion backup of original scripts
+- V1/V2 compute engines and audit scripts
+- intermediate experiment reports and CSVs
+- project cleanup scripts

@@ -1,0 +1,24 @@
+flowchart LR
+
+    A["valeur_controle"] --> B{"Type de valeur"}
+
+    B -->|"Bon / Contrôle OK / OUI"| OK["OK<br/>0 pénalité"]
+
+    B -->|"Défectueux / Contrôle non OK"| BROKEN["BROKEN<br/>pénalité forte"]
+
+    B -->|"Intervention conseillée"| IC{"Critique ?"}
+    IC -->|"Oui"| WS1["WORN_STRONG<br/>pénalité intermédiaire"]
+    IC -->|"Non"| W1["WORN<br/>pénalité légère"]
+
+    B -->|"PROPOSITION FAITE"| PF{"Critique ?"}
+    PF -->|"Oui"| WS2["WORN_STRONG<br/>pénalité intermédiaire"]
+    PF -->|"Non"| W2["WORN<br/>pénalité légère"]
+
+    B -->|"NON"| NN{"Critique ?"}
+    NN -->|"Oui"| WS3["WORN_STRONG<br/>règle future prudente"]
+    NN -->|"Non + anomalie simple"| W3["WORN"]
+    NN -->|"Sans anomalie"| UN["UNKNOWN"]
+
+    B -->|"Réparation effectuée"| REP["REPAIRED<br/>traçabilité"]
+
+    B -->|"Non renseigné / autre"| UNKNOWN["UNKNOWN"]

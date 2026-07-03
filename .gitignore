@@ -114,3 +114,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*config/database.yaml
 notebooks/
+
+# Local database config
+config/database.yaml
+!config/database.example.yaml

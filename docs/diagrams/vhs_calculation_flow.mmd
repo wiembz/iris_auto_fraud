@@ -1,0 +1,116 @@
+flowchart TD
+
+    A["Début calcul VHS<br/>Inspection STAFFIM"] --> B["Charger inspection véhicule<br/>dwh.fact_inspection_vehicule"]
+    B --> C["Charger checkpoints<br/>dwh.fact_inspection_checkpoint"]
+    C --> D["Joindre classification métier<br/>mart.dim_checkpoint"]
+
+    D --> E{"Checkpoint scoré ?<br/>is_vhs_scored = true"}
+    E -- "Non" --> E0["UNKNOWN_REVIEW<br/>Pas de pénalité<br/>Conserver pour audit"]
+    E -- "Oui" --> F{"Contrôle renseigné ?"}
+
+    F -- "Non" --> U["UNKNOWN<br/>Pénalité = 0"]
+    F -- "Oui" --> G{"valeur_controle"}
+
+    G -- "Bon / Contrôle OK / OUI" --> OK["OK<br/>Pénalité = 0<br/>state_value = 1.0"]
+
+    G -- "Réparation effectuée<br/>suite accord client" --> REP["REPAIRED<br/>Pénalité = 0<br/>Traçabilité"]
+
+    G -- "Défectueux" --> BR1["BROKEN<br/>Défaut confirmé<br/>Pénalité = penalty_broken<br/>state_value = 0.0"]
+
+    G -- "Contrôle non OK" --> BR2["BROKEN<br/>Contrôle échoué<br/>Pénalité = penalty_broken<br/>state_value = 0.0"]
+
+    G -- "Intervention conseillée" --> IC{"est_anomalie_critique ?"}
+    IC -- "Oui" --> WS1["WORN_STRONG<br/>Pénalité intermédiaire<br/>(worn + broken) / 2<br/>state_value = 0.25"]
+    IC -- "Non" --> W1{"est_anomalie ?"}
+    W1 -- "Oui" --> WORN1["WORN<br/>Pénalité = penalty_worn<br/>state_value = 0.5"]
+    W1 -- "Non" --> U
+
+    G -- "PROPOSITION FAITE<br/>Proposition faite" --> PF{"est_anomalie_critique ?"}
+    PF -- "Oui" --> WS2["WORN_STRONG<br/>Proposition forte<br/>pas BROKEN automatique"]
+    PF -- "Non" --> W2{"est_anomalie ?"}
+    W2 -- "Oui" --> WORN2["WORN<br/>Proposition non critique"]
+    W2 -- "Non" --> U
+
+    G -- "NON" --> NN{"est_anomalie_critique ?"}
+    NN -- "Oui" --> WS3["WORN_STRONG<br/>Règle future prudente<br/>pas BROKEN automatique"]
+    NN -- "Non" --> N2{"est_anomalie ?"}
+    N2 -- "Oui" --> WORN3["WORN<br/>Réponse négative<br/>non critique"]
+    N2 -- "Non" --> U
+
+    G -- "Autre / non reconnu" --> U
+
+    OK --> P["Calcul pénalité checkpoint"]
+    REP --> P
+    U --> P
+    BR1 --> P
+    BR2 --> P
+    WS1 --> P
+    WS2 --> P
+    WS3 --> P
+    WORN1 --> P
+    WORN2 --> P
+    WORN3 --> P
+    E0 --> P
+
+    P --> S["Somme des pénalités checkpoints"]
+    S --> R["vhs_raw_score = max(0, 100 - somme_pénalités)"]
+
+    R --> KM{"Kilométrage"}
+    KM -- "absent / invalide" --> KM1["kilometrage_penalty = 1"]
+    KM -- "< 120 000" --> KM0["kilometrage_penalty = 0"]
+    KM -- ">= 120 000" --> KM2["kilometrage_penalty = 1"]
+    KM -- ">= 180 000" --> KM3["kilometrage_penalty = 2.5"]
+    KM -- ">= 250 000" --> KM4["kilometrage_penalty = 4"]
+    KM -- ">= 350 000" --> KM5["kilometrage_penalty = 6"]
+
+    KM0 --> VB["vhs_before_cap = max(0, vhs_raw_score - kilometrage_penalty)"]
+    KM1 --> VB
+    KM2 --> VB
+    KM3 --> VB
+    KM4 --> VB
+    KM5 --> VB
+
+    VB --> GR["Calcul grade sécurité<br/>basé sur checkpoints T1"]
+
+    GR --> GA{"Règles Grade"}
+    GA -- "1 T1_VITAL BROKEN<br/>ou 3 T1_IMPORTANT BROKEN" --> GD["Grade D"]
+    GA -- "1 T1_VITAL WORN_STRONG<br/>ou 1 T1_IMPORTANT BROKEN<br/>ou 4 anomalies T1" --> GC["Grade C"]
+    GA -- "au moins 1 T1 WORN<br/>ou WORN_STRONG" --> GB["Grade B"]
+    GA -- "aucune anomalie T1" --> GRA["Grade A"]
+
+    GD --> DR["Calcul décision métier"]
+    GC --> DR
+    GB --> DR
+    GRA --> DR
+
+    DR --> D1{"Priorité décision"}
+    D1 -- "Grade D" --> CR["CRITIQUE"]
+    D1 -- "is_drivable = false" --> IM["IMMOBILISE<br/>Affichage : Usage déconseillé"]
+    D1 -- "Grade C" --> DG["DEGRADE"]
+    D1 -- "has_critical_functional = true" --> DG
+    D1 -- "vhs_before_cap < 70" --> DG
+    D1 -- "sinon" --> DO["OK"]
+
+    CR --> HC["Application hard cap"]
+    IM --> HC
+    DG --> HC
+    DO --> HC
+
+    HC --> H1{"Hard cap applicable ?"}
+    H1 -- "Grade D" --> CAPD["cap = 40"]
+    H1 -- "Usage déconseillé" --> CAPI["cap = 50"]
+    H1 -- "Grade C" --> CAPC["cap = 65"]
+    H1 -- "Critical functional" --> CAPF["cap = 65"]
+    H1 -- "Aucun" --> NOHC["pas de cap"]
+
+    CAPD --> VF["vhs_final_score = min(vhs_before_cap, cap)"]
+    CAPI --> VF
+    CAPC --> VF
+    CAPF --> VF
+    NOHC --> VF2["vhs_final_score = vhs_before_cap"]
+
+    VF --> OUT["Résultat VHS<br/>score final + grade + décision + détails pénalités"]
+    VF2 --> OUT
+
+    OUT --> FS["Écriture mart.fact_vhs_score"]
+    OUT --> FD["Écriture mart.fact_vhs_penalty_detail"]
