@@ -1,18 +1,18 @@
 ﻿"""
 etl/dwh/load_dim_garantie.py
 ============================
-Build dwh.dim_garantie from observed claim guarantees.
+Build dwh.dim_garantie for automobile claim guarantees only.
 
 Grain:
-  one row per CODPROD + GRNTSINI observed in staging.stg_sinistres.
+  one row per CODPROD + GRNTSINI observed in staging.stg_sinistres for
+  automobile products only (CODPROD starts with '5').
 
 Business key:
   garantie_key = CODPROD || '|' || GRNTSINI
 
 Important modelling rule:
-  observed guarantee combinations must not disappear from dim_garantie only
-  because the reference label is missing. Missing-reference combinations are
-  loaded with libelle_garantie = UNKNOWN and documented in a quality report.
+  IRIS Auto Fraud is scoped to automobile claims. Non-automobile products are
+  excluded from dim_garantie and documented in a quality report.
 
 Usage:
   python etl/dwh/load_dim_garantie.py
@@ -40,12 +40,14 @@ SOURCE_SYSTEM = "BNA_ASSURANCES"
 TODAY = datetime.now(timezone.utc).replace(tzinfo=None)
 
 REPORT_DIR = BASE_DIR / "data" / "quality_reports" / "dim_garantie"
-MISSING_REFERENCE_REPORT = REPORT_DIR / "dim_garantie_missing_reference_observed.csv"
+MISSING_REFERENCE_REPORT = REPORT_DIR / "dim_garantie_auto_missing_label.csv"
+EXCLUDED_NON_AUTO_REPORT = REPORT_DIR / "dim_garantie_excluded_non_auto.csv"
 
 UNKNOWN = "UNKNOWN"
 UNKNOWN_KEY = "UNKNOWN|UNKNOWN"
 QUALITY_VALIDATED_REFERENCE = "VALIDATED_REFERENCE"
-QUALITY_OBSERVED_MISSING_REFERENCE = "OBSERVED_IN_SINISTRES_MISSING_REFERENCE"
+QUALITY_VALIDATED_AUTO_MAPPING = "VALIDATED_AUTO_MAPPING"
+QUALITY_OBSERVED_MISSING_REFERENCE = "OBSERVED_IN_AUTO_SINISTRES_MISSING_LABEL"
 
 FINAL_COLS = [
     "garantie_sk",
@@ -77,6 +79,45 @@ INVALID_TEXT = frozenset(
         "NA",
     }
 )
+
+# Mapping metier des garanties automobiles observees dans les produits 5xx.
+# Il complete les libelles lorsque le referentiel source ne couvre pas un couple
+# CODPROD|GRNTSINI, sans ouvrir le perimetre aux produits non-auto.
+AUTO_GARANTIE_LABEL_MAP: dict[str, str] = {
+    "ASR": "AVANCE SUR RECOURS",
+    "BG": "BRIS DE GLACE",
+    "CAS": "CONTRE ASSURANCE SPECIALE",
+    "CAT": "CATASTROPHES NATURELLES",
+    "CONS": "CONSIGNATION",
+    "DC": "DECES",
+    "DEPA": "DEPANNAGE ACCIDENT",
+    "DEPC": "DEPANNAGE CREVAISON",
+    "DOC": "DOMMAGES COLLISION",
+    "EME": "EMEUTE",
+    "EXT": "EXTENSION DE GARANTIE",
+    "FM": "FRAIS MEDICAUX",
+    "IC": "INDIVIDUELLE CONDUCTEUR",
+    "IDA": "INDEMNISATION DIRECTE DES ASSURES",
+    "INC": "INCENDIE",
+    "IND": "INDIVIDUELLE ACCIDENT",
+    "IPT": "INVALIDITE PERMANENTE OU TEMPORAIRE",
+    "RCA": "RESPONSABILITE CIVILE ARRERAGES",
+    "RCC": "RESPONSABILITE CIVILE CORPORELLE",
+    "RCDE": "RESPONSABILITE CIVILE DEFENSE ET RECOURS",
+    "RCM": "RESPONSABILITE CIVILE MATERIELLE",
+    "RCR": "RESPONSABILITE CIVILE RENTE MATHEMATIQUE",
+    "REM": "REMORQUAGE",
+    "TR": "TOUS RISQUES",
+    "VOL": "VOL",
+}
+
+REFERENCE_LABEL_ALIASES = {
+    "INDIVIDUAL CONDUCTEUR": "INDIVIDUELLE CONDUCTEUR",
+    "RESPONSAB CIVILE ARRERAGES": "RESPONSABILITE CIVILE ARRERAGES",
+    "RESP CIVILE RENTE MATHEMAT": "RESPONSABILITE CIVILE RENTE MATHEMATIQUE",
+    "INVALIDITE PERMANANTE OU TEMPO": "INVALIDITE PERMANENTE OU TEMPORAIRE",
+    "CONTRE ASSURANCE SPECIALE": "CONTRE ASSURANCE SPECIALE",
+}
 
 
 def _is_missing(value: object) -> bool:
@@ -127,6 +168,9 @@ def _normalise_label(value: object) -> str | None:
         return None
 
     no_accents = _remove_accents(cleaned)
+    if no_accents in REFERENCE_LABEL_ALIASES:
+        return REFERENCE_LABEL_ALIASES[no_accents]
+
     exact = {
         "RC": "RESPONSABILITE CIVILE",
         "R C": "RESPONSABILITE CIVILE",
@@ -148,6 +192,7 @@ def _normalise_label(value: object) -> str | None:
         "ASSISTANCE AUTOMOBILE": "ASSISTANCE",
         "INDIVIDUELLE ACCIDENT": "INDIVIDUELLE ACCIDENT",
         "INDIVIDUELLE ACCIDENTS": "INDIVIDUELLE ACCIDENT",
+        "INDIVIDUEL ACCIDENT": "INDIVIDUELLE ACCIDENT",
         "TOUS RISQUE": "TOUS RISQUES",
         "TOUS RISQUES": "TOUS RISQUES",
         "TIERCE": "TIERCE",
@@ -156,8 +201,12 @@ def _normalise_label(value: object) -> str | None:
         "FRAIS MEDICAUX": "FRAIS MEDICAUX",
         "DECES": "DECES",
         "CATAS NATURELLE": "CATASTROPHES NATURELLES",
+        "CATASTROPHES NATURELLES": "CATASTROPHES NATURELLES",
         "EMEUTE": "EMEUTE",
         "INDEM DIRECTE DES ASSURES": "INDEMNISATION DIRECTE DES ASSURES",
+        "INDEMNISATION DIRECTE DES ASSURES": "INDEMNISATION DIRECTE DES ASSURES",
+        "AVANCE SUR RECOURS": "AVANCE SUR RECOURS",
+        "CONSIGNATION": "CONSIGNATION",
     }
     if no_accents in exact:
         return exact[no_accents]
@@ -175,7 +224,7 @@ def _normalise_label(value: object) -> str | None:
         return "INDIVIDUELLE ACCIDENT"
     if "TOUS" in no_accents and "RISQUE" in no_accents:
         return "TOUS RISQUES"
-    return cleaned
+    return no_accents
 
 
 def _to_bool(value: object) -> bool:
@@ -187,6 +236,15 @@ def _to_bool(value: object) -> bool:
 
 def _garantie_key(code_produit: str, code_garantie: str) -> str:
     return f"{code_produit}|{code_garantie}"
+
+
+def _best_label(labels: list[str], code_garantie: str) -> tuple[str, str]:
+    mapped = AUTO_GARANTIE_LABEL_MAP.get(code_garantie)
+    if mapped:
+        return mapped, QUALITY_VALIDATED_REFERENCE if mapped in labels else QUALITY_VALIDATED_AUTO_MAPPING
+    if labels:
+        return labels[0], QUALITY_VALIDATED_REFERENCE
+    return UNKNOWN, QUALITY_OBSERVED_MISSING_REFERENCE
 
 
 def _available_columns(engine) -> set[str]:
@@ -218,7 +276,7 @@ def read_observed_guarantees(engine, logger) -> pd.DataFrame:
 
     optional = [
         col
-        for col in ["guarantee_label", "guarantee_mapping_status", "is_auto_scope"]
+        for col in ["codfam", "guarantee_label", "guarantee_mapping_status", "is_auto_scope"]
         if col in available
     ]
     select_cols = ["codprod", "grntsini", *optional]
@@ -238,12 +296,17 @@ def read_observed_guarantees(engine, logger) -> pd.DataFrame:
     return df
 
 
-def transform_dim_garantie(df_raw: pd.DataFrame, logger) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+def transform_dim_garantie(df_raw: pd.DataFrame, logger) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
     df = df_raw.copy()
     n_raw = len(df)
 
     df["code_produit"] = df["codprod"].map(_clean_code)
     df["code_garantie"] = df["grntsini"].map(_clean_code)
+    if "codfam" in df.columns:
+        df["code_famille"] = df["codfam"].map(_clean_code)
+    else:
+        df["code_famille"] = df["code_produit"].str[:1]
+
     df = df[df["code_produit"].notna() & df["code_garantie"].notna()].copy()
     n_invalid_key = n_raw - len(df)
 
@@ -256,14 +319,27 @@ def transform_dim_garantie(df_raw: pd.DataFrame, logger) -> tuple[pd.DataFrame, 
         df["_is_auto_scope_source"] = df["is_auto_scope"].map(_to_bool)
     else:
         df["_is_auto_scope_source"] = False
-    df["_is_auto_scope_product"] = df["code_produit"].str.startswith("5", na=False)
-    df["_is_auto_scope"] = df["_is_auto_scope_source"] | df["_is_auto_scope_product"]
+
+    df["_is_auto_product"] = df["code_produit"].str.startswith("5", na=False)
+    df["_is_auto_family"] = df["code_famille"].eq("5")
+    df["_is_auto_scope"] = df["_is_auto_product"] | df["_is_auto_family"]
+
+    excluded = df[~df["_is_auto_scope"]].copy()
+    df_auto = df[df["_is_auto_scope"]].copy()
+
+    excluded_report = (
+        excluded.groupby(["code_produit", "code_garantie"], dropna=False)
+        .size()
+        .rename("nb_sinistres")
+        .reset_index()
+    )
+    if not excluded_report.empty:
+        excluded_report["reason"] = "excluded from dim_garantie because CODPROD/CODFAM is outside automobile 5xx scope"
 
     grouped = (
-        df.groupby(["code_produit", "code_garantie"], dropna=False)
+        df_auto.groupby(["code_produit", "code_garantie"], dropna=False)
         .agg(
             nb_sinistres=("code_garantie", "size"),
-            is_auto_scope=("_is_auto_scope", "max"),
             labels=("reference_label", lambda s: sorted(set(v for v in s if isinstance(v, str) and v.strip()))),
         )
         .reset_index()
@@ -272,14 +348,9 @@ def transform_dim_garantie(df_raw: pd.DataFrame, logger) -> tuple[pd.DataFrame, 
         lambda r: _garantie_key(r["code_produit"], r["code_garantie"]), axis=1
     )
 
-    grouped["libelle_garantie"] = grouped["labels"].map(
-        lambda labels: labels[0] if labels else UNKNOWN
-    )
-    grouped["garantie_quality_level"] = grouped["labels"].map(
-        lambda labels: QUALITY_VALIDATED_REFERENCE
-        if labels
-        else QUALITY_OBSERVED_MISSING_REFERENCE
-    )
+    resolved = grouped.apply(lambda r: _best_label(r["labels"], r["code_garantie"]), axis=1)
+    grouped["libelle_garantie"] = resolved.map(lambda x: x[0])
+    grouped["garantie_quality_level"] = resolved.map(lambda x: x[1])
 
     grouped = grouped.sort_values(["code_produit", "code_garantie"]).reset_index(drop=True)
     grouped.insert(0, "garantie_sk", range(1, len(grouped) + 1))
@@ -305,54 +376,57 @@ def transform_dim_garantie(df_raw: pd.DataFrame, logger) -> tuple[pd.DataFrame, 
     missing_reference = grouped[
         grouped["garantie_quality_level"].eq(QUALITY_OBSERVED_MISSING_REFERENCE)
     ].copy()
-    missing_reference["reason"] = (
-        "observed in staging.stg_sinistres but no trusted guarantee reference label"
-    )
+    if not missing_reference.empty:
+        missing_reference["reason"] = "auto guarantee observed in 5xx products but not covered by source/reference or auto mapping"
     report = missing_reference[
         [
             "code_produit",
             "code_garantie",
             "garantie_key",
             "nb_sinistres",
-            "is_auto_scope",
             "reason",
         ]
-    ].copy()
+    ].copy() if not missing_reference.empty else pd.DataFrame(
+        columns=["code_produit", "code_garantie", "garantie_key", "nb_sinistres", "reason"]
+    )
 
     metrics = {
         "n_raw": n_raw,
         "n_invalid_key": n_invalid_key,
-        "n_distinct_observed": len(grouped),
+        "n_source_auto_rows": len(df_auto),
+        "n_source_non_auto_rows_excluded": len(excluded),
+        "n_distinct_auto_observed": len(grouped),
         "n_loaded": len(df_final),
-        "n_validated_reference": int(
-            grouped["garantie_quality_level"].eq(QUALITY_VALIDATED_REFERENCE).sum()
-        ),
-        "n_missing_reference": int(
-            grouped["garantie_quality_level"].eq(QUALITY_OBSERVED_MISSING_REFERENCE).sum()
-        ),
-        "n_auto_scope": int(grouped["is_auto_scope"].sum()),
+        "n_validated_reference": int(grouped["garantie_quality_level"].eq(QUALITY_VALIDATED_REFERENCE).sum()),
+        "n_validated_auto_mapping": int(grouped["garantie_quality_level"].eq(QUALITY_VALIDATED_AUTO_MAPPING).sum()),
+        "n_missing_reference": int(grouped["garantie_quality_level"].eq(QUALITY_OBSERVED_MISSING_REFERENCE).sum()),
         "missing_reference_report_rows": len(report),
+        "excluded_non_auto_combinations": len(excluded_report),
     }
 
     logger.info(f"  invalid CODPROD/GRNTSINI rows ignored: {n_invalid_key}")
-    logger.info(f"  distinct observed guarantee keys: {len(grouped)}")
-    return df_final[FINAL_COLS].copy(), report, metrics
+    logger.info(f"  source auto rows retained: {len(df_auto)}")
+    logger.info(f"  source non-auto rows excluded: {len(excluded)}")
+    logger.info(f"  distinct auto guarantee keys: {len(grouped)}")
+    return df_final[FINAL_COLS].copy(), report, excluded_report, metrics
 
 
-def write_reports(report: pd.DataFrame) -> None:
+def write_reports(missing_report: pd.DataFrame, excluded_report: pd.DataFrame) -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    report.to_csv(MISSING_REFERENCE_REPORT, index=False, encoding="utf-8-sig")
+    missing_report.to_csv(MISSING_REFERENCE_REPORT, index=False, encoding="utf-8-sig")
+    excluded_report.to_csv(EXCLUDED_NON_AUTO_REPORT, index=False, encoding="utf-8-sig")
 
 
 def load_dim_garantie(run_id: str, engine, logger) -> dict:
     logger.info(f"[READ] {SOURCE_TABLE}")
     df_raw = read_observed_guarantees(engine, logger)
-    df_final, missing_reference_report, metrics = transform_dim_garantie(df_raw, logger)
-    write_reports(missing_reference_report)
+    df_final, missing_reference_report, excluded_report, metrics = transform_dim_garantie(df_raw, logger)
+    write_reports(missing_reference_report, excluded_report)
 
     _, elapsed = dwh_utils.write_to_dwh(df_final, engine, TABLE_NAME, logger)
     metrics["elapsed"] = elapsed
-    metrics["report_path"] = str(MISSING_REFERENCE_REPORT)
+    metrics["missing_report_path"] = str(MISSING_REFERENCE_REPORT)
+    metrics["excluded_report_path"] = str(EXCLUDED_NON_AUTO_REPORT)
     return metrics
 
 
@@ -364,6 +438,11 @@ Validation SQL:
 SELECT COUNT(*) AS total
 FROM dwh.dim_garantie;
 
+SELECT COUNT(*) AS non_auto_rows
+FROM dwh.dim_garantie
+WHERE code_produit <> 'UNKNOWN'
+  AND code_produit NOT LIKE '5%';
+
 SELECT garantie_key, COUNT(*) AS nb
 FROM dwh.dim_garantie
 GROUP BY garantie_key
@@ -374,9 +453,10 @@ FROM dwh.dim_garantie
 GROUP BY garantie_quality_level
 ORDER BY nb DESC;
 
-SELECT COUNT(*) AS missing_reference_observed
+SELECT *
 FROM dwh.dim_garantie
-WHERE garantie_quality_level = 'OBSERVED_IN_SINISTRES_MISSING_REFERENCE';
+WHERE libelle_garantie = 'UNKNOWN'
+  AND garantie_sk <> 0;
 """
     )
 
@@ -393,14 +473,18 @@ if __name__ == "__main__":
     logger.info("dwh.dim_garantie loaded successfully")
     logger.info(f"  source rows with CODPROD + GRNTSINI       : {m['n_raw']}")
     logger.info(f"  invalid CODPROD/GRNTSINI rows ignored    : {m['n_invalid_key']}")
-    logger.info(f"  distinct observed guarantee keys          : {m['n_distinct_observed']}")
-    logger.info(f"  rows loaded including UNKNOWN anchor      : {m['n_loaded']}")
-    logger.info(f"  VALIDATED_REFERENCE rows                  : {m['n_validated_reference']}")
-    logger.info(f"  observed missing-reference rows           : {m['n_missing_reference']}")
-    logger.info(f"  observed auto-scope rows                  : {m['n_auto_scope']}")
-    logger.info(f"  missing reference report rows             : {m['missing_reference_report_rows']}")
-    logger.info(f"  missing reference report                  : {m['report_path']}")
-    logger.info(f"  elapsed seconds                           : {m['elapsed']:.1f}")
+    logger.info(f"  source auto rows retained                : {m['n_source_auto_rows']}")
+    logger.info(f"  source non-auto rows excluded            : {m['n_source_non_auto_rows_excluded']}")
+    logger.info(f"  distinct auto guarantee keys             : {m['n_distinct_auto_observed']}")
+    logger.info(f"  rows loaded including UNKNOWN anchor     : {m['n_loaded']}")
+    logger.info(f"  VALIDATED_REFERENCE rows                 : {m['n_validated_reference']}")
+    logger.info(f"  VALIDATED_AUTO_MAPPING rows              : {m['n_validated_auto_mapping']}")
+    logger.info(f"  missing auto labels remaining            : {m['n_missing_reference']}")
+    logger.info(f"  missing label report rows                : {m['missing_reference_report_rows']}")
+    logger.info(f"  excluded non-auto combinations           : {m['excluded_non_auto_combinations']}")
+    logger.info(f"  missing label report                     : {m['missing_report_path']}")
+    logger.info(f"  excluded non-auto report                 : {m['excluded_report_path']}")
+    logger.info(f"  elapsed seconds                          : {m['elapsed']:.1f}")
     logger.info("=" * 72)
     print_validation_sql()
 

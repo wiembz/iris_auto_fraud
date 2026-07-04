@@ -562,35 +562,43 @@ created_at
 
 Rules:
 
-- The dimension is rebuilt from all distinct observed `CODPROD|GRNTSINI` combinations in `staging.stg_sinistres`.
-- Existing reference labels are used when available.
-- Observed combinations missing from the reference are still loaded with `libelle_garantie = UNKNOWN`.
-- Missing-reference combinations are documented outside the DWH; they are not removed from the dimension.
+- The dimension is rebuilt from observed `CODPROD|GRNTSINI` combinations in `staging.stg_sinistres`, restricted to automobile scope only.
+- Automobile scope is defined by product/family code `5xx`.
+- Non-automobile products are excluded from `dim_garantie` and documented outside the DWH.
+- Source reference labels are used when coherent.
+- A validated automobile guarantee-code mapping completes missing or inconsistent source labels.
+- No business guarantee row should keep `libelle_garantie = UNKNOWN`.
 - One technical UNKNOWN row is kept with `garantie_sk = 0` and `garantie_key = UNKNOWN|UNKNOWN`.
 - `fact_sinistre` joins this dimension through `garantie_key`, not through labels.
 
 Current validation after correction:
 
 ```text
-dim_garantie rows including UNKNOWN       : 438
-observed guarantee combinations           : 437
+dim_garantie rows including UNKNOWN       : 334
+automobile guarantee combinations         : 333
+non-automobile source rows excluded       : 3,726
+excluded non-auto combinations            : 104
 duplicate garantie_key                    : 0
-VALIDATED_REFERENCE                       : 279
-OBSERVED_IN_SINISTRES_MISSING_REFERENCE   : 158
+business UNKNOWN labels                   : 0
+non-auto rows in dim_garantie             : 0
+VALIDATED_REFERENCE                       : 242
+VALIDATED_AUTO_MAPPING                    : 91
 UNKNOWN technical rows                    : 1
 ```
 
-Quality report:
+Quality reports:
 
 ```text
-data/quality_reports/dim_garantie/dim_garantie_missing_reference_observed.csv
+data/quality_reports/dim_garantie/dim_garantie_auto_missing_label.csv
+data/quality_reports/dim_garantie/dim_garantie_excluded_non_auto.csv
 ```
 
 Status:
 
 ```text
-dim_garantie: VALIDATED for fact_sinistre coverage, with a documented missing-reference reserve.
+dim_garantie: VALIDATED for automobile guarantee scope, with complete business labels.
 ```
+
 ### 6.4 `dim_tiers`
 
 Role:
@@ -754,14 +762,14 @@ fact_sinistre rows loaded           : 381,893
 duplicate sinistre_garantie_key     : 0
 NULL foreign keys                    : 0
 missing sinistre_sk                  : 0
-missing garantie_sk                  : 0
+missing garantie_sk                  : 3,726
 missing client_sk                    : 17
 missing contrat_sk                   : 289
-missing vehicule_sk                  : 381,128
+missing vehicule_sk                  : 380,968
 missing conducteur_sk                : 33,230
 missing tiers_sk                     : 102,783
 missing camtier_sk                   : 117,162
-missing geo_sinistre_sk              : 747
+missing geo_sinistre_sk              : 21,245
 negative surv->decl delays           : 51,109
 negative decl->ouv delays            : 15,554
 negative ouv->clot delays            : 8,202
@@ -771,7 +779,7 @@ amount anomaly rows                  : 3,205
 Guarantee and contract coverage notes:
 
 ```text
-The previous 14,429 missing garantie_sk rows were caused by an incomplete dim_garantie build that relied on codprod_from_contract and excluded observed CODPROD|GRNTSINI combinations. dim_garantie now uses CODPROD|GRNTSINI as the stable business key and includes all observed staging combinations, including missing-reference rows documented in the dim_garantie quality report.
+The previous dim_garantie build included non-automobile observed combinations. dim_garantie is now restricted to automobile product/family scope 5xx, uses CODPROD|GRNTSINI as the stable business key, standardizes automobile guarantee labels by code, and documents excluded non-auto combinations outside the DWH. After reloading fact_sinistre, the remaining 3,726 garantie_sk = 0 rows are all NON_AUTO source rows and no nonzero garantie_sk points outside dim_garantie.
 
 The previous 4,015 missing contrat_sk rows were mostly EXISTS_IN_PRODUCTION_JOIN_PROBLEM cases caused by inconsistent NUMCNT normalization and dim_contrat coverage. A shared normalize_numcnt rule now builds dim_contrat.contrat_key and fact_sinistre.source_contrat_key. After correction, missing contrat_sk is 289, all classified as ABSENT_PRODUCTION in the dedicated quality report.
 ```
@@ -1166,3 +1174,8 @@ All final VHS reports are under `data/quality_reports/vhs/final/`:
 - V1/V2 compute engines and audit scripts
 - intermediate experiment reports and CSVs
 - project cleanup scripts
+
+
+
+
+
