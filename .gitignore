@@ -75,6 +75,8 @@ models/
 # Database dumps / backups
 # =========================
 *.sql
+# Keep documented SQL design proposals
+!docs/vhs/governance/sql/*.sql
 *.dump
 *.backup
 *.bak
