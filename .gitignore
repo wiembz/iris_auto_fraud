@@ -130,3 +130,13 @@ notebooks/archive/
 # Local database config
 config/database.yaml
 !config/database.example.yaml
+
+# Local exploratory notebooks not part of final VHS deliverables
+notebooks/01_data_profiling_exploration.ipynb
+notebooks/02_reference_mapping_exploration.ipynb
+notebooks/02b_reference_mapping_validation.ipynb
+notebooks/03_migration_2019_exploration.ipynb
+notebooks/03_staging_design_and_rules.ipynb
+
+# Generated notebook outputs / local quality reports
+notebooks/data/
