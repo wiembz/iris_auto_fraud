@@ -114,8 +114,18 @@ build/
 coverage/
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*config/database.yaml
-notebooks/
+yarn-error.log*
+
+# =========================
+# Jupyter notebooks
+# =========================
+# Ne pas ignorer le dossier notebooks/ globalement
+# Les notebooks de validation VHS sont des livrables académiques trackés
+# Ignorer uniquement les artefacts temporaires Jupyter
+**/.ipynb_checkpoints/
+notebooks/tmp/
+notebooks/drafts/
+notebooks/archive/
 
 # Local database config
 config/database.yaml
