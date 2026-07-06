@@ -19,8 +19,8 @@ from pathlib import Path
 
 import pandas as pd
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import load_dim_geo as geo
 
 DEFAULT_INPUT_CSV = BASE_DIR / "data" / "quality_reports" / "dim_geo" / "dim_geo_conflicts_after_resolution.csv"

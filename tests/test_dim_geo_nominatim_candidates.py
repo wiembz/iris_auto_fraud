@@ -1,4 +1,4 @@
-﻿from etl.dwh.audit_dim_geo_nominatim_candidates import (
+﻿from etl.dwh.geo_audit_tools.audit_dim_geo_nominatim_candidates import (
     build_nominatim_query,
     evaluate_nominatim_response,
     verify_candidates,

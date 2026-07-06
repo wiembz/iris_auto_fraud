@@ -1,4 +1,4 @@
-﻿from etl.dwh.audit_dim_geo_excluded_rue_candidates import (
+﻿from etl.dwh.geo_audit_tools.audit_dim_geo_excluded_rue_candidates import (
     ReferenceRow,
     build_candidate,
     build_reference_index,

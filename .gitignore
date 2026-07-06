@@ -73,6 +73,7 @@ outputs/geo_audit/
 data/quality_reports/geo_audit/
 data/quality_reports/dim_geo/*.csv
 data/quality_reports/dim_geo/*.xlsx
+data/quality_reports/dim_geo/*.json
 
 # If you want to keep audit CSVs in Git, uncomment this:
 # !data/quality_reports/**/*.csv

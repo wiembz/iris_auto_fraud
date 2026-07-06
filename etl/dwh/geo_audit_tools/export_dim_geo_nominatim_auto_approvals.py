@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Iterable
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 DEFAULT_INPUT_CSV = BASE_DIR / "data" / "quality_reports" / "dim_geo" / "dim_geo_nominatim_verified_candidates.csv"
 DEFAULT_EXISTING_CORRECTIONS_CSV = BASE_DIR / "data" / "reference" / "dim_geo" / "geo_dim_approved_corrections.csv"
 DEFAULT_OUTPUT_CSV = BASE_DIR / "data" / "quality_reports" / "dim_geo" / "dim_geo_nominatim_auto_approvable_corrections.csv"

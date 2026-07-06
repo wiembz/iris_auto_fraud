@@ -1,4 +1,4 @@
-from etl.dwh.audit_dim_geo_google_maps_candidates import (
+from etl.dwh.geo_audit_tools.audit_dim_geo_google_maps_candidates import (
     build_google_query,
     evaluate_google_response,
     verify_candidates,

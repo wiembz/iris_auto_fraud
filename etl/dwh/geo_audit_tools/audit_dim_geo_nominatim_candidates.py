@@ -14,8 +14,8 @@ Important public Nominatim usage constraints:
   - do not send confidential or personal data.
 
 Examples:
-  python etl/dwh/audit_dim_geo_nominatim_candidates.py --limit 20
-  python etl/dwh/audit_dim_geo_nominatim_candidates.py --online --limit 50
+  python etl/dwh/geo_audit_tools/audit_dim_geo_nominatim_candidates.py --limit 20
+  python etl/dwh/geo_audit_tools/audit_dim_geo_nominatim_candidates.py --online --limit 50
 """
 from __future__ import annotations
 
@@ -37,14 +37,14 @@ try:
         normalize_text,
     )
 except ModuleNotFoundError:  # pytest/package import path
-    from etl.dwh.audit_dim_geo_excluded_rue_candidates import (
+    from etl.dwh.geo_audit_tools.audit_dim_geo_excluded_rue_candidates import (
         VALID_GOVERNORATS,
         normalize_gouvernorat,
         normalize_text,
     )
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 DEFAULT_INPUT_CSV = BASE_DIR / "data" / "quality_reports" / "dim_geo" / "dim_geo_excluded_rue_review_candidates.csv"
 DEFAULT_OUTPUT_CSV = BASE_DIR / "data" / "quality_reports" / "dim_geo" / "dim_geo_nominatim_verified_candidates.csv"
 DEFAULT_CACHE_JSON = BASE_DIR / "data" / "quality_reports" / "dim_geo" / "dim_geo_nominatim_cache.json"

@@ -239,7 +239,7 @@ Nouveau statut qualite possible : `CONFLICT`, utilise pour separer les contradic
 ## Decision complementaire - verification Google Maps des candidats rue/quartier
 
 **Date :** 2026-07-06  
-**Fichier ajoute :** `etl/dwh/audit_dim_geo_google_maps_candidates.py`
+**Fichier ajoute :** `etl/dwh/geo_audit_tools/audit_dim_geo_google_maps_candidates.py`
 
 La verification Google Maps est ajoutee comme couche d'aide au controle qualite des candidats issus de `rue`, quartiers et zones libres. Elle ne remplace pas `DimRegion.csv`, qui reste la reference maitresse Tunisie.
 
@@ -258,14 +258,14 @@ Commandes d'execution :
 
 ```powershell
 # Preparation sans appel API
-python etl/dwh/audit_dim_geo_google_maps_candidates.py --offline --limit 5
+python etl/dwh/geo_audit_tools/audit_dim_geo_google_maps_candidates.py --offline --limit 5
 
 # Verification reelle apres activation de la cle Google Maps
 $env:GOOGLE_MAPS_API_KEY = "VOTRE_CLE"
-python etl/dwh/audit_dim_geo_google_maps_candidates.py --limit 50
+python etl/dwh/geo_audit_tools/audit_dim_geo_google_maps_candidates.py --limit 50
 
 # Optionnel : inclure aussi les candidats ambigus
-python etl/dwh/audit_dim_geo_google_maps_candidates.py --limit 50 --include-ambiguous
+python etl/dwh/geo_audit_tools/audit_dim_geo_google_maps_candidates.py --limit 50 --include-ambiguous
 ```
 
 Regle de securite conservee :
@@ -277,7 +277,7 @@ Google Maps peut accelerer la revue, mais seule une correction APPROVED ou une c
 ## Decision complementaire - option gratuite OpenStreetMap/Nominatim
 
 **Date :** 2026-07-06  
-**Fichier ajoute :** `etl/dwh/audit_dim_geo_nominatim_candidates.py`
+**Fichier ajoute :** `etl/dwh/geo_audit_tools/audit_dim_geo_nominatim_candidates.py`
 
 Une option gratuite est ajoutee via OpenStreetMap Nominatim pour verifier les candidats issus de `rue`, quartiers et zones libres sans cle Google Maps. Cette option reste une aide a la revue, pas une source de verite concurrente a `DimRegion.csv`.
 
@@ -298,17 +298,17 @@ Commandes d'execution :
 
 ```powershell
 # Preparation sans appel reseau
-python etl/dwh/audit_dim_geo_nominatim_candidates.py --limit 5
+python etl/dwh/geo_audit_tools/audit_dim_geo_nominatim_candidates.py --limit 5
 
 # Verification gratuite en petit batch
-python etl/dwh/audit_dim_geo_nominatim_candidates.py --online --limit 50
+python etl/dwh/geo_audit_tools/audit_dim_geo_nominatim_candidates.py --online --limit 50
 
 # Optionnel : ajouter un contact conforme a l'usage Nominatim
 $env:NOMINATIM_EMAIL = "votre.email@example.com"
-python etl/dwh/audit_dim_geo_nominatim_candidates.py --online --limit 50
+python etl/dwh/geo_audit_tools/audit_dim_geo_nominatim_candidates.py --online --limit 50
 
 # Batch complet des candidats selectionnes, a lancer seulement si necessaire
-python etl/dwh/audit_dim_geo_nominatim_candidates.py --online --limit 857
+python etl/dwh/geo_audit_tools/audit_dim_geo_nominatim_candidates.py --online --limit 857
 ```
 
 Regle de securite conservee :
@@ -319,7 +319,7 @@ Nominatim/OpenStreetMap peut reduire la revue manuelle, mais `DimRegion.csv` et 
 ## Decision complementaire - export des validations Nominatim vers corrections candidates
 
 **Date :** 2026-07-06  
-**Fichier ajoute :** `etl/dwh/export_dim_geo_nominatim_auto_approvals.py`
+**Fichier ajoute :** `etl/dwh/geo_audit_tools/export_dim_geo_nominatim_auto_approvals.py`
 
 Les lignes `AUTO_APPROVABLE` issues de Nominatim peuvent etre exportees vers un fichier de corrections candidates, mais pas appliquees directement.
 
@@ -337,10 +337,10 @@ Commandes d'execution :
 
 ```powershell
 # Export securise en PENDING
-python etl/dwh/export_dim_geo_nominatim_auto_approvals.py
+python etl/dwh/geo_audit_tools/export_dim_geo_nominatim_auto_approvals.py
 
 # Export en APPROVED uniquement apres acceptation de la regle metier
-python etl/dwh/export_dim_geo_nominatim_auto_approvals.py --approval-status APPROVED
+python etl/dwh/geo_audit_tools/export_dim_geo_nominatim_auto_approvals.py --approval-status APPROVED
 ```
 
 Regle de securite conservee :
@@ -377,7 +377,7 @@ Les 2223 lignes restantes pointent toutes vers l'ancre technique `UNKNOWN|UNKNOW
 ## Décision complémentaire — fiabilisation fuzzy et double preuve
 
 **Date :** 2026-07-06  
-**Fichiers modifiés :** `etl/dwh/load_dim_geo.py`, `etl/dwh/audit_dim_geo_fuzzy_web_candidates.py`
+**Fichiers modifiés :** `etl/dwh/load_dim_geo.py`, `etl/dwh/geo_audit_tools/audit_dim_geo_fuzzy_web_candidates.py`
 
 ### Règle métier ajoutée
 
@@ -421,7 +421,7 @@ Le loader ne l'applique que si :
 Le script suivant génère les candidats fuzzy et marque les lignes déjà confirmées par un rapport externe mis en cache :
 
 ```powershell
-python etl/dwh/audit_dim_geo_fuzzy_web_candidates.py
+python etl/dwh/geo_audit_tools/audit_dim_geo_fuzzy_web_candidates.py
 ```
 
 Par défaut, il écrit seulement :
@@ -433,7 +433,7 @@ data/quality_reports/dim_geo/dim_geo_fuzzy_web_candidates.csv
 Pour produire le fichier de corrections auto à revoir ou appliquer :
 
 ```powershell
-python etl/dwh/audit_dim_geo_fuzzy_web_candidates.py --write-auto-corrections --approval-status PENDING
+python etl/dwh/geo_audit_tools/audit_dim_geo_fuzzy_web_candidates.py --write-auto-corrections --approval-status PENDING
 ```
 
 Le passage à `APPROVED` doit rester une décision contrôlée, sauf règle métier explicitement acceptée.

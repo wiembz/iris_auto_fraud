@@ -6,7 +6,7 @@ latest dim_geo_excluded.csv, then writes a PENDING review report. It never
 updates staging, dwh, or approved correction files.
 
 Example:
-  python etl/dwh/audit_dim_geo_excluded_rue_candidates.py
+  python etl/dwh/geo_audit_tools/audit_dim_geo_excluded_rue_candidates.py
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Iterable
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 DEFAULT_REFERENCE_CSV = BASE_DIR / "data" / "reference" / "dim_geo" / "DimRegion.csv"
 DEFAULT_EXCLUDED_CSV = BASE_DIR / "data" / "quality_reports" / "dim_geo" / "dim_geo_excluded.csv"
 DEFAULT_OUTPUT_CSV = BASE_DIR / "data" / "quality_reports" / "dim_geo" / "dim_geo_excluded_rue_review_candidates.csv"

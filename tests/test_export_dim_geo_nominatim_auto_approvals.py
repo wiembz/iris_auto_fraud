@@ -1,4 +1,4 @@
-﻿from etl.dwh.export_dim_geo_nominatim_auto_approvals import (
+﻿from etl.dwh.geo_audit_tools.export_dim_geo_nominatim_auto_approvals import (
     build_auto_approval_export,
     build_auto_approval_rows,
     is_auto_approvable,
