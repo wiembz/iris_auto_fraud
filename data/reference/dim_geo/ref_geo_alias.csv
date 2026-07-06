@@ -101,3 +101,17 @@ MHIDA,MAHDIA,MAHDIA,CENTRE-EST,TYPO,0.91,Omission de voyelle + faute,1
 SFAAX,SFAX,SFAX,CENTRE-EST,TYPO,0.94,Doublement de voyelle AA,1
 GABS,GABES,GABES,SUD-EST,TYPO,0.93,Omission du E final,1
 GHABES,GABES,GABES,SUD-EST,TYPO,0.94,Insertion d'un H parasite,1
+EL GOLAA,GOLAA,KEBILI,SUD OUEST,VARIANTE,0.95,"Article EL ajoute - Golaa (Douz) code postal 4234 confirme dans DimRegion.csv",1
+MEDJEZ EL BAB,MEJEZ EL BAB,BEJA,NORD OUEST,VARIANTE,0.95,Transliteration DJ/J - code postal 9070 confirme dans DimRegion.csv,1
+OUED MELIZ,OUED MLIZ,JENDOUBA,NORD OUEST,VARIANTE,0.95,Variante orthographique - code postal 8115 confirme dans DimRegion.csv,1
+KERKENNAH,KERKENAH,SFAX,CENTRE EST,VARIANTE,0.95,Variante orthographique - code postal 3070 confirme dans DimRegion.csv,1
+HAMMAM CHOTT,HAMMAM CHATT,BEN AROUS,GRAND TUNIS,VARIANTE,0.95,Variante orthographique - code postal 1164 confirme dans DimRegion.csv,1
+MOHAMEDIA,MOHAMADIA,BEN AROUS,GRAND TUNIS,VARIANTE,0.95,Variante orthographique - code postal 1145 confirme dans DimRegion.csv,1
+KALAA KEBIRA,KALAA EL KEBIRA,SOUSSE,CENTRE EST,VARIANTE,0.95,Variante orthographique - code postal 4060 confirme dans DimRegion.csv,1
+SIDI EL HANI,SIDI EL HENI,SOUSSE,CENTRE EST,VARIANTE,0.95,Variante orthographique - code postal 4025 confirme dans DimRegion.csv,1
+ROUHIA,ROHIA,SILIANA,NORD OUEST,VARIANTE,0.95,Variante orthographique - code postal 6150 confirme dans DimRegion.csv,1
+DJEBEL JELLOUD,JEBEL JELLOUD,TUNIS,GRAND TUNIS,VARIANTE,0.95,Transliteration DJ/J - code postal 1046 confirme dans DimRegion.csv,1
+HIDRA,HAIDRA,KASSERINE,CENTRE OUEST,VARIANTE,0.95,Variante orthographique - code postal 1221 confirme dans DimRegion.csv,1
+SEJNENE,SEJNANE,BIZERTE,NORD EST,VARIANTE,0.95,Variante orthographique - code postal 7010 confirme dans DimRegion.csv,1
+TAMERZA,TAMEGHZA,TOZEUR,SUD OUEST,VARIANTE,0.95,Variante orthographique - code postal 2212 confirme dans DimRegion.csv,1
+DJERBA MIDOUN,MIDOUN,MEDENINE,SUD EST,VARIANTE,0.95,Prefixe Djerba retire - code postal 4116 confirme dans DimRegion.csv,1

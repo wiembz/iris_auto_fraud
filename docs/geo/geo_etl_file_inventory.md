@@ -1,4 +1,4 @@
-﻿# Inventaire des fichiers ETL GEO
+# Inventaire des fichiers ETL GEO
 
 | Fichier | Type | Role probable | Mots GEO detectes | Tables concernees | Niveau de risque | Action recommandee |
 |---|---|---|---|---|---|---|
@@ -16,8 +16,8 @@
 | `etl/dwh/load_dim_contrat.py` | Python ETL DWH | Construction dimension contrat | contrat, production | `staging.stg_production`, `dwh.dim_contrat` | Faible | Pas de GEO direct detecte; utile pour dependances production. |
 | `config/sources.yaml` | YAML config | Definition chemins sources | sources Excel, sinistres, clients, production | staging loaders | Faible | Verifier les fichiers source utilises pour colonnes GEO. |
 | `config/mappings.yaml` | YAML config | Mapping technique/metier | colonnes sources et cibles | staging/DWH | Faible | Verifier si des mappings GEO sont definis hors scripts Python. |
-| `data/reference/dim_geo/geo_tunisia_reference.csv` | CSV reference | Reference administrative GEO | localite, delegation, gouvernorat, region, aliases | `load_dim_geo.py`, `audit_dim_geo.py` | Eleve | Reference metier critique; controler couverture et tracabilite source. |
-| `data/reference/dim_geo/DimRegion.csv` | CSV reference | Reference postale/regionale utilisee par le loader actuel | code_postal, gouvernorat, delegation, localite | `load_dim_geo.py` | Eleve | Verifier structure, unicite et adequation avec la logique postale. |
+| `data/reference/dim_geo/geo_tunisia_reference.csv` | CSV reference legacy | Ancienne reference administrative GEO | localite, delegation, gouvernorat, region, aliases | audits historiques | Moyen | Ne plus utiliser comme source de verite concurrente pour `load_dim_geo.py`; preferer `DimRegion.csv`. |
+| `data/reference/dim_geo/DimRegion.csv` | CSV reference maitresse | Reference Tunisie officielle pour gouvernorat, delegation, localite et code postal | code_postal, gouvernorat, delegation, localite | `load_dim_geo.py`, audits GEO | Eleve | Source de verite unique pour la resolution `dim_geo`; controler unicite, conflits et couverture. |
 | `data/reference/dim_geo/ref_geo_alias.csv` | CSV reference | Alias de lieux/geographie | alias, localite, gouvernorat | `load_dim_geo.py` | Moyen | Auditer les alias ambigus et leur gouvernorat. |
 | `data/reference/dim_geo/geo_dim_approved_corrections.csv` | CSV reference | Corrections GEO approuvees | approved_region, approved_gouvernorat, approved_localite | `load_dim_geo.py` | Eleve | Appliquer uniquement les statuts approuves; ne jamais utiliser `geo_sk` comme cle primaire metier. |
 | `data/reference/dim_geo/geo_dim_postal_approved_corrections.csv` | CSV reference | Corrections postales approuvees | approved_code_postal, geo_key | `load_dim_geo.py` | Eleve | Verifier que les corrections sont documentees et non ambiguës. |

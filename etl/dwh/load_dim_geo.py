@@ -1,4 +1,4 @@
-﻿"""
+"""
 etl/dwh/load_dim_geo.py
 =======================
 Builds the final clean dwh.dim_geo dimension from claim geography only.
@@ -13,7 +13,8 @@ Business key:
 Safe workflow:
   1. Read raw claim geography from staging.stg_sinistres.
   2. Normalize source labels.
-  3. Resolve geography with data/reference/dim_geo/geo_tunisia_reference.csv.
+  3. Resolve geography with data/reference/dim_geo/DimRegion.csv
+     (official Tunisia reference for governorate/delegation/locality/postal code).
   4. Apply only APPROVED geography corrections from
      data/reference/dim_geo/geo_dim_approved_corrections.csv.
   5. Resolve postal codes only when a real unique 4-digit code is trusted.
@@ -39,6 +40,7 @@ import math
 import re
 import sys
 import unicodedata
+from functools import lru_cache
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -59,11 +61,13 @@ SOURCE_TABLE  = "staging.stg_sinistres"
 SOURCE_SYSTEM = "BNA_ASSURANCES"
 SOURCE_CONTEXT = "SINISTRE"
 TODAY         = datetime.now(timezone.utc).replace(tzinfo=None)
-GEO_REFERENCE_PATH = BASE_DIR / "data" / "reference" / "dim_geo" / "geo_tunisia_reference.csv"
-# Main canonical Tunisia locality/postal reference (DimRegion.csv)
-GEO_POSTAL_REFERENCE_PATH = BASE_DIR / "data" / "reference" / "dim_geo" / "DimRegion.csv"
+GEO_DIMREGION_REFERENCE_PATH = BASE_DIR / "data" / "reference" / "dim_geo" / "DimRegion.csv"
+# DimRegion.csv is the single authoritative Tunisia reference for this loader.
+GEO_REFERENCE_PATH = GEO_DIMREGION_REFERENCE_PATH
+GEO_POSTAL_REFERENCE_PATH = GEO_DIMREGION_REFERENCE_PATH
 GEO_ALIAS_PATH = BASE_DIR / "data" / "reference" / "dim_geo" / "ref_geo_alias.csv"
 APPROVED_CORRECTIONS_PATH = BASE_DIR / "data" / "reference" / "dim_geo" / "geo_dim_approved_corrections.csv"
+AUTO_DOUBLE_PROOF_CORRECTIONS_PATH = BASE_DIR / "data" / "reference" / "dim_geo" / "geo_dim_auto_double_proof_corrections.csv"
 POSTAL_APPROVED_CORRECTIONS_PATH = BASE_DIR / "data" / "reference" / "dim_geo" / "geo_dim_postal_approved_corrections.csv"
 GEO_QUALITY_REPORT_DIR = BASE_DIR / "data" / "quality_reports" / "dim_geo"
 DIM_GEO_EXCLUDED_PATH  = GEO_QUALITY_REPORT_DIR / "dim_geo_excluded.csv"
@@ -117,6 +121,7 @@ _INVALID_TEXT = frozenset({
     "INCONNU", "INCONNUE", "NON RENSEIGNE", "NON RENSEIGNEE",
     "N/A", "N A", "NA", "#N/A", "ND", "NR",
     "/", "-", "--", "---", ".", "..", "0", "00", "0000", "1",
+    "A", "B", "I", "S", "X", "TUNISIE -",
 })
 _VALID_GOVERNORATS = frozenset({
     "TUNIS", "ARIANA", "BEN AROUS", "MANOUBA",
@@ -287,7 +292,7 @@ _GEO_ENTITY_ROUTE_PAT = re.compile(
     r'\b(ROUTE|ROUTEX|RTE|AUTOROUTE|AUTOUROUTE|AUTROUTE|ATOROUTE|PEAGE|PONT|GP\s*\d*|GP\d+|RN\s*\d*|\d+\s*KM|KM\s*\d+|KM\d+|MC\s*\d+|ROCADE|CONTOURNEMENT)\b'
 )
 _GEO_ENTITY_INTERET_PAT = re.compile(
-    r'\b(AEROPORT|GARE|PORT|HOPITAL|CLINIQUE|UNIVERSITE|STADE|TECHNOPOLE|FOIRE|MARCHE|SOUK|COMPLEXE)\b'
+    r'\b(AEROPORT|GARE|PORT|HOPITAL|HOPITALE|HOTEL|CLINIQUE|UNIVERSITE|FACULTE|ECOLE|LYCEE|STADE|TECHNOPOLE|FOIRE|MARCHE|SOUK|COMPLEXE|BANQUE|BANK|PARKING|KIOSQUE|ROND\s*POINT|RONDPOINT|CARREFOUR)\b'
 )
 _GEO_ENTITY_ZONE_PAT = re.compile(
     r'\b(CITE|ZONE|ZI|ZA|ZIT|QUARTIER|QT|RESIDENCE|RES|LOTISSEMENT|LOT|BLOC|ENNASR|MONTPLAISIR)\b'
@@ -334,12 +339,24 @@ def normalize_text(raw) -> str | None:
     return None if (not s or s in _INVALID_TEXT) else s
 
 def normalize_cpost(raw) -> str | None:
-    """Digits only, Tunisian range 0700-9999, zero-padded to 4 chars."""
+    """Normalize to a 4-digit Tunisian postal code, handling Excel .0 values."""
     if raw is None:
         return None
     if isinstance(raw, float) and math.isnan(raw):
         return None
-    digits = re.sub(r"\D", "", str(raw))
+
+    text_value = str(raw).strip().upper()
+    if not text_value or text_value in _INVALID_TEXT:
+        return None
+
+    compact = re.sub(r"\s+", "", text_value)
+    float_match = re.fullmatch(r"(\d+)[\.,]0+", compact)
+    if float_match:
+        compact = float_match.group(1)
+    elif isinstance(raw, float) and raw.is_integer():
+        compact = str(int(raw))
+
+    digits = compact if re.fullmatch(r"\d+", compact) else re.sub(r"\D", "", compact)
     if not digits:
         return None
     try:
@@ -390,6 +407,10 @@ def normalize_gouvernorat(raw) -> str | None:
     Return the official name when recognized, otherwise keep normalized text
     (AMBIGUOUS quality is preferable to losing information).
     """
+    if raw is not None and not (isinstance(raw, float) and math.isnan(raw)):
+        raw_text = str(raw).strip().upper()
+        if raw_text in {"TUNISIE -", "TUNISIE-"}:
+            return None
     s = normalize_text(raw)
     if s is None:
         return None
@@ -536,25 +557,86 @@ def _standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _load_geo_reference(logger) -> tuple[pd.DataFrame, dict]:
-    """Charge le referentiel tunisien pour tracabilite et validation de presence."""
-    metrics = {"n_reference_rows": 0, "reference_available": False}
-    if not GEO_REFERENCE_PATH.exists():
-        logger.warning(f"  Referentiel geo absent : {GEO_REFERENCE_PATH}")
-        return pd.DataFrame(), metrics
+def _standardize_reference_column_name(raw) -> str:
+    name = str(raw).strip().lower().replace(" ", "_")
+    name = "".join(
+        ch for ch in unicodedata.normalize("NFKD", name)
+        if not unicodedata.combining(ch)
+    )
+    return name
 
-    df_ref = pd.read_csv(GEO_REFERENCE_PATH, dtype=str, keep_default_na=False)
-    df_ref = _standardize_columns(df_ref)
-    required = {"localite", "delegation", "gouvernorat", "region", "aliases", "confidence"}
+
+def _standardize_dimregion_reference(df_ref: pd.DataFrame) -> pd.DataFrame:
+    """Return DimRegion.csv in the internal reference contract.
+
+    DimRegion.csv is the authoritative Tunisia reference for this loader. It
+    supplies governorate, delegation, locality, and postal code; region is
+    derived from the fixed governorate-region table.
+    """
+    columns = [
+        "code_postal",
+        "bureau_postal",
+        "localite",
+        "delegation",
+        "gouvernorat",
+        "region",
+        "aliases",
+        "source",
+        "confidence",
+    ]
+    df_ref = df_ref.copy()
+    df_ref.columns = [_standardize_reference_column_name(c) for c in df_ref.columns]
+
+    rename_map = {
+        "code_postal": "code_postal",
+        "code_post": "code_postal",
+        "codepostal": "code_postal",
+        "cp": "code_postal",
+        "gouvernorat": "gouvernorat",
+        "delegation": "delegation",
+        "localite": "localite",
+    }
+    df_ref = df_ref.rename(columns={c: rename_map.get(c, c) for c in df_ref.columns})
+
+    required = {"gouvernorat", "delegation", "localite", "code_postal"}
     missing = sorted(required.difference(df_ref.columns))
     if missing:
-        raise RuntimeError(f"Referentiel geo incomplet {GEO_REFERENCE_PATH} : colonnes manquantes {missing}")
-    if "code_postal" not in df_ref.columns:
-        df_ref["code_postal"] = ""
+        raise RuntimeError(f"DimRegion reference incomplete {GEO_DIMREGION_REFERENCE_PATH}: missing columns {missing}")
 
+    df_ref["gouvernorat"] = df_ref["gouvernorat"].map(normalize_gouvernorat)
+    df_ref["delegation"] = df_ref["delegation"].map(normalize_text)
+    df_ref["localite"] = df_ref["localite"].map(normalize_text)
+    df_ref["code_postal"] = df_ref["code_postal"].map(normalize_cpost)
+    df_ref = df_ref.dropna(subset=["gouvernorat", "localite", "code_postal"])
+    df_ref = df_ref[df_ref["gouvernorat"].isin(_VALID_GOVERNORATS)].copy()
+    df_ref["region"] = df_ref["gouvernorat"].map(_REGION_FROM_GOUVERNORAT)
+
+    if "bureau_postal" not in df_ref.columns:
+        df_ref["bureau_postal"] = ""
+    if "aliases" not in df_ref.columns:
+        df_ref["aliases"] = ""
+    if "source" not in df_ref.columns:
+        df_ref["source"] = "DIMREGION"
+    if "confidence" not in df_ref.columns:
+        df_ref["confidence"] = "HIGH"
+
+    return df_ref[columns].drop_duplicates().reset_index(drop=True)
+
+
+def _read_dimregion_reference(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        raise RuntimeError(f"DimRegion.csv reference is required and was not found: {path}")
+    raw = pd.read_csv(path, dtype=str, keep_default_na=False, sep=None, engine="python")
+    return _standardize_dimregion_reference(raw)
+
+
+def _load_geo_reference(logger) -> tuple[pd.DataFrame, dict]:
+    """Load DimRegion.csv as the authoritative Tunisia geography reference."""
+    metrics = {"n_reference_rows": 0, "reference_available": False}
+    df_ref = _read_dimregion_reference(GEO_REFERENCE_PATH)
     metrics["n_reference_rows"] = len(df_ref)
     metrics["reference_available"] = True
-    logger.info(f"  referentiel geo charge : {len(df_ref)} lignes ({GEO_REFERENCE_PATH})")
+    logger.info(f"  DimRegion geo reference loaded: {len(df_ref)} rows ({GEO_REFERENCE_PATH})")
     return df_ref, metrics
 
 def _load_geo_alias(logger) -> tuple[dict[str, dict], dict]:
@@ -590,72 +672,12 @@ def _load_geo_alias(logger) -> tuple[dict[str, dict], dict]:
 
 
 def _load_postal_reference(logger) -> tuple[pd.DataFrame, dict]:
-    """Load the separate postal reference used to validate/fill postal codes."""
+    """Load DimRegion.csv for postal validation and enrichment."""
     metrics = {"n_postal_reference_rows": 0, "postal_reference_available": False}
-    columns = [
-        "code_postal",
-        "bureau_postal",
-        "localite",
-        "delegation",
-        "gouvernorat",
-        "region",
-        "aliases",
-        "source",
-        "confidence",
-    ]
-    if not GEO_POSTAL_REFERENCE_PATH.exists():
-        GEO_POSTAL_REFERENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        pd.DataFrame(columns=columns).to_csv(GEO_POSTAL_REFERENCE_PATH, index=False, encoding="utf-8-sig")
-        logger.warning(f"  postal reference template created: {GEO_POSTAL_REFERENCE_PATH}")
-        return pd.DataFrame(columns=columns), metrics
-
-    # DimRegion.csv may be semicolon-separated and contains only:
-    # Gouvernorat;Delegation;Localite;Code postal
-    # We standardize it here to the internal postal-reference contract.
-    df_ref = pd.read_csv(GEO_POSTAL_REFERENCE_PATH, dtype=str, keep_default_na=False, sep=None, engine="python")
-    df_ref = df_ref.copy()
-    df_ref.columns = [str(c).strip().lower().replace(" ", "_") for c in df_ref.columns]
-
-    rename_map = {
-        "code_postal": "code_postal",
-        "code_post": "code_postal",
-        "codepostal": "code_postal",
-        "gouvernorat": "gouvernorat",
-        "delegation": "delegation",
-        "délégation": "delegation",
-        "localite": "localite",
-        "localité": "localite",
-    }
-    df_ref = df_ref.rename(columns={c: rename_map.get(c, c) for c in df_ref.columns})
-
-    # If the user supplies raw DimRegion.csv, enrich missing internal columns.
-    if {"gouvernorat", "delegation", "localite", "code_postal"}.issubset(df_ref.columns):
-        df_ref["gouvernorat"] = df_ref["gouvernorat"].map(normalize_gouvernorat)
-        df_ref["delegation"] = df_ref["delegation"].map(normalize_text)
-        df_ref["localite"] = df_ref["localite"].map(normalize_text)
-        df_ref["code_postal"] = df_ref["code_postal"].map(normalize_cpost)
-        df_ref = df_ref.dropna(subset=["gouvernorat", "localite", "code_postal"])
-        df_ref = df_ref[df_ref["gouvernorat"].isin(_VALID_GOVERNORATS)].copy()
-        df_ref["region"] = df_ref["gouvernorat"].map(_REGION_FROM_GOUVERNORAT)
-        if "bureau_postal" not in df_ref.columns:
-            df_ref["bureau_postal"] = ""
-        if "aliases" not in df_ref.columns:
-            df_ref["aliases"] = ""
-        if "source" not in df_ref.columns:
-            df_ref["source"] = "DIMREGION"
-        if "confidence" not in df_ref.columns:
-            df_ref["confidence"] = "HIGH"
-        df_ref = df_ref[columns].drop_duplicates().reset_index(drop=True)
-
-    missing = sorted(set(columns).difference(df_ref.columns))
-    if missing:
-        raise RuntimeError(
-            f"Postal reference incomplete {GEO_POSTAL_REFERENCE_PATH}: missing columns {missing}"
-        )
-
+    df_ref = _read_dimregion_reference(GEO_POSTAL_REFERENCE_PATH)
     metrics["n_postal_reference_rows"] = len(df_ref)
     metrics["postal_reference_available"] = True
-    logger.info(f"  postal reference loaded: {len(df_ref)} rows ({GEO_POSTAL_REFERENCE_PATH})")
+    logger.info(f"  DimRegion postal reference loaded: {len(df_ref)} rows ({GEO_POSTAL_REFERENCE_PATH})")
     return df_ref, metrics
 
 def _reference_confidence_value(raw) -> float:
@@ -900,6 +922,11 @@ def _build_reference_resolver_indexes(df_ref: pd.DataFrame) -> tuple[dict, dict]
         "postal_localite": {},
         "postal_alias": {},
         "postal_delegation": {},
+        "postal_localite_global": {},
+        "postal_localite_linguistic_global": {},
+        "postal_localite_linguistic": {},
+        "postal_localite_terms_by_gov": {},
+        "postal_delegation_global": {},
         "governorate_region": {},
     }
     if df_ref is None or df_ref.empty:
@@ -918,7 +945,7 @@ def _build_reference_resolver_indexes(df_ref: pd.DataFrame) -> tuple[dict, dict]
             "gouvernorat": normalize_gouvernorat(row.get("gouvernorat")),
             "delegation": normalize_text(row.get("delegation")),
             "localite": normalize_text(row.get("localite")),
-            "code_postal": None,
+            "code_postal": normalize_cpost(row.get("code_postal")),
             "confidence": confidence,
         }
         if ref["gouvernorat"] not in _VALID_GOVERNORATS:
@@ -968,6 +995,11 @@ def _build_postal_resolver_indexes(df_postal: pd.DataFrame) -> tuple[dict, dict]
         "postal_localite": {},
         "postal_alias": {},
         "postal_delegation": {},
+        "postal_localite_global": {},
+        "postal_localite_linguistic_global": {},
+        "postal_localite_linguistic": {},
+        "postal_localite_terms_by_gov": {},
+        "postal_delegation_global": {},
     }
     if df_postal is None or df_postal.empty:
         return indexes, metrics
@@ -991,8 +1023,6 @@ def _build_postal_resolver_indexes(df_postal: pd.DataFrame) -> tuple[dict, dict]
             continue
         if ref["gouvernorat"] not in _VALID_GOVERNORATS:
             continue
-        if _postal_prefix_conflict(ref["code_postal"], ref["gouvernorat"]):
-            continue
         if not ref["localite"] and not ref["delegation"] and not ref["bureau_postal"]:
             continue
 
@@ -1000,8 +1030,15 @@ def _build_postal_resolver_indexes(df_postal: pd.DataFrame) -> tuple[dict, dict]
         indexes["postal"].setdefault(ref["code_postal"], []).append(ref)
         if ref["localite"] and not _is_generic_localite(ref["localite"]):
             indexes["postal_localite"].setdefault((ref["gouvernorat"], ref["localite"]), []).append(ref)
+            indexes["postal_localite_global"].setdefault(ref["localite"], []).append(ref)
+            linguistic_key = _linguistic_key_for_localite(ref["localite"])
+            if linguistic_key:
+                indexes["postal_localite_linguistic_global"].setdefault(linguistic_key, []).append(ref)
+                indexes["postal_localite_linguistic"].setdefault((ref["gouvernorat"], linguistic_key), []).append(ref)
+            indexes["postal_localite_terms_by_gov"].setdefault(ref["gouvernorat"], set()).add(ref["localite"])
         if ref["delegation"] and not _is_generic_localite(ref["delegation"]):
             indexes["postal_delegation"].setdefault((ref["gouvernorat"], ref["delegation"]), []).append(ref)
+            indexes["postal_delegation_global"].setdefault(ref["delegation"], []).append(ref)
         generated_aliases = []
         for source_term in [row.get("aliases"), ref.get("localite"), ref.get("bureau_postal")]:
             if source_term == row.get("aliases"):
@@ -1025,7 +1062,7 @@ def _build_postal_resolver_indexes(df_postal: pd.DataFrame) -> tuple[dict, dict]
 
 def _merge_postal_indexes(reference_indexes: dict, postal_indexes: dict) -> dict:
     merged = {key: value.copy() if isinstance(value, dict) else value for key, value in reference_indexes.items()}
-    for key in ["postal", "postal_localite", "postal_alias", "postal_delegation"]:
+    for key in ["postal", "postal_localite", "postal_alias", "postal_delegation", "postal_localite_global", "postal_localite_linguistic_global", "postal_localite_linguistic", "postal_localite_terms_by_gov", "postal_delegation_global"]:
         merged[key] = postal_indexes.get(key, {})
     return merged
 
@@ -1034,8 +1071,11 @@ def _source_geo_key_from_values(
     source_localite: str | None,
     source_code_postal: str | None,
 ) -> str:
-    source_pays = _infer_pays(source_gouvernorat, source_code_postal)
-    return build_geo_key(source_pays, source_gouvernorat, source_localite, source_code_postal)
+    code_postal = normalize_cpost(source_code_postal)
+    gouvernorat = clear_numeric_geo_label(normalize_gouvernorat(source_gouvernorat))
+    localite = clear_numeric_geo_label(normalize_text(source_localite))
+    source_pays = _infer_pays(gouvernorat, code_postal)
+    return build_geo_key(source_pays, gouvernorat, localite, code_postal)
 
 
 def _source_values_from_row(row: pd.Series) -> dict:
@@ -1400,13 +1440,15 @@ def _geo_quality_from_resolution(
 ) -> str:
     if resolution_status == "UNKNOWN":
         return "UNKNOWN"
+    if resolution_status.startswith("CONFLICT"):
+        return "CONFLICT"
     if (resolution_status.startswith("AMBIGUOUS") or resolution_status.startswith("UNRESOLVED")
             or resolution_status == "CONFLICT_CORRECTED_REFERENCE"):
         return "AMBIGUOUS"
     if postal_code_status and postal_code_status.startswith("POSTAL_AMBIGUOUS"):
         return "AMBIGUOUS"
     if postal_code_status and postal_code_status.startswith("POSTAL_CONFLICT"):
-        return "AMBIGUOUS"
+        return "CONFLICT"
 
     gov_valid = gouvernorat in _VALID_GOVERNORATS
     pays_valid = to_unknown(pays) == "TUNISIE" or gov_valid
@@ -1621,19 +1663,181 @@ def _resolve_localite_priority(
     return None
 
 
-# Only prefixes 3, 7, 8 are unambiguous enough for Step 4 inference.
-_HIGH_CONF_POSTAL_PREFIX_GOV: dict[str, str] = {
-    "3": "SFAX",
-    "7": "BIZERTE",
-    "8": "NABEUL",
-}
 
-def _resolve_gov_from_postal_prefix(cpostsini: str | None) -> str | None:
+def _same_name_governorate_localite(
+    term: str | None,
+    gouvernorat: str | None,
+    reference_indexes: dict,
+) -> str | None:
+    """Keep city-governorate labels only when DimRegion confirms the locality."""
+    localite = normalize_text(term)
+    if not localite or gouvernorat not in _VALID_GOVERNORATS:
+        return None
+    if _normalize_gov_to_valid(localite) != gouvernorat:
+        return None
+    refs = reference_indexes.get("postal_localite", {}).get((gouvernorat, localite), [])
+    return localite if refs else None
+
+def _unique_dimregion_place_from_term(term: str | None, reference_indexes: dict) -> dict | None:
+    """Resolve missing governorate only when a DimRegion term has one official target."""
+    values = _localite_match_terms(term)
+    if not values:
+        return None
+    if any(_is_street_address_text(value) or _classify_geo_entity_type(value) == "POINT_INTERET" for value in values):
+        return None
+
+    for value in values:
+        refs = reference_indexes.get("postal_localite_global", {}).get(value, [])
+        localite_ref = _unique_ref_from_refs(refs)
+        if localite_ref:
+            return {
+                "gouvernorat": localite_ref.get("gouvernorat"),
+                "localite": localite_ref.get("localite"),
+                "code_postal": localite_ref.get("code_postal"),
+                "method": "LOCALITE",
+                "confidence": 0.95,
+            }
+
+    for value in values:
+        linguistic_key = _linguistic_key_for_localite(value)
+        if linguistic_key:
+            refs = reference_indexes.get("postal_localite_linguistic_global", {}).get(linguistic_key, [])
+            localite_ref = _unique_ref_from_refs(refs)
+            if localite_ref:
+                return {
+                    "gouvernorat": localite_ref.get("gouvernorat"),
+                    "localite": localite_ref.get("localite"),
+                    "code_postal": localite_ref.get("code_postal"),
+                    "method": "LINGUISTIC_LOCALITE",
+                    "confidence": 0.9,
+                }
+
+    for value in values:
+        refs = reference_indexes.get("postal_delegation_global", {}).get(value, [])
+        targets: dict[tuple[str, str], dict] = {}
+        codes: set[str] = set()
+        for ref in refs:
+            gov = normalize_gouvernorat(ref.get("gouvernorat"))
+            delegation = normalize_text(ref.get("delegation"))
+            code = normalize_cpost(ref.get("code_postal"))
+            if gov in _VALID_GOVERNORATS and delegation:
+                targets[(gov, delegation)] = {"gouvernorat": gov, "localite": delegation}
+                if code:
+                    codes.add(code)
+        if len(targets) == 1:
+            result = next(iter(targets.values()))
+            result["code_postal"] = next(iter(codes)) if len(codes) == 1 else None
+            result["method"] = "DELEGATION"
+            result["confidence"] = 0.9
+            return result
+    return None
+
+def _resolve_unique_place_from_dimregion_terms(
+    terms: tuple[str | None, ...],
+    reference_indexes: dict,
+) -> dict | None:
+    for term in terms:
+        place = _unique_dimregion_place_from_term(term, reference_indexes)
+        if place:
+            return place
+    return None
+
+def _resolve_gov_from_postal_reference(cpostsini: str | None, reference_indexes: dict) -> str | None:
+    """Resolve a governorate from a postal code only when DimRegion gives one target."""
     cp = normalize_cpost(cpostsini)
     if not cp:
         return None
-    return _HIGH_CONF_POSTAL_PREFIX_GOV.get(cp[0])
+    refs = reference_indexes.get("postal", {}).get(cp, [])
+    governorates = sorted({
+        gov
+        for ref in refs
+        if (gov := normalize_gouvernorat(ref.get("gouvernorat"))) in _VALID_GOVERNORATS
+    })
+    return governorates[0] if len(governorates) == 1 else None
 
+
+def _resolve_unique_localite_from_postal_reference(
+    cpostsini: str | None,
+    gouvernorat: str | None,
+    reference_indexes: dict,
+) -> str | None:
+    """Resolve a locality from a postal code only when one gov/locality target exists."""
+    cp = normalize_cpost(cpostsini)
+    if not cp or gouvernorat not in _VALID_GOVERNORATS:
+        return None
+    refs = reference_indexes.get("postal", {}).get(cp, [])
+    localites = sorted({
+        loc
+        for ref in refs
+        if normalize_gouvernorat(ref.get("gouvernorat")) == gouvernorat
+        if (loc := normalize_text(ref.get("localite"))) and not _is_generic_localite(loc)
+    })
+    return localites[0] if len(localites) == 1 else None
+
+
+def _postal_reference_governorate_conflict(
+    cpostsini: str | None,
+    gouvernorat: str | None,
+    reference_indexes: dict,
+) -> bool:
+    """True when a postal code exists only under other governorate(s)."""
+    cp = normalize_cpost(cpostsini)
+    if not cp or gouvernorat not in _VALID_GOVERNORATS:
+        return False
+    refs = reference_indexes.get("postal", {}).get(cp, [])
+    governorates = {
+        gov
+        for ref in refs
+        if (gov := normalize_gouvernorat(ref.get("gouvernorat"))) in _VALID_GOVERNORATS
+    }
+    return bool(governorates and gouvernorat not in governorates)
+
+
+
+def _dimregion_source_postal_conflict(
+    cpostsini: str | None,
+    gouvernorat: str | None,
+    localite: str | None,
+    reference_indexes: dict,
+) -> tuple[bool, str, str, str]:
+    """Detect source postal-code contradictions against DimRegion.csv."""
+    cp = normalize_cpost(cpostsini)
+    if not cp:
+        return False, "", "", ""
+
+    refs = reference_indexes.get("postal", {}).get(cp, [])
+    if not refs:
+        return True, "POSTAL_CONFLICT_SOURCE_NOT_IN_DIMREGION", (
+            f"source postal code {cp} is not present in DimRegion.csv"
+        ), ""
+
+    summary = _postal_reference_summary(refs)
+    governorates = sorted({
+        gov
+        for ref in refs
+        if (gov := normalize_gouvernorat(ref.get("gouvernorat"))) in _VALID_GOVERNORATS
+    })
+    if gouvernorat in _VALID_GOVERNORATS and governorates and gouvernorat not in governorates:
+        return True, "POSTAL_CONFLICT_GOUVERNORAT_DIMREGION", (
+            f"source postal code {cp} belongs to {', '.join(governorates)} in DimRegion.csv, "
+            f"not {gouvernorat}"
+        ), summary
+
+    loc = normalize_text(localite)
+    if gouvernorat in _VALID_GOVERNORATS and loc and not _is_generic_localite(loc):
+        same_gov_localites = sorted({
+            ref_loc
+            for ref in refs
+            if normalize_gouvernorat(ref.get("gouvernorat")) == gouvernorat
+            if (ref_loc := normalize_text(ref.get("localite"))) and not _is_generic_localite(ref_loc)
+        })
+        if same_gov_localites and loc not in same_gov_localites:
+            return True, "POSTAL_CONFLICT_LOCALITE_DIMREGION", (
+                f"source postal code {cp} belongs to localite(s) "
+                f"{', '.join(same_gov_localites[:8])} in DimRegion.csv, not {loc}"
+            ), summary
+
+    return False, "", "", summary
 
 def _lookup_postal_code_simple(
     gouvernorat: str,
@@ -1678,6 +1882,96 @@ def _unique_ref_from_refs(refs: list[dict]) -> dict | None:
     return None
 
 
+
+@lru_cache(maxsize=50000)
+def _apply_tunisian_localite_variant_rules(value: str | None) -> str | None:
+    """Canonicalize frequent Tunisian locality spelling variants for matching only."""
+    s = normalize_text(value)
+    if not s:
+        return None
+
+    phrase_rules = [
+        (r"\bD?JEB[EI]NI[EA]NA\b", "JEBENIANA"),
+        (r"\bD?JEBENIENA\b", "JEBENIANA"),
+        (r"\bD?JEBINIANA\b", "JEBENIANA"),
+        (r"\bECHEBBA\b", "CHEBBA"),
+        (r"\bECHABBA\b", "CHEBBA"),
+        (r"\bCHIBA\b", "CHEBBA"),
+        (r"\bRECHICH\b", "REJICHE"),
+        (r"\bRAJICH\b", "REJICHE"),
+        (r"\bRJICH\b", "REJICHE"),
+        (r"\bREJICH\b", "REJICHE"),
+        (r"\bBANANE\b", "BENNANE"),
+        (r"\bBANEN\b", "BENNANE"),
+        (r"\bBANENE\b", "BENNANE"),
+        (r"\bBANNAN\b", "BENNANE"),
+        (r"\bBANNANE\b", "BENNANE"),
+        (r"\bBANNEN\b", "BENNANE"),
+        (r"\bBANNENE\b", "BENNANE"),
+        (r"\bBENANA\b", "BENNANE"),
+        (r"\bBENANE\b", "BENNANE"),
+        (r"\bBENNAME\b", "BENNANE"),
+        (r"\bBENNEN\b", "BENNANE"),
+        (r"\bBENNENE\b", "BENNANE"),
+        (r"\bHABANA\b", "HABBANA"),
+        (r"\bHABBENA\b", "HABBANA"),
+        (r"\bHABENNA\b", "HABBANA"),
+        (r"\bHAFARA\b", "HAFFARA"),
+        (r"\bSAKIAT\b", "SAKIET"),
+        (r"\bSAKIA\b", "SAKIET"),
+    ]
+    for pattern, replacement in phrase_rules:
+        s = re.sub(pattern, replacement, s)
+    return re.sub(r"\s+", " ", s).strip() or None
+
+
+@lru_cache(maxsize=50000)
+def _strip_localite_context(raw: str | None) -> str | None:
+    """Remove governorate/region/address context words around a locality candidate."""
+    s = normalize_text(raw)
+    if not s:
+        return None
+
+    if len(s.split()) > 1:
+        for gov in sorted(_VALID_GOVERNORATS, key=len, reverse=True):
+            s = re.sub(r"\b" + re.escape(gov) + r"\b", " ", s)
+        context_rules = [
+            (r"\bCENTRE\s+VILLE\b", " "),
+            (r"\bGOUVERNORAT\b", " "),
+            (r"\bGOVERNORATE\b", " "),
+            (r"\bGOVERNORAT\b", " "),
+            (r"\bTUNISIE\b", " "),
+            (r"\bPRES\s+DE\b", " "),
+            (r"\bPRET\s+DE\b", " "),
+            (r"\bDEVANT\b", " "),
+            (r"\bDERRIERE\b", " "),
+        ]
+        for pattern, replacement in context_rules:
+            s = re.sub(pattern, replacement, s)
+    s = re.sub(r"\s+", " ", s).strip()
+    if not s or _is_generic_localite(s):
+        return None
+    return s
+
+
+def _localite_match_terms(raw: str | None) -> list[str]:
+    """Return normalized locality candidate terms ordered from source to strongest match key."""
+    terms: list[str] = []
+
+    def add(value: str | None) -> None:
+        value = normalize_text(value)
+        if value and not _is_generic_localite(value) and value not in terms:
+            terms.append(value)
+
+    base = normalize_text(raw)
+    stripped = _strip_localite_context(base)
+    for value in (base, stripped):
+        add(value)
+        add(_apply_tunisian_localite_variant_rules(value))
+    return terms
+
+
+@lru_cache(maxsize=50000)
 def _linguistic_key_for_localite(raw: str | None) -> str | None:
     """Conservative linguistic/transliteration key for Tunisian locality variants.
 
@@ -1689,7 +1983,8 @@ def _linguistic_key_for_localite(raw: str | None) -> str | None:
       BAB EL KHADHRA / BAB EL KHADRA               -> BAB HADRA
       MENZEH / MANZEH / MENZAH                     -> MENZAH-like key
     """
-    s = normalize_text(raw)
+    match_terms = _localite_match_terms(raw)
+    s = match_terms[-1] if match_terms else normalize_text(raw)
     if not s:
         return None
 
@@ -1762,19 +2057,29 @@ def _linguistic_ref_lookup(
     if not key or gouvernorat not in _VALID_GOVERNORATS:
         return None
 
+    if "postal_localite_linguistic" in reference_indexes:
+        refs = reference_indexes.get("postal_localite_linguistic", {}).get((gouvernorat, key), [])
+        if refs:
+            usable = [
+                ref for ref in refs
+                if not _is_generic_localite(normalize_text(ref.get("localite")))
+                and _classify_geo_entity_type(normalize_text(ref.get("localite"))) not in ("ADRESSE_PARTIELLE", "ROUTE_AUTOROUTE", "POINT_INTERET")
+            ]
+            return _unique_ref_from_refs(usable)
+        return None
+
     matches: list[dict] = []
     for (gov, ref_localite), refs in reference_indexes.get("postal_localite", {}).items():
         if gov != gouvernorat:
             continue
         if _is_generic_localite(ref_localite):
             continue
-        if _classify_geo_entity_type(ref_localite) in ("ADRESSE_PARTIELLE", "ROUTE_AUTOROUTE"):
+        if _classify_geo_entity_type(ref_localite) in ("ADRESSE_PARTIELLE", "ROUTE_AUTOROUTE", "POINT_INTERET"):
             continue
         if _linguistic_key_for_localite(ref_localite) == key:
             matches.extend(refs)
 
     return _unique_ref_from_refs(matches)
-
 
 def _canonicalize_localite_with_dimregion(
     gouvernorat: str,
@@ -1783,65 +2088,95 @@ def _canonicalize_localite_with_dimregion(
     alias_dict: dict | None = None,
 ) -> tuple[str | None, str | None, str, float, str]:
     """Canonicalize source localite using DimRegion/postal reference before geo_key creation."""
-    term = normalize_text(localite)
+    terms = _localite_match_terms(localite)
+    term = terms[0] if terms else normalize_text(localite)
     if not term or gouvernorat not in _VALID_GOVERNORATS:
         return term, None, "NO_LOCALITE", 0.0, "no usable localite or governorate"
 
     entity_type = _classify_geo_entity_type(term)
-    if entity_type in ("ADRESSE_PARTIELLE", "ROUTE_AUTOROUTE"):
-        return None, None, "ADDRESS_FRAGMENT", 0.0, "street/route fragment is not a locality"
+    if entity_type in ("ADRESSE_PARTIELLE", "ROUTE_AUTOROUTE", "POINT_INTERET"):
+        return None, None, "ADDRESS_FRAGMENT", 0.0, "address/POI fragment is not a locality"
 
     # Manual ETL aliases first, but only when they do not contradict the resolved governorate.
     if alias_dict:
-        alias = alias_dict.get(term)
-        if alias:
+        for candidate_term in terms:
+            alias = alias_dict.get(candidate_term)
+            if not alias:
+                continue
             alias_gov = normalize_gouvernorat(alias.get("gouvernorat"))
             alias_loc = normalize_text(alias.get("localite"))
             if alias_gov == gouvernorat and alias_loc:
-                cp = _lookup_postal_code_simple(alias_gov, alias_loc, reference_indexes)
-                return alias_loc, cp, "ALIAS_MANUEL", float(alias.get("confidence", 0.95)), "manual alias canonical localite"
+                refs = reference_indexes.get("postal_localite", {}).get((alias_gov, alias_loc), [])
+                ref = _unique_ref_from_refs(refs)
+                if ref:
+                    return ref["localite"], ref.get("code_postal"), "ALIAS_MANUEL", float(alias.get("confidence", 0.95)), "manual alias target confirmed by DimRegion"
+                return candidate_term, None, "ALIAS_TARGET_NOT_IN_DIMREGION", 0.2, (
+                    f"manual alias target {alias_gov}/{alias_loc} is not confirmed by DimRegion.csv"
+                )
             if alias_gov in _VALID_GOVERNORATS and alias_gov != gouvernorat:
-                return term, None, "ALIAS_GOV_CONFLICT", 0.2, f"alias governorate {alias_gov} conflicts with resolved governorate {gouvernorat}"
+                return None, None, "ALIAS_GOV_CONFLICT", 0.2, f"alias governorate {alias_gov} conflicts with resolved governorate {gouvernorat}"
 
-    refs = reference_indexes.get("postal_localite", {}).get((gouvernorat, term), [])
-    ref = _unique_ref_from_refs(refs)
-    if ref:
-        return ref["localite"], ref.get("code_postal"), "DIMREGION_EXACT_LOCALITE", 1.0, "exact DimRegion locality match"
+    for candidate_term in terms:
+        refs = reference_indexes.get("postal_localite", {}).get((gouvernorat, candidate_term), [])
+        ref = _unique_ref_from_refs(refs)
+        if ref:
+            return ref["localite"], ref.get("code_postal"), "DIMREGION_EXACT_LOCALITE", 1.0, "exact DimRegion locality match"
 
-    refs = reference_indexes.get("postal_alias", {}).get((gouvernorat, term), [])
-    ref = _unique_ref_from_refs(refs)
-    if ref:
-        return ref["localite"], ref.get("code_postal"), "DIMREGION_ALIAS_LOCALITE", 0.96, "DimRegion generated alias match"
+    for candidate_term in terms:
+        refs = reference_indexes.get("postal_delegation", {}).get((gouvernorat, candidate_term), [])
+        if refs:
+            codes = _unique_reference_postal_codes(refs)
+            code_postal = codes[0] if len(codes) == 1 else None
+            return candidate_term, code_postal, "DIMREGION_EXACT_DELEGATION", 0.9, "exact DimRegion delegation match"
+
+    for candidate_term in terms:
+        refs = reference_indexes.get("postal_alias", {}).get((gouvernorat, candidate_term), [])
+        ref = _unique_ref_from_refs(refs)
+        if ref:
+            return ref["localite"], ref.get("code_postal"), "DIMREGION_ALIAS_LOCALITE", 0.96, "DimRegion generated alias match"
 
     # Linguistic/transliteration agreement inside the same governorate.
-    # This catches variants such as ESSOGHRA / ESOGHRA / SOGHRA / SOUGHRA
-    # without maintaining every typo manually.
-    ref = _linguistic_ref_lookup(gouvernorat, term, reference_indexes)
-    if ref:
-        return ref["localite"], ref.get("code_postal"), "DIMREGION_LINGUISTIC_LOCALITE", 0.94, "DimRegion linguistic/transliteration agreement match"
+    for candidate_term in terms:
+        ref = _linguistic_ref_lookup(gouvernorat, candidate_term, reference_indexes)
+        if ref:
+            return ref["localite"], ref.get("code_postal"), "DIMREGION_LINGUISTIC_LOCALITE", 0.94, "DimRegion linguistic/transliteration agreement match"
 
-    # Fuzzy only inside the same governorate and only on canonical DimRegion localities.
+    # Fuzzy only inside the same governorate and only on plausible canonical DimRegion localities.
     from difflib import SequenceMatcher
     best = (0.0, None, [])
     second = 0.0
-    for (gov, ref_term), refs in reference_indexes.get("postal_localite", {}).items():
-        if gov != gouvernorat or _is_generic_localite(ref_term):
+    ref_terms = reference_indexes.get("postal_localite_terms_by_gov", {}).get(gouvernorat)
+    if ref_terms is None:
+        ref_terms = {
+            ref_term
+            for (gov, ref_term) in reference_indexes.get("postal_localite", {})
+            if gov == gouvernorat
+        }
+    for candidate_term in terms:
+        candidate_key = _linguistic_key_for_localite(candidate_term) or candidate_term
+        if len(candidate_key) < 5:
             continue
-        if _classify_geo_entity_type(ref_term) in ("ADRESSE_PARTIELLE", "ROUTE_AUTOROUTE"):
-            continue
-        score = SequenceMatcher(None, term, ref_term).ratio()
-        if score > best[0]:
-            second = best[0]
-            best = (score, ref_term, refs)
-        elif score > second:
-            second = score
-    if best[0] >= 0.86 and (best[0] - second) >= 0.025:
+        for ref_term in ref_terms:
+            if _is_generic_localite(ref_term):
+                continue
+            if _classify_geo_entity_type(ref_term) in ("ADRESSE_PARTIELLE", "ROUTE_AUTOROUTE", "POINT_INTERET"):
+                continue
+            ref_key = _linguistic_key_for_localite(ref_term) or ref_term
+            if not ref_key or candidate_key[0] != ref_key[0]:
+                continue
+            if abs(len(candidate_key) - len(ref_key)) > max(4, int(max(len(candidate_key), len(ref_key)) * 0.35)):
+                continue
+            score = SequenceMatcher(None, candidate_key, ref_key).ratio()
+            if score > best[0]:
+                second = best[0]
+                best = (score, ref_term, reference_indexes.get("postal_localite", {}).get((gouvernorat, ref_term), []))
+            elif score > second:
+                second = score
+    if best[0] >= 0.88 and (best[0] - second) >= 0.03:
         ref = _unique_ref_from_refs(best[2])
         if ref:
             return ref["localite"], ref.get("code_postal"), "DIMREGION_FUZZY_LOCALITE", round(best[0], 4), f"fuzzy DimRegion match score={best[0]:.3f}"
-
-    return term, _lookup_postal_code_simple(gouvernorat, term, reference_indexes), "SOURCE_LOCALITE", 0.5, "kept source localite; no canonical DimRegion match"
-
+    return term, None, "SOURCE_LOCALITE", 0.5, "source localite kept only in audit; no canonical DimRegion match"
 
 # ---------------------------------------------------------------------------
 # Row resolver — 5-step cascade
@@ -1865,6 +2200,7 @@ def _resolve_one_geo_row(
 
     final_gouvernorat: str | None = None
     resolution_status: str = "STEP5_EXCLUDED"
+    dimregion_place: dict | None = None
 
     # Step 1 — gouvsini is a valid gouvernorat (after alias normalization)
     gov = _normalize_gov_to_valid(raw_gouvsini)
@@ -1884,11 +2220,19 @@ def _resolve_one_geo_row(
                 final_gouvernorat = gov
                 resolution_status = "STEP3_REGSINI"
             else:
-                # Step 4 — postal prefix (only high-confidence: 3→SFAX, 7→BIZERTE, 8→NABEUL)
-                gov = _resolve_gov_from_postal_prefix(raw_cpostsini)
-                if gov:
-                    final_gouvernorat = gov
-                    resolution_status = "STEP4_POSTAL"
+                # Step 4 - unique DimRegion locality/delegation, then postal reference.
+                dimregion_place = _resolve_unique_place_from_dimregion_terms(
+                    (raw_citesini, raw_regsini, raw_rue),
+                    reference_indexes,
+                )
+                if dimregion_place:
+                    final_gouvernorat = dimregion_place.get("gouvernorat")
+                    resolution_status = f"STEP4_DIMREGION_{dimregion_place.get('method')}"
+                else:
+                    gov = _resolve_gov_from_postal_reference(raw_cpostsini, reference_indexes)
+                    if gov:
+                        final_gouvernorat = gov
+                        resolution_status = "STEP4_POSTAL"
 
     # localite priority: citesini → regsini → rue (skipping whichever was used as gouvernorat)
     if resolution_status == "STEP2_CITESINI":
@@ -1898,6 +2242,31 @@ def _resolve_one_geo_row(
     else:
         source_localite_candidate = _resolve_localite_priority(raw_citesini, raw_regsini, raw_rue)
 
+    if dimregion_place and str(resolution_status).startswith("STEP4_DIMREGION"):
+        source_localite_candidate = dimregion_place.get("localite")
+    if source_localite_candidate is None and final_gouvernorat in _VALID_GOVERNORATS:
+        for same_name_term in (raw_citesini, raw_regsini):
+            source_localite_candidate = _same_name_governorate_localite(
+                same_name_term,
+                final_gouvernorat,
+                reference_indexes,
+            )
+            if source_localite_candidate:
+                break
+    if source_localite_candidate is None and resolution_status == "STEP4_POSTAL":
+        source_localite_candidate = _resolve_unique_localite_from_postal_reference(
+            raw_cpostsini,
+            final_gouvernorat,
+            reference_indexes,
+        )
+
+    source_postal_conflict, source_postal_status, source_postal_reason, source_postal_summary = _dimregion_source_postal_conflict(
+        raw_cpostsini,
+        final_gouvernorat,
+        source_localite_candidate,
+        reference_indexes,
+    )
+
     base = {
         "source_region":      raw_regsini,
         "source_gouvernorat": src_gov,
@@ -1905,9 +2274,9 @@ def _resolve_one_geo_row(
         "source_code_postal": raw_cpostsini,
         "source_rue":         raw_rue,
         "_source_geo_key":    _source_geo_key,
-        "conflict_detected":  "NO",
-        "candidate_summary":  "",
-        "postal_candidate_summary": "",
+        "conflict_detected":  "YES" if source_postal_conflict else "NO",
+        "candidate_summary":  source_postal_summary if source_postal_conflict else "",
+        "postal_candidate_summary": source_postal_summary if source_postal_conflict else "",
     }
 
     if final_gouvernorat is None:
@@ -1921,15 +2290,15 @@ def _resolve_one_geo_row(
             "adresse_fragment":   None,
             "code_postal":        None,
             "geo_entity_type":    _classify_geo_entity_type(raw_citesini or raw_regsini),
-            "geo_quality_level":  "AMBIGUOUS",
+            "geo_quality_level":  "CONFLICT" if source_postal_conflict else "AMBIGUOUS",
             "needs_review":       "YES",
             "resolution_status":  "STEP5_EXCLUDED",
             "resolution_method":  "NONE",
             "resolution_reason":  "no gouvernorat resolved from gouvsini/citesini/regsini/postal",
             "resolution_confidence": 0.0,
-            "postal_code_status": "POSTAL_NOT_APPLICABLE",
-            "postal_code_method": "NONE",
-            "postal_code_reason": "excluded: gouvernorat unknown",
+            "postal_code_status": source_postal_status if source_postal_conflict else "POSTAL_NOT_APPLICABLE",
+            "postal_code_method": "DIMREGION_SOURCE_CHECK" if source_postal_conflict else "NONE",
+            "postal_code_reason": source_postal_reason if source_postal_conflict else "excluded: gouvernorat unknown",
         }
 
     pays = "TUNISIE"
@@ -1939,9 +2308,12 @@ def _resolve_one_geo_row(
     canonical_method = "NO_LOCALITE"
     canonical_confidence = 0.0
     canonical_reason = "no localite"
-
+    final_postal_conflict = source_postal_conflict
+    final_postal_status = source_postal_status
+    final_postal_reason = source_postal_reason
+    final_postal_summary = source_postal_summary
     # Routes/streets/avenues must not become localities.
-    if entity_type in ("ADRESSE_PARTIELLE", "ROUTE_AUTOROUTE"):
+    if entity_type in ("ADRESSE_PARTIELLE", "ROUTE_AUTOROUTE", "POINT_INTERET"):
         adresse_fragment = final_localite
         final_localite = None
         code_postal = None
@@ -1950,7 +2322,7 @@ def _resolve_one_geo_row(
         postal_status = "POSTAL_NOT_APPLICABLE"
         resolution_status_final = "ADDRESS_FRAGMENT"
         resolution_method = "ADDRESS_FRAGMENT"
-        resolution_reason = "address/route fragment moved to adresse_fragment; localite cleared"
+        resolution_reason = "address/route/POI fragment moved to adresse_fragment; localite cleared"
         resolution_confidence = 0.5
     else:
         # Canonicalize localite using DimRegion before postal lookup, geo_key, and deduplication.
@@ -1960,31 +2332,89 @@ def _resolve_one_geo_row(
             reference_indexes,
             alias_dict,
         )
-        final_localite = canonical_localite
-        code_postal = canonical_cp or _lookup_postal_code_simple(final_gouvernorat, final_localite, reference_indexes)
-        postal_status = "POSTAL_REFERENCE_EXACT_LOCALITE" if code_postal else "POSTAL_MISSING_REFERENCE"
-        entity_type = _classify_geo_entity_type(final_localite or raw_citesini or raw_regsini)
-
-        if canonical_method in {"ALIAS_GOV_CONFLICT"}:
-            quality = "AMBIGUOUS"
-            needs_review = "YES"
-        elif code_postal and final_localite:
-            quality = "VALIDATED"
-            needs_review = "NO"
-        elif final_localite:
+        if canonical_method == "SOURCE_LOCALITE":
+            adresse_fragment = canonical_localite
+            final_localite = None
+            code_postal = None
+            postal_status = "POSTAL_MISSING_REFERENCE"
+            final_postal_conflict, final_postal_status, final_postal_reason, final_postal_summary = _dimregion_source_postal_conflict(
+                raw_cpostsini,
+                final_gouvernorat,
+                None,
+                reference_indexes,
+            )
+            entity_type = "UNTRUSTED_LOCALITE"
             quality = "PARTIAL"
             needs_review = "YES"
+            resolution_status_final = f"{resolution_status}_UNTRUSTED_SOURCE_LOCALITE"
+            resolution_method = "UNTRUSTED_SOURCE_LOCALITE"
+            resolution_reason = f"gouvernorat resolved via {resolution_status.lower()}; {canonical_reason}"
+            resolution_confidence = 0.5
+        elif canonical_method in {"ALIAS_GOV_CONFLICT", "ALIAS_TARGET_NOT_IN_DIMREGION"}:
+            adresse_fragment = canonical_localite
+            final_localite = None
+            code_postal = None
+            postal_status = "POSTAL_MISSING_REFERENCE"
+            final_postal_conflict, final_postal_status, final_postal_reason, final_postal_summary = _dimregion_source_postal_conflict(
+                raw_cpostsini,
+                final_gouvernorat,
+                None,
+                reference_indexes,
+            )
+            entity_type = "UNTRUSTED_LOCALITE"
+            quality = "PARTIAL"
+            needs_review = "YES"
+            resolution_status_final = f"{resolution_status}_{canonical_method}"
+            resolution_method = canonical_method
+            resolution_reason = f"gouvernorat resolved via {resolution_status.lower()}; {canonical_reason}; localite cleared from final dim_geo"
+            resolution_confidence = canonical_confidence
         else:
-            quality = "PARTIAL"
-            needs_review = "YES"
+            final_localite = canonical_localite
+            code_postal = canonical_cp or _lookup_postal_code_simple(final_gouvernorat, final_localite, reference_indexes)
+            if code_postal and canonical_method == "DIMREGION_EXACT_DELEGATION":
+                postal_status = "POSTAL_REFERENCE_DELEGATION"
+            else:
+                postal_status = "POSTAL_REFERENCE_EXACT_LOCALITE" if code_postal else "POSTAL_MISSING_REFERENCE"
+            final_postal_conflict, final_postal_status, final_postal_reason, final_postal_summary = _dimregion_source_postal_conflict(
+                raw_cpostsini,
+                final_gouvernorat,
+                final_localite,
+                reference_indexes,
+            )
+            entity_type = _classify_geo_entity_type(final_localite or raw_citesini or raw_regsini)
 
-        resolution_status_final = resolution_status if canonical_method in {"NO_LOCALITE", "SOURCE_LOCALITE"} else f"{resolution_status}_{canonical_method}"
-        resolution_method = canonical_method if canonical_method != "NO_LOCALITE" else resolution_status
-        resolution_reason = f"gouvernorat resolved via {resolution_status.lower()}; {canonical_reason}"
-        resolution_confidence = canonical_confidence if canonical_confidence else (1.0 if resolution_status == "STEP1_GOUVSINI" else 0.7)
+            if final_postal_conflict:
+                quality = "CONFLICT"
+                needs_review = "YES"
+            elif code_postal and final_localite:
+                quality = "VALIDATED"
+                needs_review = "NO"
+            elif final_localite:
+                quality = "PARTIAL"
+                needs_review = "YES"
+            else:
+                quality = "PARTIAL"
+                needs_review = "YES"
 
+            resolution_status_final = resolution_status if canonical_method == "NO_LOCALITE" else f"{resolution_status}_{canonical_method}"
+            resolution_method = canonical_method if canonical_method != "NO_LOCALITE" else resolution_status
+            resolution_reason = f"gouvernorat resolved via {resolution_status.lower()}; {canonical_reason}"
+            resolution_confidence = canonical_confidence if canonical_confidence else (1.0 if resolution_status == "STEP1_GOUVSINI" else 0.7)
+    if final_postal_conflict:
+        adresse_fragment = adresse_fragment or final_localite
+        final_localite = None
+        code_postal = None
+        entity_type = "UNTRUSTED_LOCALITE"
+        quality = "PARTIAL"
+        needs_review = "YES"
+        if final_postal_status:
+            resolution_status_final = f"{resolution_status_final}_{final_postal_status}"
+        resolution_method = "DIMREGION_SOURCE_POSTAL_CHECK"
+        resolution_reason = f"{resolution_reason}; {final_postal_reason}; localite/code postal cleared from final dim_geo"
     return {
         **base,
+        "conflict_detected":  "YES" if final_postal_conflict else base.get("conflict_detected", "NO"),
+        "candidate_summary":  final_postal_summary if final_postal_conflict else base.get("candidate_summary", ""),
         "pays":               pays,
         "region":             None,  # derived from gouvernorat in finalize_business_fields
         "gouvernorat":        final_gouvernorat,
@@ -1998,10 +2428,13 @@ def _resolve_one_geo_row(
         "resolution_method":  resolution_method,
         "resolution_reason":  resolution_reason,
         "resolution_confidence": resolution_confidence,
-        "postal_code_status": postal_status,
-        "postal_code_method": "POSTAL_REFERENCE_LOCALITE" if code_postal else "NONE",
-        "postal_code_reason": "gov+canonical localite exact match in DimRegion" if code_postal
-                              else "no exact DimRegion postal code for this gouvernorat+localite pair",
+        "postal_code_status": final_postal_status if final_postal_conflict else postal_status,
+        "postal_code_method": "DIMREGION_SOURCE_CHECK" if final_postal_conflict else ("POSTAL_REFERENCE_LOCALITE" if code_postal else "NONE"),
+        "postal_code_reason": final_postal_reason if final_postal_conflict else (
+            "gov+canonical localite exact match in DimRegion" if code_postal
+            else "no exact DimRegion postal code for this gouvernorat+localite pair"
+        ),
+        "postal_candidate_summary": final_postal_summary if final_postal_conflict else base.get("postal_candidate_summary", ""),
     }
 
 
@@ -2078,7 +2511,7 @@ def _resolve_one_geo_row_legacy(
             **postal,
         }
 
-    if entity_type in ("ADRESSE_PARTIELLE", "ROUTE_AUTOROUTE"):
+    if entity_type in ("ADRESSE_PARTIELLE", "ROUTE_AUTOROUTE", "POINT_INTERET"):
         return _resolve_address_fragment(source, source_geo_key, entity_type, reference_indexes)
 
     selected, method, selection_status, candidates = _find_reference_candidate(source, reference_indexes, alias_dict)
@@ -2474,21 +2907,39 @@ def _build_source_geo_key_candidate(
 
 
 def _load_approved_corrections(logger) -> tuple[dict[str, dict], dict]:
-    """Load APPROVED corrections keyed only by stable business source keys."""
+    """Load APPROVED manual and AUTO_DOUBLE_PROOF corrections keyed by source keys."""
     metrics = {
         "n_correction_rows_loaded": 0,
         "n_approved_corrections_loaded": 0,
+        "n_auto_double_proof_corrections_loaded": 0,
         "n_ignored_corrections": 0,
         "n_approved_corrections_by_geo_key": 0,
         "n_duplicate_correction_keys": 0,
         "n_unusable_approved_corrections": 0,
     }
-    if not APPROVED_CORRECTIONS_PATH.exists():
-        logger.warning(f"  fichier corrections approuvees absent : {APPROVED_CORRECTIONS_PATH}")
+
+    frames: list[pd.DataFrame] = []
+    correction_files = [
+        (APPROVED_CORRECTIONS_PATH, "APPROVED_GEO_CORRECTIONS", True),
+        (AUTO_DOUBLE_PROOF_CORRECTIONS_PATH, "AUTO_DOUBLE_PROOF", False),
+    ]
+    for path, correction_source, required_file in correction_files:
+        if not path.exists():
+            if required_file:
+                logger.warning(f"  fichier corrections approuvees absent : {path}")
+            else:
+                logger.info(f"  fichier corrections auto double preuve absent : {path}")
+            continue
+        df_one = pd.read_csv(path, dtype=str, keep_default_na=False)
+        df_one = _standardize_columns(df_one)
+        df_one["correction_file"] = path.name
+        df_one["correction_source"] = correction_source
+        frames.append(df_one)
+
+    if not frames:
         return {}, metrics
 
-    df_corr = pd.read_csv(APPROVED_CORRECTIONS_PATH, dtype=str, keep_default_na=False)
-    df_corr = _standardize_columns(df_corr)
+    df_corr = pd.concat(frames, ignore_index=True, sort=False)
     metrics["n_correction_rows_loaded"] = len(df_corr)
 
     required = {
@@ -2500,11 +2951,18 @@ def _load_approved_corrections(logger) -> tuple[dict[str, dict], dict]:
     }
     missing = sorted(required.difference(df_corr.columns))
     if missing:
-        raise RuntimeError(f"Fichier corrections approuvees incomplet {APPROVED_CORRECTIONS_PATH} : colonnes manquantes {missing}")
+        raise RuntimeError(
+            "Fichiers corrections approuvees incomplets "
+            f"({APPROVED_CORRECTIONS_PATH.name}, {AUTO_DOUBLE_PROOF_CORRECTIONS_PATH.name}) : "
+            f"colonnes manquantes {missing}"
+        )
 
     df_corr["approval_status_norm"] = df_corr["approval_status"].map(lambda x: str(x).strip().upper())
     df_approved = df_corr[df_corr["approval_status_norm"].isin(_APPROVED_STATUSES_TO_APPLY)].copy()
     metrics["n_approved_corrections_loaded"] = len(df_approved)
+    metrics["n_auto_double_proof_corrections_loaded"] = int(
+        df_approved["correction_source"].astype(str).eq("AUTO_DOUBLE_PROOF").sum()
+    )
     metrics["n_ignored_corrections"] = len(df_corr) - len(df_approved)
 
     by_key: dict[str, dict] = {}
@@ -2519,7 +2977,8 @@ def _load_approved_corrections(logger) -> tuple[dict[str, dict], dict]:
             continue
 
         correction = {
-            "correction_id": int(idx),
+            "correction_id": f"{row.get('correction_file', 'correction')}:{idx}",
+            "correction_source": str(row.get("correction_source", "APPROVED_GEO_CORRECTIONS") or "APPROVED_GEO_CORRECTIONS"),
             "region": region,
             "gouvernorat": gouvernorat,
             "delegation": normalize_text(row.get("approved_delegation")),
@@ -2527,6 +2986,7 @@ def _load_approved_corrections(logger) -> tuple[dict[str, dict], dict]:
             "code_postal": code_postal,
         }
 
+        source_geo_key = _normalize_existing_geo_key(row.get("source_geo_key")) if "source_geo_key" in df_approved.columns else None
         geo_key = _normalize_existing_geo_key(row.get("geo_key")) if "geo_key" in df_approved.columns else None
         current_geo_key = _build_source_geo_key_candidate(
             row.get("current_gouvernorat") if "current_gouvernorat" in df_approved.columns else None,
@@ -2535,7 +2995,7 @@ def _load_approved_corrections(logger) -> tuple[dict[str, dict], dict]:
         )
 
         keys = []
-        for key in (geo_key, current_geo_key):
+        for key in (source_geo_key, geo_key, current_geo_key):
             if key and key not in keys:
                 keys.append(key)
 
@@ -2547,6 +3007,7 @@ def _load_approved_corrections(logger) -> tuple[dict[str, dict], dict]:
         for key in keys:
             existing = by_key.get(key)
             if existing is not None and existing["correction_id"] != correction["correction_id"]:
+                # Manual corrections are loaded first and keep priority over auto corrections.
                 metrics["n_duplicate_correction_keys"] += 1
                 continue
             by_key[key] = correction
@@ -2555,10 +3016,14 @@ def _load_approved_corrections(logger) -> tuple[dict[str, dict], dict]:
             metrics["n_unusable_approved_corrections"] += 1
 
     metrics["n_approved_corrections_by_geo_key"] = len(by_key)
-    logger.info(f"  corrections approuvees chargees : {metrics['n_approved_corrections_loaded']} APPROVED / {metrics['n_correction_rows_loaded']} lignes")
+    logger.info(
+        "  corrections approuvees chargees : "
+        f"{metrics['n_approved_corrections_loaded']} APPROVED / "
+        f"{metrics['n_correction_rows_loaded']} lignes "
+        f"(auto_double_proof={metrics['n_auto_double_proof_corrections_loaded']})"
+    )
     logger.info(f"  corrections utilisables par geo_key/source_geo_key : {len(by_key)}")
     return by_key, metrics
-
 
 def _load_postal_approved_corrections(logger) -> tuple[dict[str, dict], dict]:
     """Load human-approved postal fills keyed by final business geo_key."""
@@ -2685,6 +3150,120 @@ def _write_postal_approved_unmatched_report(
             continue
         rows.append({"geo_key": key, **correction})
     pd.DataFrame(rows).to_csv(POSTAL_APPROVED_UNMATCHED_PATH, index=False, encoding="utf-8-sig")
+
+
+def _apply_approved_geo_corrections(
+    df_resolution: pd.DataFrame,
+    corrections_by_key: dict[str, dict],
+    reference_indexes: dict,
+) -> tuple[pd.DataFrame, dict]:
+    """Apply human-approved GEO corrections in the active dim_geo flow."""
+    metrics = {
+        "n_rows_corrected": 0,
+        "n_approved_corrections_matched": 0,
+        "n_approved_corrections_not_matched": len(corrections_by_key),
+    }
+    df = df_resolution.copy()
+    if df.empty or not corrections_by_key:
+        return df, metrics
+
+    if "matched_correction_id" not in df.columns:
+        df["matched_correction_id"] = ""
+
+    matched_keys: set[str] = set()
+    for idx, row in df.iterrows():
+        candidate_keys = []
+        for raw_key in (row.get("_source_geo_key"), row.get("geo_key")):
+            key = _normalize_existing_geo_key(raw_key)
+            if key and key not in candidate_keys:
+                candidate_keys.append(key)
+
+        correction = None
+        matched_key = None
+        for key in candidate_keys:
+            correction = corrections_by_key.get(key)
+            if correction is not None:
+                matched_key = key
+                break
+        if correction is None:
+            continue
+
+        final_gouvernorat = correction.get("gouvernorat")
+        final_localite = correction.get("localite")
+        final_region = correction.get("region")
+        final_delegation = correction.get("delegation")
+        if final_gouvernorat not in _VALID_GOVERNORATS or not final_localite:
+            continue
+
+        approved_cp = normalize_cpost(correction.get("code_postal"))
+        if approved_cp and _postal_prefix_conflict(approved_cp, final_gouvernorat):
+            approved_cp = None
+        final_code_postal = approved_cp or _lookup_postal_code_simple(
+            final_gouvernorat,
+            final_localite,
+            reference_indexes,
+        )
+        final_pays = "TUNISIE"
+        final_region = final_region or _REGION_FROM_GOUVERNORAT.get(final_gouvernorat)
+        previous_gouvernorat = normalize_gouvernorat(row.get("gouvernorat"))
+        conflict = (
+            previous_gouvernorat in _VALID_GOVERNORATS
+            and previous_gouvernorat != final_gouvernorat
+        )
+
+        df.at[idx, "pays"] = final_pays
+        df.at[idx, "region"] = final_region
+        df.at[idx, "gouvernorat"] = final_gouvernorat
+        df.at[idx, "localite"] = final_localite
+        df.at[idx, "adresse_fragment"] = None
+        df.at[idx, "code_postal"] = final_code_postal
+        df.at[idx, "geo_entity_type"] = _classify_geo_entity_type(final_localite)
+        postal_status = "POSTAL_APPROVED_CORRECTION" if approved_cp else (
+            "POSTAL_REFERENCE_EXACT_LOCALITE" if final_code_postal else "POSTAL_MISSING_REFERENCE"
+        )
+        df.at[idx, "geo_quality_level"] = _geo_quality_from_resolution(
+            "APPROVED_CORRECTION",
+            final_gouvernorat,
+            final_localite,
+            final_region,
+            final_code_postal,
+            final_pays,
+            postal_status,
+        )
+        df.at[idx, "needs_review"] = "NO"
+        df.at[idx, "geo_key"] = build_geo_key(final_pays, final_gouvernorat, final_localite, final_code_postal)
+        correction_source = str(correction.get("correction_source", "APPROVED_GEO_CORRECTIONS") or "APPROVED_GEO_CORRECTIONS")
+        is_auto_double_proof = correction_source == "AUTO_DOUBLE_PROOF"
+        df.at[idx, "resolution_status"] = "AUTO_DOUBLE_PROOF_CORRECTION" if is_auto_double_proof else "APPROVED_CORRECTION"
+        df.at[idx, "resolution_method"] = "AUTO_DOUBLE_PROOF" if is_auto_double_proof else "APPROVED_GEO_CORRECTIONS"
+        df.at[idx, "resolution_reason"] = (
+            "auto double-proof GEO correction matched by source/current geo_key"
+            if is_auto_double_proof
+            else "human-approved GEO correction matched by source/current geo_key"
+        )
+        df.at[idx, "resolution_confidence"] = 1.0
+        df.at[idx, "conflict_detected"] = "YES" if conflict else row.get("conflict_detected", "NO")
+        df.at[idx, "candidate_summary"] = "approved GEO correction"
+        df.at[idx, "postal_code_status"] = postal_status
+        df.at[idx, "postal_code_method"] = "APPROVED_GEO_CORRECTIONS" if approved_cp else (
+            "POSTAL_REFERENCE_LOCALITE" if final_code_postal else "NONE"
+        )
+        df.at[idx, "postal_code_reason"] = (
+            "approved GEO correction supplied postal code"
+            if approved_cp
+            else "postal code inferred from approved governorate/locality"
+            if final_code_postal
+            else "approved GEO correction did not include a trusted postal code"
+        )
+        df.at[idx, "postal_candidate_summary"] = "approved GEO correction"
+        df.at[idx, "matched_correction_id"] = str(correction.get("correction_id", ""))
+        if matched_key:
+            matched_keys.add(matched_key)
+
+    metrics["n_approved_corrections_matched"] = len(matched_keys)
+    metrics["n_approved_corrections_not_matched"] = max(len(corrections_by_key) - len(matched_keys), 0)
+    metrics["n_rows_corrected"] = int(df["matched_correction_id"].astype(str).ne("").sum())
+    return df, metrics
 
 
 def _apply_postal_approved_corrections(
@@ -2842,12 +3421,14 @@ def _reassign_geo_sk(df_final: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([unknown[FINAL_COLS], real[FINAL_COLS]], ignore_index=True)
 
 _QUALITY_RANK = {
-    "VALIDATED": 4,
-    "PARTIAL": 3,
+    "VALIDATED": 5,
+    "PARTIAL": 4,
+    "CONFLICT": 3,
     "AMBIGUOUS": 2,
     "UNKNOWN": 1,
 }
 _RESOLUTION_RANK = {
+    "AUTO_DOUBLE_PROOF_CORRECTION": 72,
     "APPROVED_CORRECTION": 70,
     "POSTAL_APPROVED_CORRECTION": 68,
     "CONFLICT_CORRECTED_REFERENCE": 65,
@@ -2882,6 +3463,55 @@ _POSTAL_STATUS_RANK = {
     "POSTAL_NOT_APPLICABLE": 5,
     "POSTAL_ONLY_NO_GEOGRAPHY": 0,
 }
+
+
+def _resolution_status_rank(status) -> int:
+    value = str(status or "")
+    if value in _RESOLUTION_RANK:
+        return _RESOLUTION_RANK[value]
+
+    step_base = 1
+    if value.startswith("STEP1_GOUVSINI"):
+        step_base = 50
+    elif value.startswith("STEP2_CITESINI"):
+        step_base = 42
+    elif value.startswith("STEP3_REGSINI"):
+        step_base = 40
+    elif value.startswith("STEP4_DIMREGION"):
+        step_base = 39
+    elif value.startswith("STEP4_POSTAL"):
+        step_base = 38
+    elif value.startswith("ADDRESS_FRAGMENT"):
+        step_base = 30
+
+    if "DIMREGION_EXACT_LOCALITE" in value:
+        return step_base + 10
+    if "DIMREGION_ALIAS_LOCALITE" in value or "ALIAS_MANUEL" in value:
+        return step_base + 8
+    if "DIMREGION_LINGUISTIC_LOCALITE" in value:
+        return step_base + 7
+    if "DIMREGION_FUZZY_LOCALITE" in value:
+        return step_base + 5
+    if "ALIAS_GOV_CONFLICT" in value:
+        return max(step_base - 5, 1)
+    return step_base
+
+
+def _postal_code_status_rank(status) -> int:
+    value = str(status or "")
+    if value in _POSTAL_STATUS_RANK:
+        return _POSTAL_STATUS_RANK[value]
+    if value.startswith("POSTAL_REFERENCE_EXACT_LOCALITE"):
+        return 45
+    if value.startswith("POSTAL_REFERENCE_DELEGATION"):
+        return 40
+    if value.startswith("POSTAL_REFERENCE_ALIAS"):
+        return 35
+    if value.startswith("POSTAL_AMBIGUOUS"):
+        return 8
+    if value.startswith("POSTAL_CONFLICT"):
+        return 2
+    return 1
 
 
 def _write_deduplication_decisions(df_decisions: pd.DataFrame) -> None:
@@ -2926,8 +3556,8 @@ def _deduplicate_resolved_rows(df_real: pd.DataFrame) -> tuple[pd.DataFrame, int
     if "_resolution_row_id" not in ranked.columns:
         ranked["_resolution_row_id"] = range(len(ranked))
     ranked["_quality_rank"] = ranked["geo_quality_level"].map(_QUALITY_RANK).fillna(0).astype(int)
-    ranked["_resolution_rank"] = ranked["resolution_status"].map(_RESOLUTION_RANK).fillna(1).astype(int)
-    ranked["_postal_rank"] = ranked["postal_code_status"].map(_POSTAL_STATUS_RANK).fillna(1).astype(int)
+    ranked["_resolution_rank"] = ranked["resolution_status"].map(_resolution_status_rank).astype(int)
+    ranked["_postal_rank"] = ranked["postal_code_status"].map(_postal_code_status_rank).astype(int)
     ranked["_confidence_rank"] = pd.to_numeric(ranked.get("resolution_confidence", 0), errors="coerce").fillna(0.0)
 
     ranked = ranked.sort_values(
@@ -3013,6 +3643,11 @@ def transform_dim_geo(
         "postal_localite": {},
         "postal_alias": {},
         "postal_delegation": {},
+        "postal_localite_global": {},
+        "postal_localite_linguistic_global": {},
+        "postal_localite_linguistic": {},
+        "postal_localite_terms_by_gov": {},
+        "postal_delegation_global": {},
         "governorate_region": {},
     }
     alias_dict = alias_dict or {}
@@ -3038,17 +3673,37 @@ def transform_dim_geo(
     # Business finalization: UNKNOWN-fill + region from gouvernorat + rebuild geo_key.
     df_resolution = finalize_business_fields(df_resolution)
 
-    # Step counts from cascade
+    # Apply human-approved corrections before exclusion/dedup so reviewed rows can be loaded.
+    df_resolution, geo_corr_metrics = _apply_approved_geo_corrections(
+        df_resolution,
+        corrections_by_key,
+        reference_indexes,
+    )
+    df_resolution = finalize_business_fields(df_resolution)
+
+    df_resolution, postal_corr_metrics = _apply_postal_approved_corrections(
+        df_resolution,
+        postal_corrections_by_key,
+    )
+    df_resolution = finalize_business_fields(df_resolution)
+
+    # Step counts from cascade. Canonicalized statuses retain the step as a prefix.
     status_counts = df_resolution["resolution_status"].value_counts().to_dict()
-    n_step1 = int(status_counts.get("STEP1_GOUVSINI", 0))
-    n_step2 = int(status_counts.get("STEP2_CITESINI", 0))
-    n_step3 = int(status_counts.get("STEP3_REGSINI", 0))
-    n_step4 = int(status_counts.get("STEP4_POSTAL", 0))
-    n_step5 = int(status_counts.get("STEP5_EXCLUDED", 0))
+
+    def _status_count(prefix: str) -> int:
+        return int(sum(count for status, count in status_counts.items() if str(status).startswith(prefix)))
+
+    n_step1 = _status_count("STEP1_GOUVSINI")
+    n_step2 = _status_count("STEP2_CITESINI")
+    n_step3 = _status_count("STEP3_REGSINI")
+    n_step4_dimregion = _status_count("STEP4_DIMREGION")
+    n_step4 = _status_count("STEP4_POSTAL")
+    n_step5 = _status_count("STEP5_EXCLUDED")
 
     logger.info(f"  Step 1 resolved (gouvsini)  : {n_step1}")
     logger.info(f"  Step 2 resolved (citesini)  : {n_step2}")
     logger.info(f"  Step 3 resolved (regsini)   : {n_step3}")
+    logger.info(f"  Step 4 resolved (DimRegion): {n_step4_dimregion}")
     logger.info(f"  Step 4 resolved (postal)    : {n_step4}")
     logger.info(f"  Step 5 excluded             : {n_step5}")
 
@@ -3107,28 +3762,20 @@ def transform_dim_geo(
     postal_status_counts = df_resolution["postal_code_status"].astype(str).value_counts().to_dict()
     postal_missing_reference_count = int(df_resolution["postal_code_status"].eq("POSTAL_MISSING_REFERENCE").sum())
 
-    # Stub metrics for keys expected by load_dim_geo logging
-    _zero_postal = {
-        "n_rows_postal_corrected": 0,
-        "n_rows_postal_corrected_by_localite_fallback": 0,
-        "n_postal_approved_corrections_matched": 0,
-        "n_postal_approved_corrections_not_matched": 0,
-        "n_postal_global_localite_no_gov_only": 0,
-        "n_rejected_global_match_due_to_gov_conflict": 0,
-    }
-
     metrics = {
-        **_zero_postal,
+        **postal_corr_metrics,
         "n_raw": n_raw,
         "n_step1_gouvsini": n_step1,
         "n_step2_citesini": n_step2,
         "n_step3_regsini": n_step3,
+        "n_step4_dimregion": n_step4_dimregion,
         "n_step4_postal": n_step4,
         "n_step5_excluded": n_step5,
         "n_dupes": n_dupes,
         "n_dedup_decision_rows": n_dedup_decision_rows,
         "n_validated": ql.get("VALIDATED", 0),
         "n_partial": ql.get("PARTIAL", 0),
+        "n_conflict": ql.get("CONFLICT", 0),
         "n_ambiguous": ql.get("AMBIGUOUS", 0),
         "n_unknown": ql.get("UNKNOWN", 0),
         "quality_distribution": ql,
@@ -3151,9 +3798,9 @@ def transform_dim_geo(
         "n_unknown_natural": int(excluded_mask.sum()),
         "n_dropped_unknown_key": 0,
         "n_dupes_after_corrections": 0,
-        "n_rows_corrected": 0,
-        "n_approved_corrections_matched": 0,
-        "n_approved_corrections_not_matched": 0,
+        "n_rows_corrected": geo_corr_metrics["n_rows_corrected"],
+        "n_approved_corrections_matched": geo_corr_metrics["n_approved_corrections_matched"],
+        "n_approved_corrections_not_matched": geo_corr_metrics["n_approved_corrections_not_matched"],
         "n_reference_exact_localite_resolved": 0,
         "n_reference_alias_localite_resolved": 0,
         "n_reference_alias_manuel_resolved": 0,
@@ -3177,11 +3824,11 @@ def transform_dim_geo(
         "n_postal_source_confirmed_reference": 0,
         "n_postal_source_prefix_only": 0,
         "n_postal_source_unconfirmed": 0,
-        "n_postal_from_approved_corrections": 0,
+        "n_postal_from_approved_corrections": postal_corr_metrics["n_rows_postal_corrected"],
         "n_postal_from_reference_delegation": 0,
         "n_postal_from_reference_alias": 0,
-        "n_postal_ambiguous_rows": 0,
-        "n_postal_conflict_rows": 0,
+        "n_postal_ambiguous_rows": int(df_resolution["postal_code_status"].astype(str).str.startswith("POSTAL_AMBIGUOUS").sum()),
+        "n_postal_conflict_rows": int(df_resolution["postal_code_status"].astype(str).str.startswith("POSTAL_CONFLICT").sum()),
     }
     return df_final, metrics, df_resolution
 # ---------------------------------------------------------------------------
@@ -3260,7 +3907,8 @@ def load_dim_geo(run_id: str, engine, logger) -> int:
     logger.info(f"  Step 1 resolved (gouvsini)         : {m['n_step1_gouvsini']}")
     logger.info(f"  Step 2 resolved (citesini)         : {m['n_step2_citesini']}")
     logger.info(f"  Step 3 resolved (regsini)          : {m['n_step3_regsini']}")
-    logger.info(f"  Step 4 resolved (postal prefix)    : {m['n_step4_postal']}")
+    logger.info(f"  Step 4 resolved (DimRegion terms) : {m['n_step4_dimregion']}")
+    logger.info(f"  Step 4 resolved (DimRegion postal): {m['n_step4_postal']}")
     logger.info(f"  Step 5 excluded (no gouvernorat)   : {m['n_step5_excluded']}")
     logger.info(f"  excluded → {DIM_GEO_EXCLUDED_PATH.name}")
     logger.info(f"  doublons geo_key supprimes         : {m['n_dupes']}")
@@ -3270,6 +3918,7 @@ def load_dim_geo(run_id: str, engine, logger) -> int:
     logger.info(f"  lignes TUNISIE sans code postal    : {m['n_missing_postal_after_resolution']}")
     logger.info(f"  zones VALIDATED                    : {m['n_validated']}")
     logger.info(f"  zones PARTIAL                      : {m['n_partial']}")
+    logger.info(f"  zones CONFLICT                     : {m['n_conflict']}")
     logger.info(f"  zones AMBIGUOUS                    : {m['n_ambiguous']}")
     logger.info(f"  ancre UNKNOWN (geo_sk=0)           : {m['n_unknown']}")
     logger.info(f"  total lignes apres corrections     : {m['n_loaded']}")
@@ -3341,6 +3990,7 @@ WHERE geo_key = 'UNKNOWN|UNKNOWN|UNKNOWN|UNKNOWN';
     print(f"  Step 1 resolved (gouvsini)   : {m['n_step1_gouvsini']}")
     print(f"  Step 2 resolved (citesini)   : {m['n_step2_citesini']}")
     print(f"  Step 3 resolved (regsini)    : {m['n_step3_regsini']}")
+    print(f"  Step 4 resolved (DimRegion)  : {m['n_step4_dimregion']}")
     print(f"  Step 4 resolved (postal)     : {m['n_step4_postal']}")
     print(f"  Step 5 excluded              : {m['n_step5_excluded']}")
     print(f"  Total loaded into dwh.dim_geo: {m['n_loaded']}")
