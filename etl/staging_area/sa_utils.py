@@ -17,7 +17,6 @@ Fonctions :
 from __future__ import annotations
 
 import logging
-import os
 import re
 import sys
 import unicodedata
@@ -25,8 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
-from dotenv import load_dotenv
-from sqlalchemy import URL, create_engine, text
+from sqlalchemy import text
 
 # ---------------------------------------------------------------------------
 # Chemins projet
@@ -37,56 +35,31 @@ DATA_PROC = BASE_DIR / "data" / "processed"
 
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
+# Shared runtime helpers (same import pattern as etl/dwh/dwh_utils.py:
+# package import first, repo-root sys.path fallback for standalone runs).
+try:
+    from etl.utils.runtime import build_engine as _runtime_build_engine
+    from etl.utils.runtime import setup_logging as _runtime_setup_logging
+except ModuleNotFoundError:  # standalone script execution
+    sys.path.insert(0, str(BASE_DIR))
+    from etl.utils.runtime import build_engine as _runtime_build_engine
+    from etl.utils.runtime import setup_logging as _runtime_setup_logging
+
 
 # ---------------------------------------------------------------------------
-# Logging
+# Logging (delegue a etl.utils.runtime, namespace "sa")
 # ---------------------------------------------------------------------------
 def setup_logging(run_id: str, log_name: str = "load_all_sa") -> logging.Logger:
     """Configure un logger avec handler fichier UTF-8 et handler console."""
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
-    log_file = LOGS_DIR / f"{log_name}_{run_id}.log"
-    logger = logging.getLogger(f"sa.{run_id}")
-    logger.setLevel(logging.DEBUG)
-    logger.handlers.clear()
-
-    fmt = logging.Formatter(
-        "%(asctime)s | %(levelname)-8s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    fh = logging.FileHandler(log_file, encoding="utf-8")
-    fh.setFormatter(fmt)
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setFormatter(fmt)
-    logger.addHandler(fh)
-    logger.addHandler(ch)
-
-    logger.info(f"Logger initialise | run_id={run_id} | log={log_file}")
-    return logger
+    return _runtime_setup_logging(run_id, log_name=log_name, namespace="sa")
 
 
 # ---------------------------------------------------------------------------
-# Connexion PostgreSQL
+# Connexion PostgreSQL (delegue a etl.utils.runtime)
 # ---------------------------------------------------------------------------
 def build_engine(logger: logging.Logger | None = None):
     """Charge .env et construit l'engine SQLAlchemy avec URL.create."""
-    load_dotenv(BASE_DIR / ".env", encoding="utf-8")
-    url = URL.create(
-        drivername="postgresql+psycopg2",
-        host=os.environ["DB_HOST"],
-        port=int(os.environ.get("DB_PORT", 5432)),
-        database=os.environ["DB_NAME"],
-        username=os.environ["DB_USER"],
-        password=os.environ["DB_PASSWORD"],
-    )
-    engine = create_engine(url, pool_pre_ping=True)
-    if logger:
-        logger.info(
-            f"Engine PostgreSQL : {os.environ['DB_HOST']}:"
-            f"{os.environ.get('DB_PORT', 5432)}/{os.environ['DB_NAME']}"
-        )
-    return engine
+    return _runtime_build_engine(logger)
 
 
 def create_schemas(engine, logger: logging.Logger | None = None) -> None:

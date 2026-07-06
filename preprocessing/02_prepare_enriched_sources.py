@@ -62,28 +62,20 @@ FALLBACK = {
 }
 
 
-# ─── 3. Logging ───────────────────────────────────────────────────────────────
+# ─── 3. Logging (délégué à etl.utils.runtime, namespace "preprocessing") ─────
+try:
+    from etl.utils.runtime import setup_logging as _runtime_setup_logging
+except ModuleNotFoundError:  # standalone script execution
+    sys.path.insert(0, str(BASE_DIR))
+    from etl.utils.runtime import setup_logging as _runtime_setup_logging
+
+
 def setup_logging(run_id: str) -> logging.Logger:
-    log_file = LOGS_DIR / f"02_prepare_enriched_sources_{run_id}.log"
-    fmt     = "%(asctime)s | %(levelname)-8s | %(message)s"
-    datefmt = "%Y-%m-%d %H:%M:%S"
-
-    logger = logging.getLogger(f"preprocessing_{run_id}")
-    logger.setLevel(logging.DEBUG)
-    logger.handlers.clear()
-
-    fh = logging.FileHandler(log_file, encoding="utf-8")
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(logging.Formatter(fmt, datefmt=datefmt))
-
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.INFO)
-    ch.setFormatter(logging.Formatter(fmt, datefmt=datefmt))
-
-    logger.addHandler(fh)
-    logger.addHandler(ch)
-    logger.info(f"Logger initialise | run_id={run_id} | log={log_file}")
-    return logger
+    return _runtime_setup_logging(
+        run_id,
+        log_name="02_prepare_enriched_sources",
+        namespace="preprocessing",
+    )
 
 
 # ─── 4. Utility functions ─────────────────────────────────────────────────────
