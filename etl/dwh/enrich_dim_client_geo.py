@@ -57,7 +57,7 @@ SCHEMA     = "dwh"
 
 _HERE        = Path(__file__).resolve().parent.parent.parent  # racine projet
 REF_CSV_PATH = _HERE / "data" / "reference" / "dim_client" / "geo_client_reference.csv"
-REPORT_DIR   = _HERE / "data" / "quality_reports"
+REPORT_DIR   = _HERE / "data" / "quality_reports" / "dim_client"
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # RÃ©fÃ©rentiel interne minimal
@@ -469,7 +469,7 @@ LIMIT 50;
 
     logger.info("""
 -- 5. Exemples de corrections HIGH appliquÃ©es (depuis le rapport CSV)
--- Filtrer le fichier data/quality_reports/dim_client_geo_enrichment_report_<run_id>.csv
+-- Filtrer le fichier data/quality_reports/dim_client/dim_client_geo_enrichment_report_<run_id>.csv
 -- sur geo_confidence = 'HIGH'
 """)
 
