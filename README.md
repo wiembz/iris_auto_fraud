@@ -1022,6 +1022,19 @@ The full pipeline runs in four stages, each with its own entry point:
 
 Tests: `python -m pytest` (configuration in `pyproject.toml`, tests in `tests/`).
 
+Prerequisites for a fresh clone: `data/raw/*.xlsx` source files and the `.env`
+database credentials are intentionally not tracked (see `.env.example`); they
+must be provided separately before stage 1 can run.
+
+Workspace hygiene: run logs rotate automatically (the shared logger keeps the
+5 newest logs per script; override with `IRIS_LOG_RETENTION`). Python caches
+can be purged anytime with:
+
+```text
+python scripts/clean_workspace.py           # __pycache__ + .pytest_cache
+python scripts/clean_workspace.py --logs    # also apply log retention now
+```
+
 ### 10.1 Geographical quality tooling
 
 The geographic audit is complete: `dwh.dim_geo` resolves against the
