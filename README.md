@@ -1167,7 +1167,7 @@ IRIS_AUTO_FRAUD/
 | Business explanation (FR) | `docs/vhs/vhs_business_explanation.md` |
 | Validation summary (FR) | `docs/vhs/vhs_validation_summary.md` |
 | Technical diagrams | `docs/diagrams/` |
-| Internal cleanup audit trail | `docs/vhs/internal_cleanup/` |
+| Internal cleanup audit trail | `ArchiveVHS/repo_docs_archive_20260707/` (external archive) |
 
 ### Final validated reports
 

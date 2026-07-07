@@ -60,6 +60,9 @@ data/external/
 !data/reference/**/*.csv
 !data/reference/**/*.xlsx
 
+# Keep design documentation spreadsheets (data contracts, validated mappings)
+!docs/**/*.xlsx
+
 # =========================
 # Keep selected documentation reports if needed
 # =========================

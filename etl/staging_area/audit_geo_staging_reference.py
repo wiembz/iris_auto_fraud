@@ -3,7 +3,7 @@ Offline audit of staging sinistre GEO values against DimRegion.csv.
 
 This script is read-only from a database perspective: it reads a CSV export
 of staging.stg_sinistres GEO columns and writes audit reports under
-data/quality_reports/dim_geo. It does not update staging or DWH tables.
+data/quality_reports/staging_geo. It does not update staging or DWH tables.
 
 Example:
   python etl/staging_area/audit_geo_staging_reference.py ^
@@ -24,7 +24,7 @@ from typing import Iterable
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DEFAULT_REFERENCE_CSV = BASE_DIR / "data" / "reference" / "dim_geo" / "DimRegion.csv"
-DEFAULT_OUTPUT_DIR = BASE_DIR / "data" / "quality_reports" / "dim_geo"
+DEFAULT_OUTPUT_DIR = BASE_DIR / "data" / "quality_reports" / "staging_geo"
 
 OUTPUT_ALL = "staging_geo_reference_audit_all.csv"
 OUTPUT_CONFLICTS = "staging_geo_reference_conflicts.csv"
