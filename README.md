@@ -456,8 +456,8 @@ staging.stg_sinistres
 Reference files used by the final loader:
 
 ```text
-data/reference/dim_geo/geo_tunisia_reference.csv
-data/reference/dim_geo/geo_tunisia_postal_reference.csv
+data/reference/dim_geo/DimRegion.csv                          (single authoritative Tunisia reference)
+data/reference/dim_geo/ref_geo_alias.csv                      (verified spelling variants)
 data/reference/dim_geo/geo_dim_approved_corrections.csv
 data/reference/dim_geo/geo_dim_postal_approved_corrections.csv
 ```
@@ -465,9 +465,9 @@ data/reference/dim_geo/geo_dim_postal_approved_corrections.csv
 Important postal-reference reserve:
 
 ```text
-geo_tunisia_postal_reference.csv is populated from the official public Tunisian Post governorate/delegation/locality lists and currently has 4,833 usable rows.
-Therefore, remaining UNKNOWN postal codes are either absent from the official postal reference, ambiguous across several official postal rows, or insufficiently specific in the source.
-The loader does not invent postal codes and does not validate source CPOSTSINI without postal reference confirmation. Global locality matches are rejected when an official source/final governorate conflicts with the candidate postal governorate; the current run reports 39 such conflicts outside the DWH.
+DimRegion.csv is the single authoritative reference for governorate/delegation/locality/postal code (4,775 rows).
+Remaining UNKNOWN postal codes are either absent from the reference, ambiguous across several reference rows (same locality name under several delegations with different codes), or insufficiently specific in the source.
+The loader does not invent postal codes and does not validate source CPOSTSINI without reference confirmation. Locality matches are always scoped to the resolved governorate, so cross-governorate false pairs are structurally impossible.
 ```
 
 Quality and audit reports:
@@ -999,78 +999,54 @@ Avoid final DWH columns such as `*_raw`, `*_norm`, `*_clean`, `mapping_status`, 
 
 ---
 
-## 10. Next Steps for Codex
+## 10. Pipeline Execution Order
 
-Priority order:
-
-```text
-1. Build or improve etl/dwh/audit/audit_dim_geo.py
-2. Use data/reference/dim_geo/geo_tunisia_reference.csv if available
-3. Generate dim_geo audit and correction candidate reports
-4. Build fact_sinistre
-5. Build fact_contrat
-6. Build fact_inspection_vehicule
-7. Build fact_scoring_sinistre
-8. Prepare Power BI model and investigation KPIs
-```
-
-### 10.1 Immediate task: geographical audit
-
-Codex should implement a separate audit process:
+The full pipeline runs in four stages, each with its own entry point:
 
 ```text
-etl/dwh/audit/audit_dim_geo.py
+1. python preprocessing/02_prepare_enriched_sources.py
+     data/raw/  ->  data/processed/  (reference mappings, no PostgreSQL)
+
+2. python etl/staging_area/load_all_sa.py
+     data/processed/  ->  staging.stg_*  (4 staging tables + audit rows)
+
+3. python etl/dwh/load_all_dwh.py
+     staging.stg_*  ->  dwh.dim_* / dwh.fact_*
+     Runs the 12 dimensions, then enrich_dim_client_geo, then the 4 facts
+     in dependency order. Options: --only <loader>, --from <loader>, --skip-facts.
+
+4. python etl/mart/load_dim_checkpoint.py        (one-time reference build)
+   python etl/mart/compute_vhs_v3_candidate.py   (VHS scoring)
+     dwh.fact_inspection_*  ->  mart.fact_vhs_score / mart.fact_vhs_penalty_detail
 ```
 
-It should read:
+Tests: `python -m pytest` (configuration in `pyproject.toml`, tests in `tests/`).
+
+Prerequisites for a fresh clone: `data/raw/*.xlsx` source files and the `.env`
+database credentials are intentionally not tracked (see `.env.example`); they
+must be provided separately before stage 1 can run.
+
+Workspace hygiene: run logs rotate automatically (the shared logger keeps the
+5 newest logs per script; override with `IRIS_LOG_RETENTION`). Python caches
+can be purged anytime with:
 
 ```text
-dwh.dim_geo
+python scripts/clean_workspace.py           # __pycache__ + .pytest_cache
+python scripts/clean_workspace.py --logs    # also apply log retention now
 ```
 
-Compare against:
+### 10.1 Geographical quality tooling
 
-```text
-data/reference/dim_geo/geo_tunisia_reference.csv
-```
+The geographic audit is complete: `dwh.dim_geo` resolves against the
+authoritative reference `data/reference/dim_geo/DimRegion.csv` with approved
+corrections and quality levels (`VALIDATED` / `PARTIAL` / `CONFLICT` / `UNKNOWN`).
+Full specification and decision history: `docs/geo/geo_staging_normalization_spec.md`.
 
-And output:
-
-```text
-data/quality_reports/dim_geo/dim_geo_audit_all.csv
-data/quality_reports/dim_geo/dim_geo_validated.csv
-data/quality_reports/dim_geo/dim_geo_correction_candidates.csv
-data/quality_reports/dim_geo/dim_geo_conflicts.csv
-data/quality_reports/dim_geo/dim_geo_manual_review.csv
-data/quality_reports/dim_geo/dim_geo_non_corrigeable.csv
-```
-
-It must add these columns to audit reports only, not to `dwh.dim_geo`:
-
-```text
-geo_audit_status
-geo_audit_reason
-confidence_score
-candidate_region
-candidate_gouvernorat
-candidate_delegation
-candidate_localite
-candidate_code_postal
-```
-
-Expected audit statuses:
-
-```text
-VALIDATED_REFERENCE
-VALIDATED_GOV_ONLY
-CORRECTION_CANDIDATE
-CONFLICT
-MANUAL_REVIEW
-NON_CORRIGEABLE
-UNKNOWN
-```
-
-No risky correction should be applied automatically.
+The manual-review candidate generators live in `etl/dwh/geo_audit_tools/`
+(rue/quartier signals, Nominatim and Google Maps verification, fuzzy
+candidates with double-proof export). They are non-destructive: no correction
+reaches `dwh.dim_geo` without an APPROVED row in
+`data/reference/dim_geo/geo_dim_approved_corrections.csv`.
 
 ---
 
@@ -1141,6 +1117,41 @@ La dimension géographique des sinistres est exploitable pour les analyses par g
 Historical experiments, audit scripts, and cleanup utilities are externalized
 to `ArchiveVHS/` and are not part of the active Git project.
 
+```text
+IRIS_AUTO_FRAUD/
+├── preprocessing/
+│   └── 02_prepare_enriched_sources.py   # data/raw -> data/processed (no DB)
+├── etl/
+│   ├── utils/
+│   │   ├── runtime.py                   # shared setup_logging + build_engine
+│   │   └── geo_normalization.py         # pure staging text normalizers
+│   ├── staging_area/
+│   │   ├── load_all_sa.py               # staging orchestrator
+│   │   ├── sa_utils.py                  # staging-specific helpers
+│   │   └── load_*_sa.py                 # 4 staging loaders + audit script
+│   ├── dwh/
+│   │   ├── load_all_dwh.py              # DWH orchestrator (dependency order)
+│   │   ├── dwh_utils.py                 # DWH-specific helpers
+│   │   ├── load_dim_*.py                # 12 dimension loaders
+│   │   ├── load_fact_*.py               # 4 fact loaders
+│   │   ├── enrich_dim_client_geo.py     # post-dim_client corrective pass
+│   │   └── geo_audit_tools/             # manual-review candidate generators
+│   └── mart/
+│       ├── load_dim_checkpoint.py       # VHS checkpoint reference (one-time)
+│       └── compute_vhs_v3_candidate.py  # VHS scoring (active version)
+├── tests/                               # pytest suite (63 tests)
+├── config/                              # database.example.yaml template
+├── data/
+│   ├── reference/                       # tracked reference CSVs (DimRegion.csv, corrections)
+│   └── quality_reports/                 # generated audit reports (gitignored)
+├── docs/                                # geo specs, VHS methodology, staging contracts
+├── notebooks/validation_vhs/            # tracked VHS validation deliverables
+├── scoring/                             # future IRIS fraud scoring (placeholder)
+├── powerbi/                             # future dashboard (placeholder)
+├── pyproject.toml                       # project metadata + pytest config
+└── requirements.txt
+```
+
 ### Active VHS pipeline
 
 | Component | Path |
@@ -1156,7 +1167,7 @@ to `ArchiveVHS/` and are not part of the active Git project.
 | Business explanation (FR) | `docs/vhs/vhs_business_explanation.md` |
 | Validation summary (FR) | `docs/vhs/vhs_validation_summary.md` |
 | Technical diagrams | `docs/diagrams/` |
-| Internal cleanup audit trail | `docs/vhs/internal_cleanup/` |
+| Internal cleanup audit trail | `ArchiveVHS/repo_docs_archive_20260707/` (external archive) |
 
 ### Final validated reports
 

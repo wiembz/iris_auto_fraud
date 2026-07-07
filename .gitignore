@@ -54,6 +54,15 @@ data/external/
 *.pkl
 *.joblib
 
+# Keep ETL reference files required for reproducibility
+!data/reference/
+!data/reference/**/
+!data/reference/**/*.csv
+!data/reference/**/*.xlsx
+
+# Keep design documentation spreadsheets (data contracts, validated mappings)
+!docs/**/*.xlsx
+
 # =========================
 # Keep selected documentation reports if needed
 # =========================
@@ -61,6 +70,13 @@ data/external/
 !data/quality_reports/**/
 !data/quality_reports/**/*.md
 !data/quality_reports/**/*.txt
+
+# GEO audit generated outputs
+outputs/geo_audit/
+data/quality_reports/geo_audit/
+data/quality_reports/dim_geo/*.csv
+data/quality_reports/dim_geo/*.xlsx
+data/quality_reports/dim_geo/*.json
 
 # If you want to keep audit CSVs in Git, uncomment this:
 # !data/quality_reports/**/*.csv
@@ -75,8 +91,11 @@ models/
 # Database dumps / backups
 # =========================
 *.sql
-# Keep documented SQL design proposals
+
+# Keep documented SQL design/audit scripts
 !docs/vhs/governance/sql/*.sql
+!docs/geo/sql/*.sql
+
 *.dump
 *.backup
 *.bak
@@ -140,3 +159,9 @@ notebooks/03_staging_design_and_rules.ipynb
 
 # Generated notebook outputs / local quality reports
 notebooks/data/
+
+
+# Temporary profiling exports
+profiling_outputs/
+*.bak
+

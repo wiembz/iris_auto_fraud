@@ -4,22 +4,22 @@ etl/dwh/dwh_utils.py
 Utilitaires communs pour le chargement Data Warehouse PostgreSQL.
 
 Fonctions :
-  setup_logging    â€” logger fichier UTF-8 + console
-  build_engine     â€” SQLAlchemy engine via URL.create + .env
-  create_dwh_schema â€” CREATE SCHEMA IF NOT EXISTS dwh
-  write_to_dwh     â€” to_sql mode replace avec chunksize
+  setup_logging    — logger fichier UTF-8 + console (delegue a etl.utils.runtime)
+  build_engine     — SQLAlchemy engine via URL.create + .env (etl.utils.runtime)
+  normalize_numcnt — normalisation des identifiants contrat
+  create_dwh_schema — CREATE SCHEMA IF NOT EXISTS dwh
+  write_to_dwh     — to_sql mode replace avec chunksize
 """
 from __future__ import annotations
 
 import logging
-import os
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
-from sqlalchemy import URL, create_engine, text
+from sqlalchemy import text
 
 # ---------------------------------------------------------------------------
 # Chemins projet
@@ -28,6 +28,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 LOGS_DIR = BASE_DIR / "logs"
 
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Shared runtime helpers. Loaders run this module both standalone
+# (sys.path = etl/dwh) and as part of the etl package (pytest/orchestrator),
+# so fall back to inserting the repo root when the package form fails.
+try:
+    from etl.utils.runtime import build_engine as _runtime_build_engine
+    from etl.utils.runtime import setup_logging as _runtime_setup_logging
+except ModuleNotFoundError:  # standalone script execution
+    sys.path.insert(0, str(BASE_DIR))
+    from etl.utils.runtime import build_engine as _runtime_build_engine
+    from etl.utils.runtime import setup_logging as _runtime_setup_logging
 
 
 
@@ -91,86 +102,19 @@ def normalize_numcnt(value) -> str | None:
 
     return text or None
 # ---------------------------------------------------------------------------
-# Logging
+# Logging (delegue a etl.utils.runtime, namespace "dwh")
 # ---------------------------------------------------------------------------
 def setup_logging(run_id: str, log_name: str = "load_dwh") -> logging.Logger:
     """Configure un logger avec handler fichier UTF-8 et handler console."""
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
-    log_file = LOGS_DIR / f"{log_name}_{run_id}.log"
-    logger = logging.getLogger(f"dwh.{run_id}")
-    logger.setLevel(logging.DEBUG)
-    logger.handlers.clear()
-
-    fmt = logging.Formatter(
-        "%(asctime)s | %(levelname)-8s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    fh = logging.FileHandler(log_file, encoding="utf-8")
-    fh.setFormatter(fmt)
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setFormatter(fmt)
-    logger.addHandler(fh)
-    logger.addHandler(ch)
-
-    logger.info(f"Logger initialise | run_id={run_id} | log={log_file}")
-    return logger
+    return _runtime_setup_logging(run_id, log_name=log_name, namespace="dwh")
 
 
 # ---------------------------------------------------------------------------
-# Connexion PostgreSQL
+# Connexion PostgreSQL (delegue a etl.utils.runtime)
 # ---------------------------------------------------------------------------
-def _parse_env_file(env_path: Path) -> dict[str, str]:
-    """Parse .env file directly, trying UTF-8 then latin-1/cp1252."""
-    for enc in ("utf-8", "cp1252", "latin-1"):
-        try:
-            text = env_path.read_text(encoding=enc)
-            break
-        except UnicodeDecodeError:
-            continue
-    else:
-        return {}
-    result: dict[str, str] = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, val = line.partition("=")
-        key = key.strip()
-        val = val.strip()
-        if len(val) >= 2 and val[0] == val[-1] and val[0] in ('"', "'"):
-            val = val[1:-1]
-        result[key] = val
-    return result
-
-
 def build_engine(logger: logging.Logger | None = None):
     """Charge .env et construit l'engine SQLAlchemy avec URL.create."""
-    env_path = BASE_DIR / ".env"
-    file_vars = _parse_env_file(env_path) if env_path.exists() else {}
-
-    def _get(key: str, default: str = "") -> str:
-        return file_vars.get(key) or os.environ.get(key, default)
-
-    host = _get("DB_HOST", "localhost")
-    port = int(_get("DB_PORT", "5432"))
-    database = _get("DB_NAME")
-    username = _get("DB_USER")
-    password = _get("DB_PASSWORD")
-
-    url = URL.create(
-        drivername="postgresql+psycopg2",
-        host=host,
-        port=port,
-        database=database,
-        username=username,
-        password=password,
-    )
-    engine = create_engine(url, pool_pre_ping=True)
-    if logger:
-        logger.info(f"Engine PostgreSQL : {host}:{port}/{database}")
-    return engine
+    return _runtime_build_engine(logger)
 
 
 # ---------------------------------------------------------------------------

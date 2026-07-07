@@ -398,14 +398,25 @@ def _deduplicate_grain(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
 
 def _write_unmatched_dimensions_report(df: pd.DataFrame) -> dict[str, int]:
     fk_cols = ["sinistre_sk", "garantie_sk", "client_sk", "contrat_sk", "vehicule_sk", "conducteur_sk", "tiers_sk", "camtier_sk", "geo_sinistre_sk"]
-    report = df[["sinistre_garantie_key", "numero_sinistre", "code_garantie", *fk_cols]].copy()
+    context_candidates = [
+        "source_numcnt", "source_contrat_key", "client_key", "vehicule_key",
+        "conducteur_key", "tiers_key", "camtier_key",
+        "regsini", "gouvsini", "citesini", "cpostsini",
+        "source_geo_key", "resolved_geo_key",
+    ]
+    context_cols = [col for col in context_candidates if col in df.columns]
+    report = df[["sinistre_garantie_key", "numero_sinistre", "code_garantie", *context_cols, *fk_cols]].copy()
     metrics = {}
     for col in fk_cols:
         flag = f"missing_{col}"
         report[flag] = report[col].eq(0)
         metrics[flag] = int(report[flag].sum())
     flag_cols = [f"missing_{c}" for c in fk_cols]
-    out_cols = ["sinistre_garantie_key", "numero_sinistre", "code_garantie", *flag_cols]
+    report["missing_dimension_count"] = report[flag_cols].sum(axis=1).astype(int)
+    out_cols = [
+        "sinistre_garantie_key", "numero_sinistre", "code_garantie",
+        *context_cols, "missing_dimension_count", *flag_cols,
+    ]
     report = report.loc[report[flag_cols].any(axis=1), out_cols]
     report.to_csv(UNMATCHED_DIMS_PATH, index=False, encoding="utf-8-sig")
     return metrics
