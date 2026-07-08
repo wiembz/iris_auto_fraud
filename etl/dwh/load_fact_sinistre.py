@@ -1,4 +1,4 @@
-﻿"""
+"""
 etl/dwh/load_fact_sinistre.py
 ==============================
 Build dwh.fact_sinistre from staging.stg_sinistres.
@@ -21,11 +21,13 @@ from pathlib import Path
 import pandas as pd
 from sqlalchemy import text
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+DWH_DIR = Path(__file__).resolve().parent
+BASE_DIR = DWH_DIR.parent.parent
+sys.path.insert(0, str(DWH_DIR))
+sys.path.insert(0, str(BASE_DIR))
 import dwh_utils
 import load_dim_geo
-
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+from etl.utils.vehicle_normalization import normalize_immatriculation
 TABLE_NAME = "fact_sinistre"
 SOURCE_TABLE = "staging.stg_sinistres"
 SOURCE_SYSTEM = "BNA_ASSURANCES"
@@ -328,7 +330,7 @@ def _dimension_maps(engine, logger) -> dict[str, dict]:
     dims["production_contract_keys"] = set(prod_contracts["numcnt"].map(dwh_utils.normalize_numcnt).dropna())
 
     dim = _read_table(engine, "dim_vehicule", ["vehicule_sk", "immatriculation"])
-    dim["_key"] = dim["immatriculation"].map(_clean_immat)
+    dim["_key"] = dim["immatriculation"].map(normalize_immatriculation)
     dims["vehicule"] = dim.dropna(subset=["_key"]).drop_duplicates("_key").set_index("_key")["vehicule_sk"].to_dict()
 
     dim = _read_table(engine, "dim_conducteur", ["conducteur_sk", "nom_conducteur", "date_naissance_conducteur", "numero_permis", "categorie_permis", "date_permis"])
@@ -547,7 +549,7 @@ def transform_fact_sinistre(df_raw: pd.DataFrame, dims: dict, geo_mapping: pd.Da
     df["source_contrat_key"] = df["source_numcnt"].map(dwh_utils.normalize_numcnt)
     df["contrat_key"] = df["source_contrat_key"]
     df["contrat_sk"] = df["contrat_key"].map(dims["contrat"]).fillna(0).astype("int64")
-    df["vehicule_key"] = _first_present(df, ["immat"]).map(_clean_immat)
+    df["vehicule_key"] = _first_present(df, ["immat"]).map(normalize_immatriculation)
     df["vehicule_sk"] = df["vehicule_key"].map(dims["vehicule"]).fillna(0).astype("int64")
 
     df["conducteur_key"] = _series_key([
@@ -741,10 +743,3 @@ if __name__ == "__main__":
     engine = dwh_utils.build_engine(logger)
     n = load_fact_sinistre(run_id, engine, logger)
     logger.info(f"Done: {n} rows -> dwh.{TABLE_NAME}")
-
-
-
-
-
-
-

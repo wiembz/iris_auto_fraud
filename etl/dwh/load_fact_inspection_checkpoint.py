@@ -32,8 +32,12 @@ from pathlib import Path
 import pandas as pd
 from sqlalchemy import text
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+DWH_DIR = Path(__file__).resolve().parent
+BASE_DIR = DWH_DIR.parent.parent
+sys.path.insert(0, str(DWH_DIR))
+sys.path.insert(0, str(BASE_DIR))
 import dwh_utils
+from etl.utils.vehicle_normalization import normalize_immatriculation
 
 # Reuse shared helpers and constants to stay consistent with
 # load_fact_inspection_vehicule (same normalisation rules, same keyword lists).
@@ -53,7 +57,6 @@ from load_fact_inspection_vehicule import (
     _normalize_checklist_value,
     _strip_accents,
     _to_date_sk_detail,
-    normalize_immatriculation,
 )
 
 # ---------------------------------------------------------------------------
@@ -219,7 +222,7 @@ def _read_staging(engine, logger) -> tuple[pd.DataFrame, list[str], list[str]]:
         else:
             logger.warning(f"  staging meta missing: {canonical}")
 
-    # Comment columns — try new naming convention first, then legacy fallback
+    # Comment columns - try new naming convention first, then legacy fallback
     present_comment_cols: list[str] = []
     for zone, candidates in _ZONE_COMMENT_CANDIDATES.items():
         canonical = ZONE_TO_COMMENT[zone]
@@ -428,7 +431,7 @@ def transform_fact_inspection_checkpoint(
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     n_source = len(df_staging)
 
-    # ── 1. Compute staging inspection key (same logic as load_fact_inspection_vehicule) ──
+    # -- 1. Compute staging inspection key (same logic as load_fact_inspection_vehicule) --
     immat_norm = df_staging["immatriculation"].map(normalize_immatriculation)
     date_sk_series = (
         df_staging["date_inspection"]
@@ -445,7 +448,7 @@ def transform_fact_inspection_checkpoint(
     df_staging = df_staging.copy()
     df_staging["_key"] = staging_keys
 
-    # ── 2. Join to fact_inspection_vehicule ──────────────────────────────────
+    # -- 2. Join to fact_inspection_vehicule ----------------------------------
     fact_lookup = (
         df_fact_vehicule[["inspection_key", "vehicule_sk", "date_inspection_sk", "immatriculation_norm"]]
         .drop_duplicates("inspection_key")
@@ -479,7 +482,7 @@ def transform_fact_inspection_checkpoint(
     logger.info(f"  join: {n_matched} matched / {n_unmatched} unmatched of {n_source} staging rows")
 
     if not checklist_cols or df_matched.empty:
-        logger.warning("  No matched rows or no checklist columns — empty checkpoint table")
+        logger.warning("  No matched rows or no checklist columns - empty checkpoint table")
         df_empty = pd.DataFrame(columns=FINAL_COLS)
         empty_metrics = {
             "source_inspection_rows":             n_source,
@@ -500,12 +503,12 @@ def transform_fact_inspection_checkpoint(
     n_expected = n_matched * len(checklist_cols)
     logger.info(f"  expected checkpoint rows: {n_matched} x {len(checklist_cols)} = {n_expected}")
 
-    # ── 3. Precompute per-column metadata (zone, libelle, is_critical) ───────
+    # -- 3. Precompute per-column metadata (zone, libelle, is_critical) -------
     col_zone     = {col: _zone_for_col(col)  for col in checklist_cols}
     col_libelle  = {col: _make_libelle(col)  for col in checklist_cols}
     col_critical = {col: _is_critical_col(col) for col in checklist_cols}
 
-    # ── 3b. Pre-melt source diagnostics ──────────────────────────────────────
+    # -- 3b. Pre-melt source diagnostics --------------------------------------
     # Compute non-null count and sample values per staging checkpoint column
     # BEFORE the melt.  Used for the mapping report and zone validation guard.
     id_cols    = ["inspection_key", "vehicule_sk", "date_inspection_sk", "immatriculation_norm"] + ALL_COMMENT_COLS
@@ -552,7 +555,7 @@ def transform_fact_inspection_checkpoint(
             "Check checklist_cols detection vs df_matched column names."
         )
 
-    # ── 4. Melt wide -> long ─────────────────────────────────────────────────
+    # -- 4. Melt wide -> long -------------------------------------------------
     df_long = df_matched[id_present + val_vars].melt(
         id_vars=id_present,
         value_vars=val_vars,
@@ -561,13 +564,13 @@ def transform_fact_inspection_checkpoint(
     )
     logger.info(f"  after melt: {len(df_long)} rows")
 
-    # ── 5. Zone, libelle, cleaned value ─────────────────────────────────────
+    # -- 5. Zone, libelle, cleaned value -------------------------------------
     df_long["zone_controle"]      = df_long["checkpoint_code"].map(col_zone)
     df_long["checkpoint_libelle"] = df_long["checkpoint_code"].map(col_libelle)
     df_long["valeur_controle"]    = df_long["_raw_value"].map(_clean_valeur)
     df_long.drop(columns=["_raw_value"], inplace=True)
 
-    # ── 6. commentaire_zone (pick the matching zone comment per row) ──────────
+    # -- 6. commentaire_zone (pick the matching zone comment per row) ----------
     df_long["commentaire_zone"] = pd.NA
     for zone, comment_col in ZONE_TO_COMMENT.items():
         if comment_col in df_long.columns:
@@ -579,10 +582,10 @@ def transform_fact_inspection_checkpoint(
         if c in df_long.columns:
             df_long.drop(columns=[c], inplace=True)
 
-    # ── 7. est_anomalie ──────────────────────────────────────────────────────
+    # -- 7. est_anomalie ------------------------------------------------------
     df_long["est_anomalie"] = df_long["valeur_controle"].map(_classify_anomalie).astype("boolean")
 
-    # ── 8. est_anomalie_critique (vectorized) ────────────────────────────────
+    # -- 8. est_anomalie_critique (vectorized) --------------------------------
     is_anomaly_mask = df_long["est_anomalie"].eq(True)
 
     # Critical from column name (precomputed)
@@ -606,10 +609,10 @@ def transform_fact_inspection_checkpoint(
     df_long.loc[is_anomaly_mask & any_crit,  "est_anomalie_critique"] = True
     df_long.loc[is_anomaly_mask & ~any_crit, "est_anomalie_critique"] = False
 
-    # ── 9. est_controle_renseigne ────────────────────────────────────────────
+    # -- 9. est_controle_renseigne --------------------------------------------
     df_long["est_controle_renseigne"] = df_long["valeur_controle"].notna().astype("boolean")
 
-    # ── 9b. Zone validation guard ────────────────────────────────────────────
+    # -- 9b. Zone validation guard --------------------------------------------
     # If a zone had non-null values in source but has 0 renseigne rows after
     # melt, that indicates a silent value-loss bug (e.g. wrong column names).
     zone_out_renseigne = (
@@ -624,7 +627,7 @@ def transform_fact_inspection_checkpoint(
         if src_count > 0 and out_count == 0:
             logger.warning(
                 f"  DATA LOSS in zone {zone}: "
-                f"{src_count} non-null values in source → 0 renseigne rows after melt. "
+                f"{src_count} non-null values in source -> 0 renseigne rows after melt. "
                 "Check staging column names vs ZONE_MAP prefixes."
             )
         else:
@@ -633,33 +636,33 @@ def transform_fact_inspection_checkpoint(
                 f"renseigne_after_melt={out_count}"
             )
 
-    # ── 10. inspection_checkpoint_key ────────────────────────────────────────
+    # -- 10. inspection_checkpoint_key ----------------------------------------
     df_long["inspection_checkpoint_key"] = (
         df_long["inspection_key"].astype(str)
         + "|"
         + df_long["checkpoint_code"].astype(str)
     )
 
-    # ── 11. Duplicate detection and deduplication ────────────────────────────
+    # -- 11. Duplicate detection and deduplication ----------------------------
     n_dup_report  = _write_duplicate_report(df_long)
     df_long, n_dup_resolved = _deduplicate_checkpoint(df_long)
 
-    # ── 12. Metadata ─────────────────────────────────────────────────────────
+    # -- 12. Metadata ---------------------------------------------------------
     df_long["source_system"] = SOURCE_SYSTEM
     df_long["created_at"]    = TODAY
 
-    # ── 13. Quality reports ──────────────────────────────────────────────────
+    # -- 13. Quality reports --------------------------------------------------
     _write_mapping_report(df_long, source_info)
     _write_value_distribution_report(df_long)
 
-    # ── 14. Sort and assign surrogate key ────────────────────────────────────
+    # -- 14. Sort and assign surrogate key ------------------------------------
     df_long = df_long.sort_values(
         ["immatriculation_norm", "date_inspection_sk", "checkpoint_code"],
         na_position="last",
     ).reset_index(drop=True)
     df_long.insert(0, "fact_inspection_checkpoint_sk", range(1, len(df_long) + 1))
 
-    # ── 15. Select and enforce types ─────────────────────────────────────────
+    # -- 15. Select and enforce types -----------------------------------------
     for col in FINAL_COLS:
         if col not in df_long.columns:
             df_long[col] = pd.NA
@@ -671,7 +674,7 @@ def transform_fact_inspection_checkpoint(
     for col in ["est_anomalie", "est_anomalie_critique", "est_controle_renseigne"]:
         df_final[col] = df_final[col].astype("boolean")
 
-    # ── 15b. Final zone guard ────────────────────────────────────────────────
+    # -- 15b. Final zone guard ------------------------------------------------
     # If SOUS_VEHICULE had staging cols but is absent from the output, raise.
     zones_in_output = set(df_final["zone_controle"].dropna())
     if detected_sv_in_vars and "SOUS_VEHICULE" not in zones_in_output:

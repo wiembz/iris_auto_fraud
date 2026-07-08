@@ -43,8 +43,12 @@ from pathlib import Path
 import pandas as pd
 from sqlalchemy import text
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+DWH_DIR = Path(__file__).resolve().parent
+BASE_DIR = DWH_DIR.parent.parent
+sys.path.insert(0, str(DWH_DIR))
+sys.path.insert(0, str(BASE_DIR))
 import dwh_utils
+from etl.utils.vehicle_normalization import normalize_immatriculation as _normalize_primary_immatriculation
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -178,10 +182,6 @@ INVALID_TEXT = frozenset({
     "SANS", "RAS",
 })
 
-INVALID_IMMAT = INVALID_TEXT | frozenset({
-    "0", "00", "000", "0000", "00000", "000000", "TEST",
-})
-
 
 # ---------------------------------------------------------------------------
 # Generic helpers
@@ -199,11 +199,8 @@ def _is_missing(value: object) -> bool:
 
 
 def normalize_immatriculation(value: object) -> str | None:
-    """Normalize Tunisian plate for DWH join. Returns None for invalid values."""
-    if _is_missing(value):
-        return None
-    s = re.sub(r"\s+", "", str(value).strip()).upper()
-    return None if not s or s in INVALID_IMMAT else s
+    """Backward-compatible wrapper around shared DWH vehicle normalization."""
+    return _normalize_primary_immatriculation(value)
 
 
 def _clean_text(value: object) -> str | None:
@@ -674,10 +671,10 @@ def transform_fact_inspection_vehicule(
     n_source = len(df)
     has_checklist = len(checklist_cols) > 0
 
-    # ── 1. immatriculation_norm ──────────────────────────────────────────────
+    # -- 1. immatriculation_norm ----------------------------------------------
     df["immatriculation_norm"] = df["immatriculation"].map(normalize_immatriculation)
 
-    # ── 2. Date inspection SK ────────────────────────────────────────────────
+    # -- 2. Date inspection SK ------------------------------------------------
     df["_source_date_inspection"] = df["date_inspection"].astype(str)
     date_results = df["date_inspection"].map(lambda v: _to_date_sk_detail(v, dims["date_keys"]))
     df["date_inspection_sk"] = date_results.map(lambda r: r["date_sk"]).astype("int64")
@@ -685,7 +682,7 @@ def transform_fact_inspection_vehicule(
     df["_date_status"]       = date_results.map(lambda r: r["date_status"])
     df["_date_reason"]       = date_results.map(lambda r: r["reason"])
 
-    # ── 3. Inspection key ────────────────────────────────────────────────────
+    # -- 3. Inspection key ----------------------------------------------------
     df["inspection_key"] = (
         df["immatriculation_norm"].fillna("UNKNOWN").astype(str)
         + "|"
@@ -694,21 +691,21 @@ def transform_fact_inspection_vehicule(
         + df["inspection_source_id"].fillna("0").astype(str).str.strip()
     )
 
-    # ── 4. Duplicate detection and deduplication ─────────────────────────────
+    # -- 4. Duplicate detection and deduplication -----------------------------
     n_dup_report = _write_duplicate_report(df)
     df, n_dup_resolved = _deduplicate_grain(df)
 
-    # ── 5. vehicule_sk ───────────────────────────────────────────────────────
+    # -- 5. vehicule_sk -------------------------------------------------------
     df["vehicule_sk"] = df["immatriculation_norm"].map(dims["vehicule"]).fillna(0).astype("int64")
 
-    # ── 6. Mileage ───────────────────────────────────────────────────────────
+    # -- 6. Mileage -----------------------------------------------------------
     if df["kilometrage"].dtype == object or str(df["kilometrage"].dtype) in ("string", "object"):
         df["kilometrage"], _km_invalid = _to_numeric_series(df["kilometrage"])
     else:
         df["kilometrage"] = pd.to_numeric(df["kilometrage"], errors="coerce").astype("Float64")
         _km_invalid = pd.Series(False, index=df.index)
 
-    # ── 7. Anomaly counts from checklist ─────────────────────────────────────
+    # -- 7. Anomaly counts from checklist -------------------------------------
     mapping_rows: list[dict] = []
     n_no_checklist = 0
 
@@ -742,7 +739,7 @@ def transform_fact_inspection_vehicule(
         df["nb_anomalies_critiques"] = pd.Series(pd.NA, index=df.index, dtype="Int64")
         df["indicateur_anomalie_critique"] = pd.Series(pd.NA, index=df.index, dtype="boolean")
 
-    # ── 8. indicateur_inspection_complete ────────────────────────────────────
+    # -- 8. indicateur_inspection_complete ------------------------------------
     has_immat   = df["immatriculation_norm"].notna()
     has_date    = df["date_inspection_sk"] != 0
     has_measure = (
@@ -751,14 +748,14 @@ def transform_fact_inspection_vehicule(
     )
     df["indicateur_inspection_complete"] = (has_immat & has_date & has_measure).astype("boolean")
 
-    # ── 9. agent_controle ────────────────────────────────────────────────────
+    # -- 9. agent_controle ----------------------------------------------------
     df["agent_controle"] = df["nom_agent_inspection"].map(_clean_agent)
 
-    # ── 10. Metadata ──────────────────────────────────────────────────────────
+    # -- 10. Metadata ----------------------------------------------------------
     df["source_system"] = SOURCE_SYSTEM
     df["created_at"]    = TODAY
 
-    # ── 11. Quality reports ───────────────────────────────────────────────────
+    # -- 11. Quality reports ---------------------------------------------------
     extra_measure = {
         "no_checklist_cols_detected": n_no_checklist,
         "checklist_cols_count":       len(checklist_cols),
@@ -768,14 +765,14 @@ def transform_fact_inspection_vehicule(
     measure_metrics   = _write_measure_anomalies_report(df, _km_invalid, extra_measure)
     _write_checklist_mapping_report(mapping_rows)
 
-    # ── 12. Sort and assign surrogate key ─────────────────────────────────────
+    # -- 12. Sort and assign surrogate key -------------------------------------
     df = df.sort_values(
         ["immatriculation_norm", "date_inspection_sk", "inspection_source_id"],
         na_position="last",
     ).reset_index(drop=True)
     df.insert(0, "fact_inspection_vehicule_sk", range(1, len(df) + 1))
 
-    # ── 13. Select and enforce types ──────────────────────────────────────────
+    # -- 13. Select and enforce types ------------------------------------------
     for col in FINAL_COLS:
         if col not in df.columns:
             df[col] = pd.NA
