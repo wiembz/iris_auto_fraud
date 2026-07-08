@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 
 import pandas as pd
 import pytest
@@ -232,6 +232,9 @@ def test_committed_config_is_loadable_and_separate_from_v1():
     assert SCORE_VERSION != V1_SCORE_VERSION
     assert config["business_rules"]["max_points"] + config["post_inspection"]["max_points"] <= config["max_score"]
     assert config["post_inspection"]["scenario_code"] == "A_INSPECTION_TO_CLAIM"
+    assert config["business_rules"]["family_caps"]["Recurrence vehicule"] == 15
+    assert config["business_rules"]["family_weights"]["Recurrence conducteur"] == 1
+    assert config["business_rules"]["rule_weights"]["THIRD_PARTY_CLAIMS_12M_HIGH"] == 1
 
 
 def test_invalid_config_rejects_negative_weight_and_excessive_caps():

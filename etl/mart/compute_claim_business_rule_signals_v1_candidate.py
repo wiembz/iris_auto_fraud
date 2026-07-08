@@ -1,4 +1,4 @@
-﻿"""
+"""
 etl/mart/compute_claim_business_rule_signals_v1_candidate.py
 ============================================================
 Builds deterministic claim business-rule attention signals.
@@ -172,6 +172,107 @@ def _json_payload(payload: dict[str, Any]) -> str:
         cleaned[key] = value
     return json.dumps(cleaned, ensure_ascii=False, sort_keys=True)
 
+
+def _is_missing_key(value: Any) -> bool:
+    number = _num(value, np.nan)
+    if np.isnan(number):
+        return True
+    return int(number) == 0
+
+
+def _valid_key_mask(frame: pd.DataFrame, key_columns: list[str]) -> pd.Series:
+    mask = pd.Series(True, index=frame.index)
+    technical_key_columns = {
+        "client_sk",
+        "contrat_sk",
+        "vehicle_sk",
+        "vehicule_sk",
+        "garantie_sk",
+        "conducteur_sk",
+        "tiers_sk",
+        "camtier_sk",
+    }
+    for column in key_columns:
+        if column not in frame.columns:
+            return pd.Series(False, index=frame.index)
+        if column in technical_key_columns or column.endswith("_sk"):
+            mask &= ~frame[column].map(_is_missing_key)
+        else:
+            mask &= frame[column].map(_text).notna()
+    return mask
+
+
+def _add_prior_recurrence_features(
+    features: pd.DataFrame,
+    key_columns: list[str],
+    prefix: str,
+    window_days: int = 365,
+) -> pd.DataFrame:
+    """Add prior-only recurrence features without using the current claim."""
+    out = features.copy()
+    count_total_col = f"{prefix}_claim_count_total"
+    count_12m_col = f"{prefix}_claim_count_12m"
+    days_previous_col = f"{prefix}_days_since_previous_claim"
+    out[count_total_col] = 0
+    out[count_12m_col] = 0
+    out[days_previous_col] = pd.NA
+
+    if out.empty or "claim_date" not in out.columns:
+        return out
+
+    dates = pd.to_datetime(out["claim_date"], errors="coerce")
+    valid = _valid_key_mask(out, key_columns) & dates.notna()
+    if not valid.any():
+        return out
+
+    work = out.loc[valid, key_columns].copy()
+    work["_row_pos"] = np.flatnonzero(valid.to_numpy())
+    work["_claim_date"] = dates.loc[valid].dt.normalize()
+    sort_columns = key_columns + ["_claim_date", "_row_pos"]
+    work = work.sort_values(sort_columns)
+
+    total_values = np.zeros(len(out), dtype=int)
+    count_12m_values = np.zeros(len(out), dtype=int)
+    days_previous_values = np.full(len(out), np.nan)
+    one_day = np.timedelta64(1, "D")
+    window = np.timedelta64(int(window_days), "D")
+
+    for _, group in work.groupby(key_columns, sort=False):
+        group = group.sort_values(["_claim_date", "_row_pos"])
+        group_dates = group["_claim_date"].to_numpy(dtype="datetime64[D]")
+        row_positions = group["_row_pos"].to_numpy(dtype=int)
+        for idx, current_date in enumerate(group_dates):
+            prior_end = int(np.searchsorted(group_dates, current_date, side="left"))
+            window_start = current_date - window
+            window_left = int(np.searchsorted(group_dates, window_start, side="left"))
+            total_values[row_positions[idx]] = prior_end
+            count_12m_values[row_positions[idx]] = max(0, prior_end - window_left)
+            if prior_end > 0:
+                previous_date = group_dates[prior_end - 1]
+                days_previous_values[row_positions[idx]] = int((current_date - previous_date) / one_day)
+
+    out[count_total_col] = total_values
+    out[count_12m_col] = count_12m_values
+    out[days_previous_col] = pd.Series(days_previous_values, index=out.index).astype("Float64")
+    return out
+
+
+def enrich_features_for_business_rules(features: pd.DataFrame) -> pd.DataFrame:
+    """Compute additional candidate-only recurrence context from existing feature keys."""
+    enriched = features.copy()
+    for column in ["claim_date", "vehicle_sk", "conducteur_sk", "tiers_sk", "client_sk", "code_garantie"]:
+        if column not in enriched.columns:
+            enriched[column] = pd.NA
+
+    recurrence_specs = [
+        (["vehicle_sk"], "vehicle"),
+        (["conducteur_sk"], "driver"),
+        (["tiers_sk"], "third_party"),
+        (["client_sk", "code_garantie"], "client_guarantee"),
+    ]
+    for key_columns, prefix in recurrence_specs:
+        enriched = _add_prior_recurrence_features(enriched, key_columns, prefix)
+    return enriched
 
 def attention_label(severity_rank: int, confidence_level: str, is_data_quality_signal: bool = False) -> str:
     if is_data_quality_signal:
@@ -429,6 +530,161 @@ def _chronology_rules(row: pd.Series) -> list[dict[str, Any]]:
     return rules
 
 
+def _entity_recurrence_rules(
+    row: pd.Series,
+    *,
+    prefix: str,
+    family: str,
+    high_code: str,
+    medium_code: str | None,
+    recent_code: str,
+    high_label: str,
+    medium_label: str | None,
+    recent_label: str,
+    high_threshold: int,
+    medium_threshold: int | None,
+    high_points: int,
+    medium_points: int,
+    recent_points: int,
+    high_explanation: str,
+    medium_explanation: str | None,
+    recent_explanation: str,
+) -> list[dict[str, Any]]:
+    count_12m = _int(row.get(f"{prefix}_claim_count_12m"))
+    days_previous = _num(row.get(f"{prefix}_days_since_previous_claim"))
+    rules: list[dict[str, Any]] = []
+
+    if count_12m >= high_threshold:
+        rules.append(_rule(
+            row=row,
+            rule_family=family,
+            rule_code=high_code,
+            rule_label=high_label,
+            rule_severity_rank=2,
+            rule_threshold_value=f"{prefix}_claim_count_12m >= {high_threshold}",
+            rule_observed_value=count_12m,
+            candidate_points=high_points,
+            business_explanation=high_explanation,
+            payload={f"{prefix}_claim_count_12m": count_12m},
+        ))
+    elif medium_code and medium_label and medium_explanation and medium_threshold is not None and count_12m == medium_threshold:
+        rules.append(_rule(
+            row=row,
+            rule_family=family,
+            rule_code=medium_code,
+            rule_label=medium_label,
+            rule_severity_rank=1,
+            rule_threshold_value=f"{prefix}_claim_count_12m = {medium_threshold}",
+            rule_observed_value=count_12m,
+            candidate_points=medium_points,
+            business_explanation=medium_explanation,
+            payload={f"{prefix}_claim_count_12m": count_12m},
+        ))
+
+    if not np.isnan(days_previous) and 0 <= days_previous <= 30:
+        rules.append(_rule(
+            row=row,
+            rule_family=family,
+            rule_code=recent_code,
+            rule_label=recent_label,
+            rule_severity_rank=1,
+            rule_threshold_value=f"0 <= {prefix}_days_since_previous_claim <= 30",
+            rule_observed_value=int(days_previous),
+            candidate_points=recent_points,
+            business_explanation=recent_explanation,
+            payload={f"{prefix}_days_since_previous_claim": int(days_previous)},
+        ))
+
+    return rules
+
+
+def _vehicle_recurrence_rules(row: pd.Series) -> list[dict[str, Any]]:
+    return _entity_recurrence_rules(
+        row,
+        prefix="vehicle",
+        family="Recurrence vehicule",
+        high_code="VEHICLE_CLAIMS_12M_HIGH",
+        medium_code="VEHICLE_CLAIMS_12M_MEDIUM",
+        recent_code="VEHICLE_RECENT_PREVIOUS_CLAIM",
+        high_label="Recurrence vehicule elevee sur 12 mois",
+        medium_label="Deux sinistres vehicule sur 12 mois",
+        recent_label="Sinistre vehicule precedent recent",
+        high_threshold=3,
+        medium_threshold=2,
+        high_points=15,
+        medium_points=10,
+        recent_points=5,
+        high_explanation="Plusieurs sinistres precedents sont observes sur le meme vehicule dans les 12 derniers mois; le dossier peut etre priorise pour verification contextualisee.",
+        medium_explanation="Deux sinistres precedents sont observes sur le meme vehicule dans les 12 derniers mois; ce contexte merite une revue metier.",
+        recent_explanation="Le dossier suit de pres un sinistre precedent du meme vehicule; le delai court justifie une verification de contexte.",
+    )
+
+
+def _driver_recurrence_rules(row: pd.Series) -> list[dict[str, Any]]:
+    return _entity_recurrence_rules(
+        row,
+        prefix="driver",
+        family="Recurrence conducteur",
+        high_code="DRIVER_CLAIMS_12M_HIGH",
+        medium_code=None,
+        recent_code="DRIVER_RECENT_PREVIOUS_CLAIM",
+        high_label="Recurrence conducteur sur 12 mois",
+        medium_label=None,
+        recent_label="Sinistre conducteur precedent recent",
+        high_threshold=2,
+        medium_threshold=None,
+        high_points=10,
+        medium_points=0,
+        recent_points=5,
+        high_explanation="Plusieurs sinistres precedents sont rattaches au meme conducteur dans les 12 derniers mois; ce signal sert a prioriser la verification.",
+        medium_explanation=None,
+        recent_explanation="Le dossier suit de pres un sinistre precedent rattache au meme conducteur; ce contexte peut etre examine.",
+    )
+
+
+def _third_party_recurrence_rules(row: pd.Series) -> list[dict[str, Any]]:
+    return _entity_recurrence_rules(
+        row,
+        prefix="third_party",
+        family="Recurrence tiers",
+        high_code="THIRD_PARTY_CLAIMS_12M_HIGH",
+        medium_code=None,
+        recent_code="THIRD_PARTY_RECENT_PREVIOUS_CLAIM",
+        high_label="Recurrence tiers sur 12 mois",
+        medium_label=None,
+        recent_label="Sinistre tiers precedent recent",
+        high_threshold=2,
+        medium_threshold=None,
+        high_points=10,
+        medium_points=0,
+        recent_points=5,
+        high_explanation="Plusieurs sinistres precedents impliquent le meme tiers dans les 12 derniers mois; le dossier peut etre examine avec attention.",
+        medium_explanation=None,
+        recent_explanation="Le dossier suit de pres un sinistre precedent impliquant le meme tiers; ce contexte peut etre documente.",
+    )
+
+
+def _client_guarantee_recurrence_rules(row: pd.Series) -> list[dict[str, Any]]:
+    return _entity_recurrence_rules(
+        row,
+        prefix="client_guarantee",
+        family="Repetition garantie",
+        high_code="CLIENT_GUARANTEE_REPEAT_12M_HIGH",
+        medium_code="CLIENT_GUARANTEE_REPEAT_12M_MEDIUM",
+        recent_code="CLIENT_GUARANTEE_RECENT_PREVIOUS_CLAIM",
+        high_label="Repetition client garantie elevee",
+        medium_label="Repetition client garantie a examiner",
+        recent_label="Sinistre precedent recent sur meme garantie",
+        high_threshold=3,
+        medium_threshold=2,
+        high_points=12,
+        medium_points=8,
+        recent_points=4,
+        high_explanation="Plusieurs sinistres precedents du meme client concernent la meme garantie sur 12 mois; ce contexte peut renforcer la priorisation.",
+        medium_explanation="Deux sinistres precedents du meme client concernent la meme garantie sur 12 mois; ce point merite une revue contextualisee.",
+        recent_explanation="Un sinistre precedent du meme client sur la meme garantie est recent; ce contexte peut etre utile au gestionnaire.",
+    )
+
 def _data_quality_rules(row: pd.Series) -> list[dict[str, Any]]:
     missing_flags = [
         flag for flag in [
@@ -480,6 +736,10 @@ def _data_quality_rules(row: pd.Series) -> list[dict[str, Any]]:
 def claim_business_rules_for_row(row: pd.Series) -> list[dict[str, Any]]:
     rules: list[dict[str, Any]] = []
     rules.extend(_client_recurrence_rules(row))
+    rules.extend(_vehicle_recurrence_rules(row))
+    rules.extend(_driver_recurrence_rules(row))
+    rules.extend(_third_party_recurrence_rules(row))
+    rules.extend(_client_guarantee_recurrence_rules(row))
     rules.extend(_amount_rules(row))
     rules.extend(_chronology_rules(row))
     rules.extend(_data_quality_rules(row))
@@ -500,6 +760,8 @@ def compute_claim_business_rule_signals(
 ) -> pd.DataFrame:
     signal_run_id = signal_run_id or f"{SIGNAL_VERSION}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
     created_at = created_at or datetime.now(timezone.utc).replace(tzinfo=None)
+
+    features = enrich_features_for_business_rules(features)
 
     signal_rows: list[dict[str, Any]] = []
     for _, row in features.iterrows():
@@ -830,5 +1092,3 @@ def compute_claim_business_rule_signals_v1_candidate(feature_run_id: str | None 
 
 if __name__ == "__main__":
     compute_claim_business_rule_signals_v1_candidate()
-
-

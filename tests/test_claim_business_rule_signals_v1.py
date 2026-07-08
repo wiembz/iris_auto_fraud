@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 
 import pandas as pd
 
@@ -7,6 +7,7 @@ from etl.mart.compute_claim_business_rule_signals_v1_candidate import (
     attention_label,
     compute_claim_business_rule_signals,
     contains_accusatory_wording,
+    enrich_features_for_business_rules,
     validate_business_rule_signals,
 )
 
@@ -152,3 +153,148 @@ def test_validation_detects_duplicate_grain_and_accusatory_wording():
     assert validation["duplicate_grain_rows"] == 1
     assert validation["accusatory_wording_rows"] == 1
     assert contains_accusatory_wording("proof of fraud")
+
+
+def test_enriched_recurrence_uses_prior_claims_only_and_ignores_zero_keys():
+    features = pd.DataFrame([
+        {
+            "claim_sk": 10,
+            "claim_business_id": "S10|G1",
+            "feature_run_id": "FEATURE_RUN",
+            "claim_date": "2024-01-01",
+            "vehicle_sk": 100,
+            "conducteur_sk": 500,
+            "tiers_sk": 700,
+            "client_sk": 900,
+            "code_garantie": "G1",
+            "confidence_level": "HIGH",
+        },
+        {
+            "claim_sk": 11,
+            "claim_business_id": "S11|G1",
+            "feature_run_id": "FEATURE_RUN",
+            "claim_date": "2024-01-01",
+            "vehicle_sk": 100,
+            "conducteur_sk": 500,
+            "tiers_sk": 700,
+            "client_sk": 900,
+            "code_garantie": "G1",
+            "confidence_level": "HIGH",
+        },
+        {
+            "claim_sk": 12,
+            "claim_business_id": "S12|G1",
+            "feature_run_id": "FEATURE_RUN",
+            "claim_date": "2024-01-20",
+            "vehicle_sk": 100,
+            "conducteur_sk": 500,
+            "tiers_sk": 700,
+            "client_sk": 900,
+            "code_garantie": "G1",
+            "confidence_level": "HIGH",
+        },
+        {
+            "claim_sk": 13,
+            "claim_business_id": "S13|G1",
+            "feature_run_id": "FEATURE_RUN",
+            "claim_date": "2024-02-01",
+            "vehicle_sk": 0,
+            "conducteur_sk": 0,
+            "tiers_sk": 0,
+            "client_sk": 0,
+            "code_garantie": "G1",
+            "confidence_level": "LOW",
+        },
+    ])
+
+    enriched = enrich_features_for_business_rules(features)
+    by_claim = enriched.set_index("claim_sk")
+
+    assert by_claim.loc[10, "vehicle_claim_count_12m"] == 0
+    assert by_claim.loc[11, "vehicle_claim_count_12m"] == 0
+    assert by_claim.loc[12, "vehicle_claim_count_12m"] == 2
+    assert by_claim.loc[12, "vehicle_days_since_previous_claim"] == 19
+    assert by_claim.loc[13, "vehicle_claim_count_12m"] == 0
+
+
+def test_vehicle_driver_third_party_and_guarantee_rules_are_candidate_signals():
+    features = pd.DataFrame([
+        {
+            "claim_sk": 20,
+            "claim_business_id": "S20|G1",
+            "feature_run_id": "FEATURE_RUN",
+            "claim_date": "2024-01-01",
+            "client_sk": 910,
+            "contrat_sk": 1,
+            "vehicle_sk": 200,
+            "conducteur_sk": 600,
+            "tiers_sk": 800,
+            "code_garantie": "G2",
+            "confidence_level": "HIGH",
+            "client_claim_count_12m": 0,
+            "days_since_previous_claim": pd.NA,
+            "amount_vs_guarantee_median_ratio": 1.0,
+            "amount_percentile_by_guarantee": 0.5,
+            "high_amount_flag": False,
+            "days_contract_start_to_claim": pd.NA,
+            "claim_before_contract_start_flag": False,
+            "days_claim_to_declaration": 1,
+        },
+        {
+            "claim_sk": 21,
+            "claim_business_id": "S21|G1",
+            "feature_run_id": "FEATURE_RUN",
+            "claim_date": "2024-02-01",
+            "client_sk": 910,
+            "contrat_sk": 1,
+            "vehicle_sk": 200,
+            "conducteur_sk": 600,
+            "tiers_sk": 800,
+            "code_garantie": "G2",
+            "confidence_level": "HIGH",
+            "client_claim_count_12m": 0,
+            "days_since_previous_claim": pd.NA,
+            "amount_vs_guarantee_median_ratio": 1.0,
+            "amount_percentile_by_guarantee": 0.5,
+            "high_amount_flag": False,
+            "days_contract_start_to_claim": pd.NA,
+            "claim_before_contract_start_flag": False,
+            "days_claim_to_declaration": 1,
+        },
+        {
+            "claim_sk": 22,
+            "claim_business_id": "S22|G1",
+            "feature_run_id": "FEATURE_RUN",
+            "claim_date": "2024-02-20",
+            "client_sk": 910,
+            "contrat_sk": 1,
+            "vehicle_sk": 200,
+            "conducteur_sk": 600,
+            "tiers_sk": 800,
+            "code_garantie": "G2",
+            "confidence_level": "HIGH",
+            "client_claim_count_12m": 0,
+            "days_since_previous_claim": pd.NA,
+            "amount_vs_guarantee_median_ratio": 1.0,
+            "amount_percentile_by_guarantee": 0.5,
+            "high_amount_flag": False,
+            "days_contract_start_to_claim": pd.NA,
+            "claim_before_contract_start_flag": False,
+            "days_claim_to_declaration": 1,
+        },
+    ])
+
+    signals = compute_claim_business_rule_signals(features, signal_run_id="RULE_RUN")
+    claim_22_codes = set(signals.loc[signals["claim_sk"].eq(22), "rule_code"])
+
+    assert {
+        "VEHICLE_CLAIMS_12M_MEDIUM",
+        "VEHICLE_RECENT_PREVIOUS_CLAIM",
+        "DRIVER_CLAIMS_12M_HIGH",
+        "DRIVER_RECENT_PREVIOUS_CLAIM",
+        "THIRD_PARTY_CLAIMS_12M_HIGH",
+        "THIRD_PARTY_RECENT_PREVIOUS_CLAIM",
+        "CLIENT_GUARANTEE_REPEAT_12M_MEDIUM",
+        "CLIENT_GUARANTEE_RECENT_PREVIOUS_CLAIM",
+    }.issubset(claim_22_codes)
+    assert validate_business_rule_signals(signals)["accusatory_wording_rows"] == 0
