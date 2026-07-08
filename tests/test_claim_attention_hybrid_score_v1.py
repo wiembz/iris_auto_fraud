@@ -1,14 +1,18 @@
 from datetime import datetime
 
 import pandas as pd
+import pytest
 
 from etl.mart.compute_claim_attention_hybrid_score_v1_candidate import (
     SCORE_VERSION,
+    CONFIG_PATH,
     attention_level,
     compute_claim_attention_hybrid_scores,
+    load_score_config,
     validate_hybrid_outputs,
+    validate_score_config,
 )
-
+from etl.mart.compute_claim_attention_score_v1_candidate import SCORE_VERSION as V1_SCORE_VERSION
 
 def _config():
     return {
@@ -220,3 +224,82 @@ def test_data_quality_rule_does_not_add_points():
     assert scores.loc[0, "attention_score"] == 0
     assert details.empty
     assert scores.loc[0, "confidence_level"] == "LOW"
+
+def test_committed_config_is_loadable_and_separate_from_v1():
+    config = load_score_config(CONFIG_PATH)
+
+    assert config["score_version"] == SCORE_VERSION
+    assert SCORE_VERSION != V1_SCORE_VERSION
+    assert config["business_rules"]["max_points"] + config["post_inspection"]["max_points"] <= config["max_score"]
+    assert config["post_inspection"]["scenario_code"] == "A_INSPECTION_TO_CLAIM"
+
+
+def test_invalid_config_rejects_negative_weight_and_excessive_caps():
+    config = _config()
+    config["business_rules"]["rule_weights"]["AMOUNT_HIGH_BY_GUARANTEE"] = -0.1
+    with pytest.raises(ValueError):
+        validate_score_config(config)
+
+    config = _config()
+    config["business_rules"]["max_points"] = 90
+    config["post_inspection"]["max_points"] = 25
+    with pytest.raises(ValueError):
+        validate_score_config(config)
+
+
+def test_scenario_b_post_inspection_is_ignored_for_points_and_details():
+    features = pd.DataFrame([{
+        "claim_sk": 4,
+        "claim_business_id": "S4|G1",
+        "feature_run_id": "FEATURE_RUN",
+        "confidence_level": "HIGH",
+    }])
+    post = pd.DataFrame([{
+        "claim_sk": 4,
+        "scenario_code": "B_INSPECTION_TO_AVENANT",
+        "confidence_level": "HIGH",
+        "days_inspection_to_claim": 3,
+        "defective_zone": "SOUS_CAPOT",
+    }])
+
+    scores, details = compute_claim_attention_hybrid_scores(
+        features,
+        pd.DataFrame(),
+        post,
+        config=_config(),
+        score_run_id="HYBRID_RUN",
+    )
+
+    assert scores.loc[0, "attention_score"] == 0
+    assert details.empty
+
+
+def test_hybrid_validation_detects_accusatory_wording():
+    features = pd.DataFrame([{
+        "claim_sk": 5,
+        "claim_business_id": "S5|G1",
+        "feature_run_id": "FEATURE_RUN",
+        "confidence_level": "HIGH",
+    }])
+    business_rules = pd.DataFrame([{
+        "claim_sk": 5,
+        "claim_business_id": "S5|G1",
+        "rule_family": "Montant atypique",
+        "rule_code": "AMOUNT_HIGH_BY_GUARANTEE",
+        "rule_label": "Montant eleve",
+        "rule_severity_rank": 3,
+        "rule_observed_value": "ratio=4",
+        "candidate_points": 20,
+        "business_explanation": "fraud detected",
+        "is_data_quality_signal": False,
+    }])
+
+    scores, details = compute_claim_attention_hybrid_scores(
+        features,
+        business_rules,
+        pd.DataFrame(),
+        config=_config(),
+        score_run_id="HYBRID_RUN",
+    )
+
+    assert validate_hybrid_outputs(scores, details)["accusatory_wording_rows"] == 1

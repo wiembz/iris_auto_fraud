@@ -1,4 +1,4 @@
-﻿"""
+"""
 etl/mart/compute_claim_attention_hybrid_score_v1_candidate.py
 =============================================================
 Computes the configurable hybrid Claim Attention score candidate.
@@ -99,8 +99,31 @@ def validate_score_config(config: dict[str, Any]) -> None:
         raise ValueError(f"Missing hybrid score config keys: {missing}")
     if config["score_version"] != SCORE_VERSION:
         raise ValueError(f"Config score_version must be {SCORE_VERSION}")
-    if int(config["max_score"]) <= 0:
+    max_score = int(config["max_score"])
+    if max_score <= 0:
         raise ValueError("Config max_score must be positive.")
+
+    business_config = config["business_rules"]
+    post_config = config["post_inspection"]
+    business_max = int(business_config.get("max_points", 0))
+    post_max = int(post_config.get("max_points", 0))
+    if business_max < 0 or post_max < 0:
+        raise ValueError("Configured max point values must be non-negative.")
+    if business_max + post_max > max_score:
+        raise ValueError("Configured family maxima exceed the global max_score.")
+
+    for section_name, weights in [
+        ("rule_weights", business_config.get("rule_weights", {})),
+        ("family_weights", business_config.get("family_weights", {})),
+    ]:
+        negative_keys = [key for key, value in weights.items() if float(value) < 0]
+        if negative_keys:
+            raise ValueError(f"Negative values are not allowed in {section_name}: {negative_keys}")
+
+    family_caps = business_config.get("family_caps", {})
+    negative_caps = [key for key, value in family_caps.items() if int(value) < 0]
+    if negative_caps:
+        raise ValueError(f"Negative family caps are not allowed: {negative_caps}")
 
 
 def _num(value: Any, default: float = np.nan) -> float:
@@ -841,6 +864,3 @@ def compute_claim_attention_hybrid_score_v1_candidate(
 
 if __name__ == "__main__":
     compute_claim_attention_hybrid_score_v1_candidate()
-
-
-

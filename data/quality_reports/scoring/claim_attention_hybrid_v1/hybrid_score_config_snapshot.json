@@ -1,0 +1,56 @@
+{
+  "score_version": "IRIS_CLAIM_ATTENTION_HYBRID_V1_CANDIDATE",
+  "profile_name": "CLAIM_ATTENTION_HYBRID_V1_CANDIDATE",
+  "max_score": 100,
+  "business_rules": {
+    "enabled": true,
+    "max_points": 70,
+    "exclude_data_quality_signals": true,
+    "default_rule_weight": 1.0,
+    "family_weights": {
+      "Recurrence client": 1.0,
+      "Montant atypique": 1.0,
+      "Chronologie": 1.0
+    },
+    "family_caps": {
+      "Recurrence client": 25,
+      "Montant atypique": 25,
+      "Chronologie": 20
+    },
+    "rule_weights": {
+      "CLIENT_CLAIMS_12M_HIGH": 1.0,
+      "CLIENT_CLAIMS_12M_MEDIUM": 1.0,
+      "CLIENT_CLAIMS_12M_LOW": 1.0,
+      "CLIENT_RECENT_PREVIOUS_CLAIM": 1.0,
+      "AMOUNT_HIGH_BY_GUARANTEE": 1.0,
+      "AMOUNT_MEDIUM_BY_GUARANTEE": 1.0,
+      "AMOUNT_LOW_BY_GUARANTEE": 1.0,
+      "CLAIM_BEFORE_CONTRACT_START": 1.0,
+      "CLAIM_SOON_AFTER_CONTRACT_START": 1.0,
+      "CLAIM_WITHIN_90D_CONTRACT_START": 1.0,
+      "DECLARATION_BEFORE_CLAIM_DATE": 1.0,
+      "LONG_DECLARATION_DELAY_HIGH": 1.0,
+      "LONG_DECLARATION_DELAY_MEDIUM": 1.0
+    }
+  },
+  "post_inspection": {
+    "enabled": true,
+    "max_points": 25,
+    "scenario_code": "A_INSPECTION_TO_CLAIM",
+    "confidence_points": {
+      "HIGH": 25,
+      "MEDIUM": 15,
+      "LOW": 0
+    },
+    "include_zero_point_context": true
+  },
+  "confidence": {
+    "use_feature_confidence_level": true,
+    "missing_data_changes_confidence_not_points": true
+  },
+  "attention_levels": {
+    "standard_max": 24,
+    "points_to_verify_max": 49,
+    "reinforced_review_max": 74
+  }
+}
