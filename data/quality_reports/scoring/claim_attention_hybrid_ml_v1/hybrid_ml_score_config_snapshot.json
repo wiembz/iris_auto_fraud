@@ -1,0 +1,20 @@
+{
+  "score_version": "IRIS_CLAIM_ATTENTION_HYBRID_ML_V1_CANDIDATE",
+  "profile_name": "CLAIM_ATTENTION_HYBRID_ML_V1_CANDIDATE",
+  "max_score": 100,
+  "base_hybrid_score_version": "IRIS_CLAIM_ATTENTION_HYBRID_V1_CANDIDATE",
+  "ml_signal_version": "IRIS_CLAIM_ML_ANOMALY_SIGNAL_V1_CANDIDATE",
+  "ml": {
+    "enabled": true,
+    "max_points": 10,
+    "include_zero_point_context": false,
+    "signal_family": "ML atypicite calibree"
+  },
+  "governance": {
+    "candidate_only": true,
+    "human_review_only": true,
+    "base_score_not_overwritten": true,
+    "do_not_modify_vhs": true,
+    "do_not_modify_claim_attention_v1": true
+  }
+}

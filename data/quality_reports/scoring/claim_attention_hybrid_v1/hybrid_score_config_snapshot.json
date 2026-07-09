@@ -10,12 +10,20 @@
     "family_weights": {
       "Recurrence client": 1.0,
       "Montant atypique": 1.0,
-      "Chronologie": 1.0
+      "Chronologie": 1.0,
+      "Recurrence vehicule": 1,
+      "Recurrence conducteur": 1,
+      "Recurrence tiers": 1,
+      "Repetition garantie": 1
     },
     "family_caps": {
       "Recurrence client": 25,
       "Montant atypique": 25,
-      "Chronologie": 20
+      "Chronologie": 20,
+      "Recurrence vehicule": 15,
+      "Recurrence conducteur": 12,
+      "Recurrence tiers": 12,
+      "Repetition garantie": 10
     },
     "rule_weights": {
       "CLIENT_CLAIMS_12M_HIGH": 1.0,
@@ -30,7 +38,17 @@
       "CLAIM_WITHIN_90D_CONTRACT_START": 1.0,
       "DECLARATION_BEFORE_CLAIM_DATE": 1.0,
       "LONG_DECLARATION_DELAY_HIGH": 1.0,
-      "LONG_DECLARATION_DELAY_MEDIUM": 1.0
+      "LONG_DECLARATION_DELAY_MEDIUM": 1.0,
+      "VEHICLE_CLAIMS_12M_HIGH": 1,
+      "VEHICLE_CLAIMS_12M_MEDIUM": 1,
+      "VEHICLE_RECENT_PREVIOUS_CLAIM": 1,
+      "DRIVER_CLAIMS_12M_HIGH": 1,
+      "DRIVER_RECENT_PREVIOUS_CLAIM": 1,
+      "THIRD_PARTY_CLAIMS_12M_HIGH": 1,
+      "THIRD_PARTY_RECENT_PREVIOUS_CLAIM": 1,
+      "CLIENT_GUARANTEE_REPEAT_12M_HIGH": 1,
+      "CLIENT_GUARANTEE_REPEAT_12M_MEDIUM": 1,
+      "CLIENT_GUARANTEE_RECENT_PREVIOUS_CLAIM": 1
     }
   },
   "post_inspection": {
