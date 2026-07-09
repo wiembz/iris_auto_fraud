@@ -1,0 +1,137 @@
+﻿<div class="app-shell">
+  <aside class="sidebar" aria-label="Navigation IRIS">
+    <div class="brand-block">
+      <span class="brand-mark">IRIS</span>
+      <div>
+        <p class="eyebrow">BNA Assurances</p>
+        <h1>Revue des dossiers</h1>
+      </div>
+    </div>
+
+    <nav class="side-nav">
+      <a class="active" href="#worklist">Table de travail</a>
+      <a href="#summary">Synthese</a>
+      <a href="#governance">Gouvernance</a>
+    </nav>
+
+    <div class="governance-note" id="governance">
+      <strong>Aide a l'analyse</strong>
+      <span>Les signaux affiches ne remplacent pas la decision du gestionnaire.</span>
+    </div>
+  </aside>
+
+  <main class="workspace">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">Claim Attention Dashboard</p>
+        <h2>Dossiers sinistres a examiner</h2>
+        <p class="subtitle">
+          Consultation read-only des resultats IRIS pour prioriser, comprendre et preparer la revue metier.
+        </p>
+      </div>
+      <button type="button" class="refresh-button" (click)="refresh()">Actualiser</button>
+    </header>
+
+    <section class="version-panel" aria-label="Selection de version">
+      <label for="score-version">Version affichee</label>
+      <select id="score-version" [(ngModel)]="selectedScoreVersion" (change)="refresh()">
+        <option *ngFor="let option of scoreVersions" [value]="option.value">{{ option.label }}</option>
+      </select>
+      <p>{{ selectedVersionHelper }}</p>
+    </section>
+
+    <section class="summary-grid" id="summary" *ngIf="summary">
+      <article class="metric-block">
+        <span>Total dossiers</span>
+        <strong>{{ summary.total_claims | number }}</strong>
+        <small>{{ summary.score_run_id }}</small>
+      </article>
+
+      <article class="metric-block" *ngFor="let item of summary.attention_distribution">
+        <span>{{ item.attention_level }}</span>
+        <strong>{{ item.claims | number }}</strong>
+        <small>Niveau d'attention</small>
+      </article>
+    </section>
+
+    <section class="filters" aria-label="Filtres dossier">
+      <div class="filter-field">
+        <label for="attention-level">Niveau d'attention</label>
+        <select id="attention-level" [(ngModel)]="selectedAttentionLevel" (change)="onFilterChange()">
+          <option value="">Tous</option>
+          <option *ngFor="let level of attentionLevels" [value]="level">{{ level }}</option>
+        </select>
+      </div>
+
+      <div class="filter-field">
+        <label for="confidence-level">Confiance des donnees</label>
+        <select id="confidence-level" [(ngModel)]="selectedConfidenceLevel" (change)="onFilterChange()">
+          <option value="">Toutes</option>
+          <option *ngFor="let level of confidenceLevels" [value]="level">{{ level }}</option>
+        </select>
+      </div>
+
+      <label class="toggle-field">
+        <input type="checkbox" [(ngModel)]="hasPostInspectionOnly" (change)="onFilterChange()" />
+        Signal post-inspection
+      </label>
+
+      <label class="toggle-field">
+        <input type="checkbox" [(ngModel)]="hasMlOnly" (change)="onFilterChange()" />
+        Atypicite statistique
+      </label>
+    </section>
+
+    <section class="error-state" *ngIf="errorMessage">
+      {{ errorMessage }}
+    </section>
+
+    <section class="worklist" id="worklist">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Table de travail</p>
+          <h3>{{ totalClaims | number }} dossiers trouves</h3>
+        </div>
+        <span class="loading" *ngIf="isLoading">Chargement...</span>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Dossier</th>
+              <th>Niveau</th>
+              <th>Score</th>
+              <th>Confiance</th>
+              <th>Raison principale</th>
+              <th>Signaux</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let claim of claims; trackBy: trackByClaim">
+              <td>
+                <strong>{{ claim.claim_business_id || claim.claim_sk }}</strong>
+                <span>#{{ claim.claim_sk }}</span>
+              </td>
+              <td><app-attention-badge [label]="claim.attention_level" /></td>
+              <td class="score-cell">{{ claim.attention_score }}</td>
+              <td><app-attention-badge [label]="claim.confidence_level" type="confidence" /></td>
+              <td>{{ claim.main_reason_1 || 'Raison principale non disponible' }}</td>
+              <td>
+                <div class="signal-tags">
+                  <span *ngIf="claim.has_post_inspection_signal">Post-inspection</span>
+                  <span *ngIf="claim.has_ml_signal">Atypicite</span>
+                  <span *ngIf="!claim.has_post_inspection_signal && !claim.has_ml_signal">Regles metier</span>
+                </div>
+              </td>
+              <td><button type="button" class="row-button">Voir dossier</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<router-outlet />
