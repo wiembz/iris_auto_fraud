@@ -20,6 +20,7 @@ class ApiConfig:
     ml_signal_version: str = DEFAULT_ML_SIGNAL_VERSION
     post_inspection_signal_version: str = DEFAULT_POST_INSPECTION_SIGNAL_VERSION
     max_page_size: int = 200
+    summary_cache_ttl_seconds: int = 60
 
 
 def load_config() -> ApiConfig:
@@ -33,4 +34,5 @@ def load_config() -> ApiConfig:
             DEFAULT_POST_INSPECTION_SIGNAL_VERSION,
         ),
         max_page_size=int(os.getenv("IRIS_API_MAX_PAGE_SIZE", "200")),
+        summary_cache_ttl_seconds=int(os.getenv("IRIS_API_SUMMARY_CACHE_TTL_SECONDS", "60")),
     )

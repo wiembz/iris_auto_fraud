@@ -1,4 +1,4 @@
-﻿"""Read-only claim query service for the IRIS frontend API."""
+"""Read-only claim query service for the IRIS frontend API."""
 from __future__ import annotations
 
 from typing import Any
@@ -6,7 +6,12 @@ from typing import Any
 from sqlalchemy import text
 
 from backend.config import ApiConfig
-from backend.services.query_helpers import latest_score_run_sql, scalar_or_none
+from backend.services.query_helpers import (
+    latest_ml_signal_run_sql,
+    latest_post_inspection_run_sql,
+    latest_score_run_sql,
+    scalar_or_none,
+)
 from backend.services.serialization import row_to_dict, rows_to_dicts
 
 
@@ -14,11 +19,59 @@ def _latest_score_run(conn, score_version: str) -> str | None:
     return scalar_or_none(conn, latest_score_run_sql(), {"score_version": score_version})
 
 
+def _latest_ml_run(conn, config: ApiConfig) -> str | None:
+    return scalar_or_none(
+        conn,
+        latest_ml_signal_run_sql(),
+        {"signal_version": config.ml_signal_version},
+    )
+
+
+def _latest_post_inspection_run(conn, config: ApiConfig) -> str | None:
+    return scalar_or_none(
+        conn,
+        latest_post_inspection_run_sql(),
+        {"signal_version": config.post_inspection_signal_version},
+    )
+
+
+def _bool_filter(value: Any) -> bool:
+    return str(value).lower() == "true"
+
+
+def _safe_int(value: Any, default: int, min_value: int, max_value: int | None = None) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    parsed = max(parsed, min_value)
+    if max_value is not None:
+        parsed = min(parsed, max_value)
+    return parsed
+
+
+def _signal_exists_sql(table_name: str, run_column: str) -> str:
+    return f"""
+        EXISTS (
+            SELECT 1
+            FROM {table_name} sig
+            WHERE sig.claim_sk = s.claim_sk
+              AND sig.signal_version = :{table_name.replace('.', '_')}_version
+              AND sig.{run_column} = :{table_name.replace('.', '_')}_run_id
+        )
+    """
+
+
 def list_claims(engine, config: ApiConfig, filters: dict[str, Any]) -> dict[str, Any]:
-    """Return paginated claim scores for the latest selected score run."""
+    """Return a bounded page of claim scores for the latest selected run."""
     score_version = filters.get("score_version") or config.default_score_version
-    page = max(int(filters.get("page") or 1), 1)
-    page_size = min(max(int(filters.get("page_size") or 50), 1), config.max_page_size)
+    page = _safe_int(filters.get("page"), default=1, min_value=1)
+    page_size = _safe_int(
+        filters.get("page_size"),
+        default=50,
+        min_value=1,
+        max_value=config.max_page_size,
+    )
     offset = (page - 1) * page_size
 
     where = ["s.score_version = :score_version", "s.score_run_id = :score_run_id"]
@@ -36,19 +89,13 @@ def list_claims(engine, config: ApiConfig, filters: dict[str, Any]) -> dict[str,
         params["confidence_level"] = filters["confidence_level"]
     if filters.get("min_score") is not None:
         where.append("s.attention_score >= :min_score")
-        params["min_score"] = int(filters["min_score"])
+        params["min_score"] = _safe_int(filters["min_score"], 0, 0, 100)
     if filters.get("max_score") is not None:
         where.append("s.attention_score <= :max_score")
-        params["max_score"] = int(filters["max_score"])
+        params["max_score"] = _safe_int(filters["max_score"], 100, 0, 100)
     if filters.get("search"):
         where.append("s.claim_business_id ILIKE :search")
         params["search"] = f"%{filters['search']}%"
-    if filters.get("has_ml") == "true":
-        where.append("ml.claim_sk IS NOT NULL")
-    if filters.get("has_post_inspection") == "true":
-        where.append("pi.claim_sk IS NOT NULL")
-
-    where_sql = " AND ".join(where)
 
     with engine.connect() as conn:
         score_run_id = _latest_score_run(conn, score_version)
@@ -58,30 +105,49 @@ def list_claims(engine, config: ApiConfig, filters: dict[str, Any]) -> dict[str,
                 "score_run_id": None,
                 "page": page,
                 "page_size": page_size,
+                "max_page_size": config.max_page_size,
                 "total": 0,
                 "items": [],
             }
         params["score_run_id"] = score_run_id
 
+        ml_run_id = _latest_ml_run(conn, config)
+        post_inspection_run_id = _latest_post_inspection_run(conn, config)
+        params["mart_fact_claim_ml_anomaly_signal_version"] = config.ml_signal_version
+        params["mart_fact_claim_ml_anomaly_signal_run_id"] = ml_run_id or "__NO_ML_RUN__"
+        params["mart_fact_post_inspection_attention_signal_version"] = config.post_inspection_signal_version
+        params["mart_fact_post_inspection_attention_signal_run_id"] = post_inspection_run_id or "__NO_PI_RUN__"
+
+        ml_exists_sql = _signal_exists_sql("mart.fact_claim_ml_anomaly_signal", "signal_run_id")
+        post_inspection_exists_sql = _signal_exists_sql(
+            "mart.fact_post_inspection_attention_signal",
+            "signal_run_id",
+        )
+
+        if _bool_filter(filters.get("has_ml")):
+            where.append(ml_exists_sql)
+        if _bool_filter(filters.get("has_post_inspection")):
+            where.append(post_inspection_exists_sql)
+
+        where_sql = " AND ".join(where)
+
         count_sql = f"""
-            SELECT COUNT(DISTINCT s.claim_sk) AS total
+            SELECT COUNT(*) AS total
             FROM mart.fact_claim_attention_score s
-            LEFT JOIN mart.fact_claim_ml_anomaly_signal ml
-                ON ml.claim_sk = s.claim_sk
-               AND ml.signal_version = :ml_signal_version
-            LEFT JOIN mart.fact_post_inspection_attention_signal pi
-                ON pi.claim_sk = s.claim_sk
-               AND pi.signal_version = :post_inspection_signal_version
             WHERE {where_sql}
         """
-        params["ml_signal_version"] = config.ml_signal_version
-        params["post_inspection_signal_version"] = config.post_inspection_signal_version
         total = conn.execute(text(count_sql), params).scalar_one()
 
         query_sql = f"""
             SELECT
                 s.claim_sk,
                 s.claim_business_id,
+                f.numero_sinistre,
+                f.client_sk,
+                f.contrat_sk,
+                f.code_garantie,
+                f.claim_date,
+                f.claim_amount,
                 s.attention_score,
                 s.attention_level,
                 s.confidence_level,
@@ -91,22 +157,14 @@ def list_claims(engine, config: ApiConfig, filters: dict[str, Any]) -> dict[str,
                 s.score_version,
                 s.score_run_id,
                 s.created_at,
-                CASE WHEN MAX(ml.claim_sk) IS NULL THEN FALSE ELSE TRUE END AS has_ml_signal,
-                CASE WHEN MAX(pi.claim_sk) IS NULL THEN FALSE ELSE TRUE END AS has_post_inspection_signal
+                {ml_exists_sql} AS has_ml_signal,
+                {post_inspection_exists_sql} AS has_post_inspection_signal
             FROM mart.fact_claim_attention_score s
-            LEFT JOIN mart.fact_claim_ml_anomaly_signal ml
-                ON ml.claim_sk = s.claim_sk
-               AND ml.signal_version = :ml_signal_version
-            LEFT JOIN mart.fact_post_inspection_attention_signal pi
-                ON pi.claim_sk = s.claim_sk
-               AND pi.signal_version = :post_inspection_signal_version
+            LEFT JOIN mart.fact_claim_scoring_features f
+                ON f.claim_sk = s.claim_sk
+               AND f.feature_run_id = s.feature_run_id
             WHERE {where_sql}
-            GROUP BY
-                s.claim_sk, s.claim_business_id, s.attention_score,
-                s.attention_level, s.confidence_level,
-                s.main_reason_1, s.main_reason_2, s.main_reason_3,
-                s.score_version, s.score_run_id, s.created_at
-            ORDER BY s.attention_score DESC, s.created_at DESC, s.claim_sk
+            ORDER BY s.attention_score DESC, s.claim_sk
             LIMIT :page_size OFFSET :offset
         """
         rows = conn.execute(text(query_sql), params).fetchall()
@@ -114,8 +172,11 @@ def list_claims(engine, config: ApiConfig, filters: dict[str, Any]) -> dict[str,
     return {
         "score_version": score_version,
         "score_run_id": score_run_id,
+        "ml_signal_run_id": ml_run_id,
+        "post_inspection_signal_run_id": post_inspection_run_id,
         "page": page,
         "page_size": page_size,
+        "max_page_size": config.max_page_size,
         "total": total,
         "items": rows_to_dicts(rows),
     }
@@ -213,4 +274,3 @@ def get_vehicle_context(engine, config: ApiConfig, claim_sk: int) -> dict[str, A
             },
         ).first()
     return row_to_dict(row) if row else None
-

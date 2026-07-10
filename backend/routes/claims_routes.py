@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, jsonify, request
 
+from backend.services.claim_review_service import get_claim_review
 from backend.services.claims_service import get_claim, get_vehicle_context, list_claims
 from backend.services.signals_service import get_claim_signals, get_ml_anomaly, get_post_inspection
 from backend.services.timeline_service import get_timeline
@@ -46,6 +47,22 @@ def claim_detail(claim_sk: int):
     )
     if result is None:
         return jsonify({"message": "Dossier introuvable pour la version de score demandee."}), 404
+    return jsonify(result)
+
+
+@claims_bp.get("/claims/<int:claim_sk>/review")
+def claim_review(claim_sk: int):
+    result = get_claim_review(
+        _engine(),
+        _config(),
+        claim_sk,
+        score_version=request.args.get("score_version"),
+        score_run_id=request.args.get("score_run_id"),
+        ml_signal_run_id=request.args.get("ml_signal_run_id"),
+        post_inspection_signal_run_id=request.args.get("post_inspection_signal_run_id"),
+    )
+    if result is None:
+        return jsonify({"message": "Revue dossier indisponible pour la version de score demandee."}), 404
     return jsonify(result)
 
 
