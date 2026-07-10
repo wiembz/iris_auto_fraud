@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import date, datetime
 
 import pandas as pd
 
@@ -106,6 +106,16 @@ def test_input_hash_is_deterministic_for_identical_inputs():
 
     assert first.set_index("claim_sk").loc[1, "input_hash"] == second.set_index("claim_sk").loc[1, "input_hash"]
     assert len(first.set_index("claim_sk").loc[1, "input_hash"]) == 64
+
+
+def test_input_hash_accepts_python_date_values():
+    frame = _source_features()
+    frame["claim_date"] = frame["claim_date"].astype("object")
+    frame.loc[0, "claim_date"] = date(2024, 1, 3)
+
+    features = compute_claim_smart_features_v2(frame)
+
+    assert features.loc[0, "input_hash"]
 
 
 def test_zero_history_is_known_but_missing_history_is_not_evaluable():

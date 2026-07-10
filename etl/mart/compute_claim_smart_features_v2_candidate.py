@@ -1,4 +1,4 @@
-﻿"""Candidate smart claim features for IRIS Decision Support V2.
+"""Candidate smart claim features for IRIS Decision Support V2.
 
 This module is additive. It does not modify Claim Attention V1, VHS, or any
 PostgreSQL table when imported or unit-tested. The functions operate on
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 import numpy as np
@@ -110,7 +110,7 @@ def _is_missing(value: Any) -> bool:
 def _canonical_value(value: Any) -> Any:
     if _is_missing(value):
         return None
-    if isinstance(value, (pd.Timestamp, datetime)):
+    if isinstance(value, (pd.Timestamp, datetime, date)):
         return pd.Timestamp(value).isoformat()
     if isinstance(value, (np.integer, np.floating)):
         return value.item()
@@ -184,6 +184,32 @@ def _to_datetime_series(values: pd.Series) -> pd.Series:
     return pd.to_datetime(values, errors="coerce")
 
 
+def _quantile(sorted_values: list[float], q: float) -> float:
+    if not sorted_values:
+        return np.nan
+    position = (len(sorted_values) - 1) * q
+    lower = int(np.floor(position))
+    upper = int(np.ceil(position))
+    if lower == upper:
+        return float(sorted_values[lower])
+    weight = position - lower
+    return float(sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight)
+
+
+def _remove_sorted_value(sorted_values: list[float], value: float) -> None:
+    import bisect
+
+    pos = bisect.bisect_left(sorted_values, value)
+    if pos < len(sorted_values) and sorted_values[pos] == value:
+        sorted_values.pop(pos)
+
+
+def _insert_sorted_value(sorted_values: list[float], value: float) -> None:
+    import bisect
+
+    bisect.insort(sorted_values, value)
+
+
 def add_similar_claim_statistics(
     frame: pd.DataFrame,
     *,
@@ -221,52 +247,58 @@ def add_similar_claim_statistics(
     claim_dates = _to_datetime_series(out["claim_date"])
     out["comparison_reference_date"] = claim_dates
 
-    for idx, row in out.iterrows():
-        current_claim_sk = row.get("claim_sk")
-        current_date = claim_dates.loc[idx]
-        current_amount = _num(row.get("claim_amount"), np.nan)
-        if pd.isna(current_date):
-            out.at[idx, "comparison_status_reason"] = "MISSING_REFERENCE_DATE"
-            continue
-        if np.isnan(current_amount):
-            out.at[idx, "comparison_status_reason"] = "NOT_AVAILABLE"
-            continue
+    valid_cohort_mask = pd.Series(True, index=out.index)
+    for column in available_cohort_columns:
+        valid_cohort_mask &= out[column].map(lambda value: not _is_missing(value))
+    out.loc[~valid_cohort_mask, "comparison_status_reason"] = "MISSING_COHORT_ATTRIBUTES"
+    out.loc[claim_dates.isna(), "comparison_status_reason"] = "MISSING_REFERENCE_DATE"
+    out.loc[amounts.isna() & valid_cohort_mask & claim_dates.notna(), "comparison_status_reason"] = "NOT_AVAILABLE"
 
-        row_cohort_columns = [column for column in available_cohort_columns if not _is_missing(row.get(column))]
-        if not row_cohort_columns:
-            out.at[idx, "comparison_status_reason"] = "MISSING_COHORT_ATTRIBUTES"
-            continue
+    evaluable_mask = valid_cohort_mask & claim_dates.notna() & amounts.notna()
+    if not evaluable_mask.any():
+        return out
 
-        mask = pd.Series(True, index=out.index)
-        for column in row_cohort_columns:
-            mask &= out[column].map(lambda value: not _is_missing(value))
-            mask &= out[column].eq(row.get(column))
-        mask &= out["claim_sk"].ne(current_claim_sk)
-        mask &= claim_dates.lt(current_date)
-        mask &= amounts.notna()
-        mask &= amounts.ge(0)
+    work = out.loc[evaluable_mask, ["claim_sk", *available_cohort_columns]].copy()
+    work["_amount"] = amounts[evaluable_mask]
+    work["_date"] = claim_dates[evaluable_mask]
+    work["_idx"] = work.index
 
-        cohort = out.loc[mask, ["claim_sk"]].copy()
-        cohort["amount"] = amounts[mask]
-        cohort = cohort.drop_duplicates("claim_sk", keep="last")
-        cohort_amounts = cohort["amount"].dropna()
-        sample_size = int(len(cohort_amounts))
-        out.at[idx, "similar_claim_count"] = sample_size
-        out.at[idx, "similar_claim_cohort_level"] = _cohort_level(row_cohort_columns)
-        out.at[idx, "comparison_reliability"] = _comparison_reliability(sample_size, min_cohort_size)
-        out.at[idx, "comparison_status_reason"] = out.at[idx, "comparison_reliability"]
-        if sample_size >= min_cohort_size:
-            median = float(cohort_amounts.median())
-            out.at[idx, "amount_median_similar"] = median
-            out.at[idx, "amount_p75_similar"] = float(cohort_amounts.quantile(0.75))
-            out.at[idx, "amount_p90_similar"] = float(cohort_amounts.quantile(0.90))
-            if median > 0:
-                out.at[idx, "amount_ratio_to_median"] = current_amount / median
-            else:
-                out.at[idx, "comparison_reliability"] = "NOT_AVAILABLE"
-                out.at[idx, "comparison_status_reason"] = "ZERO_MEDIAN"
+    for _, group in work.groupby(available_cohort_columns, dropna=False, sort=False):
+        group = group.sort_values(["_date", "_idx"])
+        sorted_amounts: list[float] = []
+        amount_by_claim: dict[Any, float] = {}
+
+        for current_date, date_group in group.groupby("_date", sort=True):
+            sample_size = len(sorted_amounts)
+            reliability = _comparison_reliability(sample_size, min_cohort_size)
+            median = _quantile(sorted_amounts, 0.5) if sample_size >= min_cohort_size else np.nan
+            p75 = _quantile(sorted_amounts, 0.75) if sample_size >= min_cohort_size else np.nan
+            p90 = _quantile(sorted_amounts, 0.90) if sample_size >= min_cohort_size else np.nan
+            zero_median = sample_size >= min_cohort_size and not np.isnan(median) and median <= 0
+
+            for idx, row in date_group.iterrows():
+                original_idx = row["_idx"]
+                out.at[original_idx, "similar_claim_count"] = sample_size
+                out.at[original_idx, "similar_claim_cohort_level"] = _cohort_level(available_cohort_columns)
+                out.at[original_idx, "comparison_reliability"] = "NOT_AVAILABLE" if zero_median else reliability
+                out.at[original_idx, "comparison_status_reason"] = "ZERO_MEDIAN" if zero_median else reliability
+                if reliability == "DISPLAYABLE" and not zero_median:
+                    out.at[original_idx, "amount_median_similar"] = median
+                    out.at[original_idx, "amount_p75_similar"] = p75
+                    out.at[original_idx, "amount_p90_similar"] = p90
+                    out.at[original_idx, "amount_ratio_to_median"] = float(row["_amount"]) / median
+
+            # Update after the whole date batch so same-day dossiers are not used.
+            latest_rows = date_group.drop_duplicates("claim_sk", keep="last")
+            for _, update_row in latest_rows.iterrows():
+                claim_key = update_row["claim_sk"]
+                new_amount = float(update_row["_amount"])
+                if claim_key in amount_by_claim:
+                    _remove_sorted_value(sorted_amounts, amount_by_claim[claim_key])
+                amount_by_claim[claim_key] = new_amount
+                _insert_sorted_value(sorted_amounts, new_amount)
+
     return out
-
 
 def compute_claim_smart_features_v2(
     source_features: pd.DataFrame,

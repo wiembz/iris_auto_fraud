@@ -1,4 +1,4 @@
-﻿"""Claim Attention Score V2 candidate.
+"""Claim Attention Score V2 candidate.
 
 The V2 score combines configurable deterministic business rules for worklist
 prioritization. It is not a fraud probability and does not replace V1.
@@ -90,17 +90,21 @@ def _apply_family_caps(signals: pd.DataFrame, family_caps: dict[str, Any]) -> pd
         return signals.copy()
     capped = signals.copy()
     capped["raw_points"] = pd.to_numeric(capped["raw_points"], errors="coerce").fillna(0).clip(lower=0).astype(int)
+    fallback_caps = capped.groupby("rule_family")["family_cap"].transform("max") if "family_cap" in capped else 0
+    capped["_family_cap_effective"] = (
+        capped["rule_family"].astype(str).map(family_caps).fillna(fallback_caps).fillna(0).astype(int)
+    )
+    ordered = capped.sort_values(
+        ["claim_sk", "rule_family", "raw_points", "rule_code"],
+        ascending=[True, True, False, True],
+    ).copy()
+    cumulative_before = ordered.groupby(["claim_sk", "rule_family"], dropna=False)["raw_points"].cumsum() - ordered["raw_points"]
+    remaining = (ordered["_family_cap_effective"] - cumulative_before).clip(lower=0)
+    ordered["awarded_points"] = pd.concat([ordered["raw_points"], remaining], axis=1).min(axis=1).astype(int)
     capped["awarded_points"] = 0
-    for (_, family), group in capped.groupby(["claim_sk", "rule_family"], dropna=False):
-        cap = int(family_caps.get(str(family), group["family_cap"].max() if "family_cap" in group else 0))
-        used = 0
-        for idx in group.sort_values(["raw_points", "rule_code"], ascending=[False, True]).index:
-            value = int(capped.at[idx, "raw_points"])
-            allowed = max(0, min(value, cap - used))
-            capped.at[idx, "awarded_points"] = allowed
-            used += allowed
+    capped.loc[ordered.index, "awarded_points"] = ordered["awarded_points"]
     capped["points"] = capped["awarded_points"]
-    return capped
+    return capped.drop(columns=["_family_cap_effective"])
 
 
 def _top_reasons(details: pd.DataFrame) -> list[str | None]:
@@ -117,6 +121,22 @@ def _top_reasons(details: pd.DataFrame) -> list[str | None]:
     while len(reasons) < 3:
         reasons.append(None)
     return reasons
+
+
+def _top_reasons_by_claim(details: pd.DataFrame) -> dict[Any, list[str | None]]:
+    if details.empty:
+        return {}
+    ranked = details[details["awarded_points"].gt(0)].sort_values(
+        ["claim_sk", "awarded_points", "business_label"],
+        ascending=[True, False, True],
+    )
+    reasons_by_claim: dict[Any, list[str | None]] = {}
+    for claim_sk, group in ranked.groupby("claim_sk", sort=False):
+        reasons = group["business_label"].dropna().astype(str).head(3).tolist()
+        while len(reasons) < 3:
+            reasons.append(None)
+        reasons_by_claim[claim_sk] = reasons
+    return reasons_by_claim
 
 
 def compute_claim_attention_score_v2(
@@ -162,15 +182,21 @@ def compute_claim_attention_score_v2(
                 "created_at": created_at,
             })
     details = pd.DataFrame(detail_rows, columns=DETAIL_COLUMNS)
+    points_by_claim = (
+        details.groupby("claim_sk")["awarded_points"].sum().astype(int).to_dict()
+        if not details.empty
+        else {}
+    )
+    reasons_by_claim = _top_reasons_by_claim(details)
 
     score_rows: list[dict[str, Any]] = []
     for _, feature in smart_features.iterrows():
-        claim_details = details[details["claim_sk"].eq(feature.get("claim_sk"))] if not details.empty else details
-        attention_points = int(claim_details["awarded_points"].sum()) if not claim_details.empty else 0
+        claim_sk = feature.get("claim_sk")
+        attention_points = int(points_by_claim.get(claim_sk, 0))
         attention_score = min(100, max(0, attention_points))
-        reasons = _top_reasons(claim_details)
+        reasons = reasons_by_claim.get(claim_sk, [None, None, None])
         score_rows.append({
-            "claim_sk": feature.get("claim_sk"),
+            "claim_sk": claim_sk,
             "claim_business_id": feature.get("claim_business_id"),
             "attention_score": attention_score,
             "attention_level": attention_level(attention_score),

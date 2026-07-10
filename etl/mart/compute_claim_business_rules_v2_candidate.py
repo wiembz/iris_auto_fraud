@@ -1,4 +1,4 @@
-﻿"""Configurable candidate business rules for Claim Attention V2."""
+"""Configurable candidate business rules for Claim Attention V2."""
 from __future__ import annotations
 
 import hashlib
@@ -222,6 +222,51 @@ def _required_fields_available(row: pd.Series, required_fields: list[str]) -> bo
     return all(field in row.index and not _missing(row.get(field)) for field in required_fields)
 
 
+def _series_missing(values: pd.Series) -> pd.Series:
+    missing = values.isna()
+    if values.dtype == "object" or str(values.dtype).startswith("string"):
+        missing = missing | values.astype("string").str.strip().eq("").fillna(True)
+    return missing
+
+
+def _truthy_series(values: pd.Series) -> pd.Series:
+    if values.dtype == bool:
+        return values.fillna(False)
+    if str(values.dtype).lower() == "boolean":
+        return values.fillna(False).astype(bool)
+    return values.astype("string").str.strip().str.upper().isin({"TRUE", "T", "YES", "Y", "1", "O", "OUI"})
+
+
+def _condition_mask(frame: pd.DataFrame, condition: dict[str, Any]) -> pd.Series:
+    mask = pd.Series(True, index=frame.index)
+    for required_field, expected in (condition.get("requires") or {}).items():
+        if required_field not in frame.columns:
+            return pd.Series(False, index=frame.index)
+        mask &= frame[required_field].eq(expected)
+
+    field = condition["field"]
+    if field not in frame.columns:
+        return pd.Series(False, index=frame.index)
+    observed = frame[field]
+    mask &= ~_series_missing(observed)
+
+    operator = condition["operator"]
+    expected = condition.get("value")
+    if operator == ">=":
+        mask &= pd.to_numeric(observed, errors="coerce").ge(float(expected))
+    elif operator == ">":
+        mask &= pd.to_numeric(observed, errors="coerce").gt(float(expected))
+    elif operator == "<=":
+        mask &= pd.to_numeric(observed, errors="coerce").le(float(expected))
+    elif operator == "==":
+        mask &= observed.eq(expected)
+    elif operator == "in":
+        mask &= observed.isin(set(expected))
+    elif operator == "is_true":
+        mask &= _truthy_series(observed)
+    else:
+        raise ValueError(f"Unsupported rule operator: {operator}")
+    return mask.fillna(False)
 def compute_claim_business_rules_v2(
     smart_features: pd.DataFrame,
     catalog: dict[str, Any] | None = None,
@@ -233,40 +278,54 @@ def compute_claim_business_rules_v2(
     validate_rule_catalog(catalog)
     catalog_digest = catalog_hash(catalog)
     created_at = created_at or datetime.now(timezone.utc)
-    rows: list[dict[str, Any]] = []
+    if smart_features.empty:
+        return pd.DataFrame(columns=SIGNAL_COLUMNS)
 
-    for _, feature in smart_features.iterrows():
-        for rule in catalog["rules"]:
-            if not rule["is_active"]:
-                continue
-            if not _required_fields_available(feature, list(rule["required_fields"])):
-                continue
-            if not _condition_matches(feature, rule["condition"]):
-                continue
-            value = feature.get(rule["condition"]["field"])
-            rows.append({
-                "claim_sk": feature.get("claim_sk"),
-                "claim_business_id": feature.get("claim_business_id"),
-                "smart_feature_run_id": feature.get("smart_feature_run_id"),
-                "source_as_of_date": feature.get("source_as_of_date"),
-                "input_hash": feature.get("input_hash"),
-                "rule_code": rule["rule_code"],
-                "rule_family": rule["rule_family"],
-                "rule_version": rule["version"],
-                "label_business": rule["label_business"],
-                "rule_value": "" if _missing(value) else str(value),
-                "raw_points": int(rule["points"]),
-                "points": int(rule["points"]),
-                "family_cap": int(rule["family_cap"]),
-                "attention_level": rule["attention_level"],
-                "business_explanation": rule["business_explanation"],
-                "suggested_action_code": rule["suggested_action_code"],
-                "rule_catalog_version": catalog["catalog_version"],
-                "rule_catalog_hash": catalog_digest,
-                "created_at": created_at,
-            })
+    base_columns = [
+        "claim_sk",
+        "claim_business_id",
+        "smart_feature_run_id",
+        "source_as_of_date",
+        "input_hash",
+    ]
+    frames: list[pd.DataFrame] = []
+    for rule in catalog["rules"]:
+        if not rule["is_active"]:
+            continue
+        required_fields = list(rule["required_fields"])
+        if any(field not in smart_features.columns for field in required_fields):
+            continue
+        available_mask = pd.Series(True, index=smart_features.index)
+        for field in required_fields:
+            available_mask &= ~_series_missing(smart_features[field])
+        mask = available_mask & _condition_mask(smart_features, rule["condition"])
+        if not mask.any():
+            continue
 
-    result = pd.DataFrame(rows, columns=SIGNAL_COLUMNS)
+        condition_field = rule["condition"]["field"]
+        available_base_columns = [column for column in base_columns if column in smart_features.columns]
+        matched = smart_features.loc[mask, available_base_columns].copy()
+        for column in base_columns:
+            if column not in matched.columns:
+                matched[column] = pd.NA
+        matched = matched[base_columns]
+        matched["rule_code"] = rule["rule_code"]
+        matched["rule_family"] = rule["rule_family"]
+        matched["rule_version"] = rule["version"]
+        matched["label_business"] = rule["label_business"]
+        matched["rule_value"] = smart_features.loc[mask, condition_field].map(lambda value: "" if _missing(value) else str(value))
+        matched["raw_points"] = int(rule["points"])
+        matched["points"] = int(rule["points"])
+        matched["family_cap"] = int(rule["family_cap"])
+        matched["attention_level"] = rule["attention_level"]
+        matched["business_explanation"] = rule["business_explanation"]
+        matched["suggested_action_code"] = rule["suggested_action_code"]
+        matched["rule_catalog_version"] = catalog["catalog_version"]
+        matched["rule_catalog_hash"] = catalog_digest
+        matched["created_at"] = created_at
+        frames.append(matched[SIGNAL_COLUMNS])
+
+    result = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=SIGNAL_COLUMNS)
     if not result.empty:
         for column in ["label_business", "business_explanation", "attention_level"]:
             if result[column].map(contains_forbidden_business_wording).any():
