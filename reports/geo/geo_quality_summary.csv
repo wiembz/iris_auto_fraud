@@ -1,0 +1,5 @@
+﻿metric,value,decision_note
+geo_status,GEO_PARTIAL,Existing GEO artifacts are present but final measured coverage must be consolidated before score usage.
+external_geocoding_allowed,false,No GPS or external geocoding in the candidate scoring path.
+score_points_allowed,false,GEO does not add Claim Attention V2 points until GEO_READY.
+wording,situation geographique a examiner,Use cautious context wording only.
