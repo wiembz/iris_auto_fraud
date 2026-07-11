@@ -1,0 +1,31 @@
+﻿<main class="login-page">
+  <section class="login-card iris-card" aria-labelledby="login-title">
+    <p class="iris-eyebrow">Acces prototype</p>
+    <h1 id="login-title">Connexion a l'espace IRIS</h1>
+    <p>
+      Cette page prepare le parcours d'acces au prototype de revue metier. Elle ne remplace
+      pas une authentification de production.
+    </p>
+
+    <form (ngSubmit)="signIn()">
+      <label>
+        Identifiant
+        <input type="text" placeholder="Matricule ou email professionnel" aria-label="Identifiant" />
+      </label>
+      <label>
+        Role de consultation
+        <select name="role" aria-label="Role de consultation" [(ngModel)]="selectedRole">
+          <option value="gestionnaire">Gestionnaire sinistre</option>
+          <option value="responsable">Responsable sinistre</option>
+          <option value="manager">Manager</option>
+          <option value="administrateur">Administrateur</option>
+        </select>
+      </label>
+      <p class="prototype-note">
+        Aucun mot de passe n'est stocke dans le frontend. Les roles sont simules pour la demonstration.
+      </p>
+      <button class="iris-button iris-button--primary" type="submit">Entrer dans IRIS</button>
+      <a class="back-link" routerLink="/">Retour a la presentation</a>
+    </form>
+  </section>
+</main>

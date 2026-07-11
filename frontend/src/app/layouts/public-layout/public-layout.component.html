@@ -1,0 +1,28 @@
+﻿<div class="public-shell">
+  <header class="public-nav">
+    <a class="brand" routerLink="/" aria-label="Accueil IRIS">
+      <span class="brand-mark" aria-hidden="true">
+        <span class="brand-mark__shade"></span>
+        <span class="brand-mark__core"></span>
+        <span class="brand-mark__shine"></span>
+      </span>
+      <span>IRIS</span>
+    </a>
+
+    <span class="nav-separator" aria-hidden="true"></span>
+
+    <nav aria-label="Navigation de presentation IRIS">
+      <a *ngFor="let item of navLinks" routerLink="/" [fragment]="item.fragment">{{ item.label }}</a>
+    </nav>
+
+    <div class="nav-actions">
+      <span class="version">Aide a l'analyse sinistres auto</span>
+      <button type="button" class="theme-toggle" (click)="toggleTheme()">
+        {{ theme === 'light' ? 'Dark' : 'Light' }}
+      </button>
+      <a class="iris-button iris-button--primary" routerLink="/login">Se connecter</a>
+    </div>
+  </header>
+
+  <router-outlet />
+</div>

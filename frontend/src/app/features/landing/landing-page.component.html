@@ -1,0 +1,122 @@
+﻿<main class="landing-page">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <div class="hero-kicker"><span></span>IRIS Smart Decision Support</div>
+      <h1 id="hero-title">Mieux voir. Mieux prioriser. Mieux decider.</h1>
+      <p>
+        IRIS rassemble les informations utiles d'un dossier sinistre automobile, met en evidence
+        les situations necessitant une attention et accompagne le gestionnaire dans son analyse.
+      </p>
+      <div class="hero-actions">
+        <a class="iris-button iris-button--primary" href="#valeur">Decouvrir IRIS</a>
+        <a class="iris-button iris-button--ghost" routerLink="/login">Se connecter</a>
+      </div>
+      <p class="human-note">IRIS propose des elements a examiner. La decision finale reste humaine.</p>
+    </div>
+
+    <aside class="hero-visual iris-card" aria-label="Apercu abstrait du tableau IRIS">
+      <div class="visual-top">
+        <span class="visual-logo"></span>
+        <div><strong>File de revue</strong><small>Dossiers a examiner</small></div>
+        <span class="iris-badge iris-badge--info">read-only</span>
+      </div>
+      <div class="visual-kpis">
+        <div><span>Dossiers</span><strong>381 893</strong></div>
+        <div><span>Confiance</span><strong>71%</strong></div>
+        <div><span>Prioritaires</span><strong>92</strong></div>
+      </div>
+      <div class="visual-chart" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+      <div class="visual-row"><span>SIN-2026-04871</span><strong>Examen renforce suggere</strong></div>
+      <div class="visual-row"><span>SIN-2026-04855</span><strong>Examen prioritaire suggere</strong></div>
+    </aside>
+  </section>
+
+  <section id="valeur" class="section section-anchor">
+    <div class="section-heading">
+      <p class="iris-eyebrow">Valeur metier</p>
+      <h2>Une plateforme pour reduire le bruit et preparer la revue.</h2>
+      <p>IRIS structure la consultation dossier par dossier, sans remplacer Power BI pour le pilotage global.</p>
+    </div>
+    <div class="issue-grid">
+      <article class="iris-card" *ngFor="let issue of businessIssues">
+        <h3>{{ issue.title }}</h3>
+        <p>{{ issue.text }}</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="section response-section">
+    <div class="section-heading">
+      <p class="iris-eyebrow">Reponse IRIS</p>
+      <h2>Consulter, comprendre, prioriser.</h2>
+    </div>
+    <div class="capability-grid">
+      <span *ngFor="let capability of capabilities">{{ capability }}</span>
+    </div>
+  </section>
+
+  <section id="fonctionnement" class="section section-anchor">
+    <div class="section-heading">
+      <p class="iris-eyebrow">Fonctionnement</p>
+      <h2>Un flux simple avant toute decision metier.</h2>
+    </div>
+    <ol class="step-list">
+      <li *ngFor="let step of steps; index as index">
+        <span>{{ index + 1 }}</span>
+        <strong>{{ step.title }}</strong>
+        <p>{{ step.text }}</p>
+      </li>
+    </ol>
+  </section>
+
+  <section id="modules" class="section section-anchor">
+    <div class="section-heading">
+      <p class="iris-eyebrow">Modules</p>
+      <h2>Des signaux separes pour une lecture prudente.</h2>
+    </div>
+    <div class="module-grid">
+      <article class="iris-card" *ngFor="let module of modules">
+        <h3>{{ module.title }}</h3>
+        <p>{{ module.text }}</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="section value-section">
+    <div class="section-heading">
+      <p class="iris-eyebrow">Valeur ajoutee</p>
+      <h2>Une aide concrete, sans promesse non mesuree.</h2>
+    </div>
+    <div class="value-band iris-card">
+      <span>Gain de temps dans la consultation</span>
+      <span>Meilleure visibilite sur les priorites</span>
+      <span>Explications tracables</span>
+      <span>Gouvernance human-in-the-loop</span>
+    </div>
+  </section>
+
+  <section id="gouvernance" class="section governance section-anchor">
+    <div class="governance-card iris-card">
+      <div>
+        <p class="iris-eyebrow">Gouvernance</p>
+        <h2>IRIS aide a l'analyse. Le gestionnaire decide.</h2>
+        <p>
+          La plateforme ne confirme pas une fraude et ne remplace pas le jugement metier.
+          Elle presente des signaux, leur contexte et leurs limites de qualite de donnees.
+        </p>
+      </div>
+      <div class="principle-list">
+        <span *ngFor="let principle of principles">{{ principle }}</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="final-cta">
+    <div>
+      <p class="iris-eyebrow">Espace decisionnel</p>
+      <h2>Acceder a l'espace decisionnel IRIS</h2>
+      <p>Prototype read-only pour la revue metier des dossiers sinistres automobiles.</p>
+    </div>
+    <a class="iris-button iris-button--primary" routerLink="/login">Se connecter a la plateforme</a>
+  </section>
+</main>

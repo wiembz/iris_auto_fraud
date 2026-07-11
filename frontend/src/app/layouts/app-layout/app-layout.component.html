@@ -1,0 +1,43 @@
+﻿<div class="app-shell">
+  <aside class="sidebar" aria-label="Navigation IRIS applicative">
+    <a class="brand" routerLink="/app/dashboard">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>IRIS</span>
+    </a>
+
+    <nav>
+      <a *ngFor="let item of visibleNavItems()" [routerLink]="item.route" routerLinkActive="active">{{ item.label }}</a>
+    </nav>
+
+    <section class="governance-note">
+      <strong>Aide a l'analyse</strong>
+      <span>Les elements affiches accompagnent la revue. La decision finale reste humaine.</span>
+    </section>
+  </aside>
+
+  <section class="workspace">
+    <header class="topbar">
+      <div>
+        <span class="iris-eyebrow">Espace decisionnel</span>
+        <strong>MVP de validation metier</strong>
+        <small *ngIf="user()">{{ user()?.roleLabel }}</small>
+      </div>
+      <div class="iris-search topbar-search">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <span>Rechercher un dossier, un assure, une plaque...</span>
+        <span class="iris-search__kbd">Ctrl K</span>
+      </div>
+      <div class="topbar-actions">
+        <button type="button" class="theme-toggle" (click)="toggleTheme()">
+          {{ theme === 'light' ? 'Mode sombre' : 'Mode clair' }}
+        </button>
+        <a class="iris-button iris-button--ghost" routerLink="/">Presentation</a>
+        <span class="avatar" aria-hidden="true">{{ userInitials() }}</span>
+      </div>
+    </header>
+
+    <main class="app-content">
+      <router-outlet />
+    </main>
+  </section>
+</div>

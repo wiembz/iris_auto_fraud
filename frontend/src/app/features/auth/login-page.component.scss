@@ -1,0 +1,73 @@
+﻿.login-page {
+  min-height: calc(100vh - 72px);
+  display: grid;
+  place-items: center;
+  padding: 44px 18px;
+}
+
+.login-card {
+  width: min(100%, 460px);
+  padding: 28px;
+}
+
+.login-card h1 {
+  margin: 0;
+  color: var(--iris-text);
+  font-family: var(--iris-font-display);
+  font-size: 34px;
+  line-height: 1.12;
+}
+
+.login-card p {
+  margin: 14px 0 24px;
+  color: var(--iris-text-2);
+  line-height: 1.6;
+}
+
+form,
+label {
+  display: grid;
+  gap: 10px;
+}
+
+form {
+  gap: 16px;
+}
+
+label {
+  color: var(--iris-text-2);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+input,
+select {
+  min-height: 44px;
+  border: 1px solid var(--iris-border-2);
+  border-radius: var(--iris-radius-sm);
+  padding: 0 12px;
+  background: var(--iris-surface);
+  color: var(--iris-text);
+}
+
+.iris-button {
+  margin-top: 4px;
+}
+.prototype-note {
+  margin: -2px 0 0;
+  color: var(--iris-text-3);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.back-link {
+  justify-self: center;
+  color: var(--iris-text-2);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.back-link:hover {
+  color: var(--iris-primary-2);
+}

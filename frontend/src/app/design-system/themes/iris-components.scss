@@ -1,0 +1,497 @@
+﻿.iris-button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: var(--iris-radius-sm);
+  padding: 0 16px;
+  font: 700 14px/1 var(--iris-font-sans);
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.iris-button:hover {
+  transform: translateY(-1px);
+}
+
+.iris-button--primary {
+  background: var(--iris-primary-btn);
+  color: var(--iris-on-primary);
+  box-shadow: var(--iris-shadow-sm);
+}
+
+.iris-button--ghost {
+  background: var(--iris-surface);
+  border-color: var(--iris-border-2);
+  color: var(--iris-text);
+}
+
+.iris-card {
+  border: 1px solid var(--iris-border);
+  border-radius: var(--iris-radius-md);
+  background: var(--iris-surface);
+  box-shadow: var(--iris-shadow-sm);
+}
+
+.iris-eyebrow {
+  margin: 0 0 10px;
+  color: var(--iris-primary-2);
+  font: 800 12px/1.2 var(--iris-font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ---- Buttons: additional variants ---- */
+.iris-button--soft {
+  background: var(--iris-primary-soft);
+  color: var(--iris-primary-2);
+}
+
+.iris-button--danger {
+  background: var(--iris-high-bg);
+  border-color: color-mix(in srgb, var(--iris-high) 40%, transparent);
+  color: var(--iris-high);
+}
+
+.iris-button:disabled,
+.iris-button[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+
+.iris-button--icon {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-color: var(--iris-border-2);
+  background: var(--iris-surface);
+  color: var(--iris-text-2);
+}
+
+/* ---- Badges (attention / status pills) ---- */
+.iris-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font: 600 12.5px/1 var(--iris-font-sans);
+  white-space: nowrap;
+}
+
+.iris-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.iris-badge--positive {
+  background: var(--iris-positive-bg);
+  color: var(--iris-positive);
+}
+
+.iris-badge--low {
+  background: var(--iris-low-bg);
+  color: var(--iris-low);
+}
+
+.iris-badge--medium {
+  background: var(--iris-medium-bg);
+  color: var(--iris-medium);
+}
+
+.iris-badge--high {
+  background: var(--iris-high-bg);
+  color: var(--iris-high);
+}
+
+.iris-badge--info {
+  background: var(--iris-info-bg);
+  color: var(--iris-info);
+}
+
+.iris-badge--neutral {
+  background: var(--iris-neutral-bg);
+  color: var(--iris-neutral);
+}
+
+.iris-badge--na {
+  background: var(--iris-na-bg);
+  color: var(--iris-na);
+}
+
+/* ---- Tags ---- */
+.iris-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--iris-border-2);
+  background: var(--iris-surface-2);
+  color: var(--iris-text-2);
+  font: 600 12px/1 var(--iris-font-sans);
+}
+
+.iris-tag--dashed {
+  border-style: dashed;
+  background: transparent;
+  color: var(--iris-na);
+}
+
+.iris-tag--ref {
+  border-color: transparent;
+  background: var(--iris-primary-soft);
+  color: var(--iris-primary-2);
+  font-family: var(--iris-font-mono);
+}
+
+/* ---- Alerts ---- */
+.iris-alert {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  border-left-width: 3px;
+}
+
+.iris-alert__title {
+  font: 700 13.5px/1.3 var(--iris-font-sans);
+  color: var(--iris-text);
+}
+
+.iris-alert__text {
+  margin-top: 2px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--iris-text-2);
+}
+
+.iris-alert--info {
+  background: var(--iris-info-bg);
+  border-color: color-mix(in srgb, var(--iris-info) 30%, transparent);
+  border-left-color: var(--iris-info);
+}
+
+.iris-alert--positive {
+  background: var(--iris-positive-bg);
+  border-color: color-mix(in srgb, var(--iris-positive) 30%, transparent);
+  border-left-color: var(--iris-positive);
+}
+
+.iris-alert--medium {
+  background: var(--iris-medium-bg);
+  border-color: color-mix(in srgb, var(--iris-medium) 30%, transparent);
+  border-left-color: var(--iris-medium);
+}
+
+.iris-alert--high {
+  background: var(--iris-high-bg);
+  border-color: color-mix(in srgb, var(--iris-high) 34%, transparent);
+  border-left-color: var(--iris-high);
+}
+
+/* ---- Inputs & search ---- */
+.iris-field {
+  display: grid;
+  gap: 6px;
+}
+
+.iris-field label {
+  color: var(--iris-text-2);
+  font: 600 12px/1 var(--iris-font-sans);
+}
+
+.iris-input,
+.iris-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--iris-border-2);
+  border-radius: 10px;
+  background: var(--iris-surface-2);
+  color: var(--iris-text);
+  font: 500 13.5px/1 var(--iris-font-sans);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.iris-input:focus-within,
+.iris-search:focus-within {
+  border-color: var(--iris-primary);
+  box-shadow: 0 0 0 3px var(--iris-primary-ring);
+  background: var(--iris-surface);
+}
+
+.iris-search__kbd {
+  margin-left: auto;
+  border: 1px solid var(--iris-border-2);
+  border-radius: 5px;
+  padding: 2px 6px;
+  color: var(--iris-text-3);
+  font: 600 10px/1 var(--iris-font-mono);
+}
+
+/* ---- Tabs ---- */
+.iris-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 11px;
+  background: var(--iris-surface-2);
+}
+
+.iris-tab {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  background: transparent;
+  color: var(--iris-text-2);
+  font: 600 13.5px/1 var(--iris-font-sans);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.iris-tab--active {
+  background: var(--iris-surface);
+  color: var(--iris-primary-2);
+  box-shadow: var(--iris-shadow-sm);
+}
+
+/* ---- Dropdown ---- */
+.iris-dropdown-menu {
+  margin-top: 6px;
+  padding: 6px;
+  border: 1px solid var(--iris-border);
+  border-radius: 11px;
+  background: var(--iris-surface);
+  box-shadow: var(--iris-shadow-md);
+}
+
+.iris-dropdown-item {
+  padding: 9px 11px;
+  border-radius: 8px;
+  color: var(--iris-text-2);
+  font: 500 13px/1.3 var(--iris-font-sans);
+  cursor: pointer;
+}
+
+.iris-dropdown-item:hover {
+  background: var(--iris-surface-3);
+}
+
+.iris-dropdown-item--active {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--iris-primary-soft);
+  color: var(--iris-primary-2);
+  font-weight: 600;
+}
+
+/* ---- Checklist ---- */
+.iris-check-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 8px;
+  border-radius: 9px;
+  cursor: pointer;
+  color: var(--iris-text);
+  font: 500 13.5px/1 var(--iris-font-sans);
+  transition: background 0.15s ease;
+}
+
+.iris-check-item:hover {
+  background: var(--iris-surface-3);
+}
+
+.iris-check-item__box {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 6px;
+  border: 1.5px solid var(--iris-border-2);
+  background: var(--iris-surface);
+}
+
+.iris-check-item--checked .iris-check-item__box {
+  background: var(--iris-primary-btn);
+  border-color: var(--iris-primary-btn);
+  color: var(--iris-on-primary);
+}
+
+/* ---- Timeline ---- */
+.iris-timeline {
+  position: relative;
+  display: grid;
+  gap: 16px;
+  padding-left: 24px;
+}
+
+.iris-timeline::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--iris-border-2);
+}
+
+.iris-timeline-item {
+  position: relative;
+}
+
+.iris-timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -24px;
+  top: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--iris-surface);
+  border: 2px solid var(--iris-border-2);
+}
+
+.iris-timeline-item--done::before {
+  background: var(--iris-primary);
+  border: none;
+  box-shadow: 0 0 0 4px var(--iris-primary-soft);
+}
+
+.iris-timeline-item--attention::before {
+  background: var(--iris-medium);
+  border: none;
+  box-shadow: 0 0 0 4px var(--iris-medium-bg);
+}
+
+.iris-timeline-item--pending::before {
+  border-style: dashed;
+}
+
+.iris-timeline-item__title {
+  color: var(--iris-text);
+  font: 600 13.5px/1.3 var(--iris-font-sans);
+}
+
+.iris-timeline-item__meta {
+  margin-top: 2px;
+  color: var(--iris-text-3);
+  font: 500 11px/1.3 var(--iris-font-mono);
+}
+
+/* ---- KPI card ---- */
+.iris-kpi-card {
+  padding: 18px 20px;
+  border-radius: 15px;
+  background: var(--iris-surface);
+  border: 1px solid var(--iris-border);
+  box-shadow: var(--iris-shadow-sm);
+}
+
+.iris-kpi-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.iris-kpi-card__label {
+  color: var(--iris-text-2);
+  font: 600 12.5px/1.3 var(--iris-font-sans);
+}
+
+.iris-kpi-card__value {
+  margin: 8px 0 2px;
+  color: var(--iris-text);
+  font: 600 34px/1 var(--iris-font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.iris-kpi-card__delta {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font: 700 11.5px/1.6 var(--iris-font-sans);
+  white-space: nowrap;
+}
+
+.iris-kpi-card__delta--up {
+  color: var(--iris-positive);
+  background: var(--iris-positive-bg);
+}
+
+.iris-kpi-card__delta--down {
+  color: var(--iris-medium);
+  background: var(--iris-medium-bg);
+}
+
+/* ---- Empty state ---- */
+.iris-empty-state {
+  padding: 34px;
+  border-radius: 16px;
+  background: var(--iris-surface);
+  border: 1px dashed var(--iris-border-2);
+  box-shadow: var(--iris-shadow-sm);
+  text-align: center;
+}
+
+.iris-empty-state__icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 14px;
+  border-radius: 16px;
+  background: var(--iris-surface-3);
+  color: var(--iris-text-3);
+}
+
+.iris-empty-state__title {
+  color: var(--iris-text);
+  font: 600 17px/1.3 var(--iris-font-display);
+  margin-bottom: 6px;
+}
+
+.iris-empty-state__text {
+  max-width: 46ch;
+  margin: 0 auto 16px;
+  color: var(--iris-text-2);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+/* ---- Pagination ---- */
+.iris-pagination {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.iris-pagination button {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--iris-border-2);
+  background: var(--iris-surface);
+  color: var(--iris-text-2);
+  cursor: pointer;
+  font: 600 13px/1 var(--iris-font-sans);
+}
+
+.iris-pagination button.is-active {
+  border: none;
+  background: var(--iris-primary-btn);
+  color: var(--iris-on-primary);
+}
