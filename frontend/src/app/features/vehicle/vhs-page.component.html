@@ -1,0 +1,239 @@
+<div class="vhs-page">
+  <header class="vhs-hero">
+    <div>
+      <p class="iris-eyebrow">Vehicule &amp; VHS</p>
+      <h1>Sante technique des vehicules inspectes</h1>
+      <p>
+        Le score VHS (0 a 100) resume l etat reel d un vehicule constate lors de son
+        inspection : securite, fonctionnement et carrosserie. Un vehicule en mauvais etat
+        avant un sinistre est un contexte precieux pour la revue du dossier.
+      </p>
+    </div>
+    <aside>
+      <span>Lecture du score</span>
+      <strong>Plus le score est bas, plus l etat constate est degrade</strong>
+    </aside>
+  </header>
+
+  @if (loading()) {
+    <section class="vhs-loading" aria-label="Chargement">
+      <span></span><span></span><span></span>
+    </section>
+  } @else if (errorMessage()) {
+    <section class="iris-card vhs-error">
+      <strong>Donnees indisponibles</strong>
+      <p>{{ errorMessage() }}</p>
+    </section>
+  } @else {
+    <nav class="vhs-triage" aria-label="Filtrer par etat">
+      @for (chip of decisionChips(); track chip.value) {
+        <button
+          type="button"
+          class="vhs-triage__chip"
+          [attr.data-tone]="chip.tone"
+          [class.is-active]="chip.active"
+          (click)="applyDecisionFilter(chip.value)"
+        >
+          <strong>{{ chip.count !== null ? chip.count : '—' }}</strong>
+          <span>{{ chip.label }}</span>
+          @if (chip.averageScore !== null) {
+            <small>score moyen {{ chip.averageScore }}</small>
+          }
+        </button>
+      }
+    </nav>
+
+    <section class="vhs-analytics">
+      <article class="iris-card vhs-panel" aria-label="Distribution des scores">
+        <h2>Distribution des scores</h2>
+        <p class="vhs-panel__hint">Nombre de vehicules par tranche de score VHS</p>
+        <div class="vhs-bands">
+          @for (band of scoreBandBars(); track band.label) {
+            <div class="vhs-band">
+              <div class="vhs-band__column">
+                <span class="vhs-band__value">{{ band.vehicles }}</span>
+                <span class="vhs-band__bar" [attr.data-tone]="band.tone" [style.height.%]="band.sharePct"></span>
+              </div>
+              <span class="vhs-band__label">{{ band.label }}</span>
+            </div>
+          }
+        </div>
+      </article>
+
+      <article class="iris-card vhs-panel" aria-label="Zones fragiles">
+        <h2>Zones les plus penalisees</h2>
+        <p class="vhs-panel__hint">Ou se concentrent les anomalies constatees en inspection</p>
+        <div class="vhs-zones">
+          @for (zone of zoneBars(); track zone.zone) {
+            <div class="vhs-zone">
+              <div class="vhs-zone__head">
+                <strong>{{ zone.label }}</strong>
+                <span>
+                  {{ zone.totalPenalty.toLocaleString('fr-FR') }} pts
+                  @if (zone.criticalCount > 0) {
+                    <b class="vhs-zone__critical">{{ zone.criticalCount }} critiques</b>
+                  }
+                </span>
+              </div>
+              <span class="vhs-zone__track"><span [style.width.%]="zone.sharePct"></span></span>
+            </div>
+          }
+        </div>
+      </article>
+    </section>
+
+    <section class="iris-card vhs-list-shell" aria-label="Vehicules inspectes">
+      <header class="vhs-list-head">
+        <div>
+          <h2>Vehicules inspectes</h2>
+          <p class="vhs-panel__hint">Classes du plus degrade au plus sain — cliquez pour voir le detail des anomalies</p>
+        </div>
+        <label class="vhs-search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="search" placeholder="Immatriculation..." (input)="onSearchInput($event)" />
+        </label>
+      </header>
+
+      @if (listLoading()) {
+        <div class="vhs-loading vhs-loading--inline"><span></span><span></span></div>
+      } @else if (vehicles().length === 0) {
+        <p class="vhs-empty">Aucun vehicule ne correspond a cette selection.</p>
+      } @else {
+        <ul class="vhs-list">
+          @for (vehicle of vehicles(); track vehicle.vhs_score_sk) {
+            <li [attr.data-expanded]="expandedSk() === vehicle.vhs_score_sk">
+              <button type="button" class="vhs-row" (click)="toggleDetail(vehicle)">
+                <span class="vhs-row__score" [attr.data-tone]="scoreTone(vehicle.vhs_final_score)">
+                  <b>{{ roundScore(vehicle.vhs_final_score) }}</b>
+                  <i class="vhs-row__track"><i [style.width.%]="vehicle.vhs_final_score"></i></i>
+                  @if (roundScore(vehicle.vhs_final_score) === 0 && vehicle.total_penalty) {
+                    <small class="vhs-row__penalty">-{{ vehicle.total_penalty.toLocaleString('fr-FR') }} pts</small>
+                  }
+                </span>
+
+                <span class="vhs-row__identity">
+                  <strong>{{ vehicle.immatriculation_norm }}</strong>
+                  <small>{{ inspectionDate(vehicle.date_inspection_sk) }} · {{ formatKm(vehicle.kilometrage) }}</small>
+                </span>
+
+                <span class="vhs-row__subscores" aria-label="Sous-scores">
+                  <span class="vhs-subscore" [attr.data-tone]="scoreTone(vehicle.safety_score)">
+                    <small>Securite</small><i><i [style.width.%]="vehicle.safety_score ?? 0"></i></i>
+                  </span>
+                  <span class="vhs-subscore" [attr.data-tone]="scoreTone(vehicle.functional_score)">
+                    <small>Fonctionnel</small><i><i [style.width.%]="vehicle.functional_score ?? 0"></i></i>
+                  </span>
+                  <span class="vhs-subscore" [attr.data-tone]="scoreTone(vehicle.cosmetic_score)">
+                    <small>Carrosserie</small><i><i [style.width.%]="vehicle.cosmetic_score ?? 0"></i></i>
+                  </span>
+                </span>
+
+                <span class="vhs-row__flags">
+                  <span class="vhs-grade" [attr.data-grade]="vehicle.safety_grade">{{ vehicle.safety_grade }}</span>
+                  <span class="vhs-decision" [attr.data-tone]="decisionTone(vehicle.decision)">
+                    {{ decisionLabel(vehicle.decision) }}
+                  </span>
+                  @if (!vehicle.is_drivable) {
+                    <span class="vhs-flag vhs-flag--danger">Non roulant</span>
+                  }
+                  @if (vehicle.nb_anomalies_critiques > 0) {
+                    <span class="vhs-flag">{{ vehicle.nb_anomalies_critiques }} anomalie(s) critique(s)</span>
+                  }
+                </span>
+
+                <svg class="vhs-row__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+
+              @if (expandedSk() === vehicle.vhs_score_sk) {
+                <div class="vhs-detail">
+                  @if (detailLoading()) {
+                    <div class="vhs-loading vhs-loading--inline"><span></span></div>
+                  } @else if (detail(); as d) {
+                    <div class="vhs-detail__layout">
+                      <div class="vhs-detail__gauge-block">
+                        <div class="vhs-gauge" role="img" [attr.aria-label]="'Score VHS ' + roundScore(d.vhs_final_score) + ' sur 100'">
+                          <svg viewBox="0 0 120 120" width="120" height="120">
+                            <circle class="vhs-gauge__track" cx="60" cy="60" r="54" />
+                            <circle
+                              class="vhs-gauge__value"
+                              [attr.data-tone]="scoreTone(d.vhs_final_score)"
+                              cx="60" cy="60" r="54"
+                              [style.strokeDashoffset.px]="gaugeOffset(d.vhs_final_score)"
+                            />
+                          </svg>
+                          <div class="vhs-gauge__label">
+                            <b>{{ roundScore(d.vhs_final_score) }}</b>
+                            <small>/ 100</small>
+                          </div>
+                        </div>
+                        <dl class="vhs-detail__facts">
+                          <div><dt>Points controles</dt><dd>{{ d.nb_checkpoints_scored }}</dd></div>
+                          <div><dt>En bon etat</dt><dd>{{ d.nb_ok }}</dd></div>
+                          <div><dt>Uses</dt><dd>{{ d.nb_worn + d.nb_worn_strong }}</dd></div>
+                          <div><dt>Defaillants</dt><dd>{{ d.nb_broken }}</dd></div>
+                          @if (d.penalty_raw_before_cap && d.penalty_after_system_cap && d.penalty_raw_before_cap !== d.penalty_after_system_cap) {
+                            <div><dt>Penalites brutes</dt><dd class="vhs-detail__penalty-raw">-{{ d.penalty_raw_before_cap }} pts</dd></div>
+                            <div><dt>Cap systeme applique</dt><dd class="vhs-detail__penalty-cap">-{{ (d.penalty_raw_before_cap - d.penalty_after_system_cap).toFixed(1) }} pts</dd></div>
+                            <div><dt>Penalites appliquees</dt><dd class="vhs-detail__penalty-total">-{{ d.penalty_after_system_cap }} pts</dd></div>
+                          } @else {
+                            <div><dt>Penalites cumulees</dt><dd class="vhs-detail__penalty-total">-{{ detailTotalPenalty().toLocaleString('fr-FR') }} pts</dd></div>
+                          }
+                        </dl>
+                        @if (detailIsSaturated()) {
+                          <p class="vhs-saturation-note">
+                            Les penalites depassent les 100 points de l echelle : le score est au
+                            plancher. Le total des penalites reflete la gravite reelle.
+                          </p>
+                        }
+                      </div>
+
+                      <div class="vhs-detail__penalties">
+                        <h3>Ce qui penalise le score</h3>
+                        @if (detailZoneGroups().length === 0) {
+                          <p class="vhs-empty">Aucune penalite appliquee : vehicule en bon etat constate.</p>
+                        }
+                        @for (group of detailZoneGroups(); track group.zone) {
+                          <article class="vhs-penalty-zone">
+                            <header>
+                              <strong>{{ group.label }}</strong>
+                              <span>-{{ group.totalPenalty.toLocaleString('fr-FR') }} pts</span>
+                            </header>
+                            <ul>
+                              @for (penalty of group.penalties; track penalty.checkpoint_code) {
+                                <li [attr.data-critical]="penalty.est_anomalie_critique === true">
+                                  <span class="vhs-penalty__label">
+                                    {{ penalty.checkpoint_libelle }}
+                                    @if (penalty.systeme_fonctionnel && penalty.systeme_fonctionnel !== 'SYS_INDEPENDANT') {
+                                      <small class="vhs-system-tag">[{{ penalty.systeme_fonctionnel.replace('SYS_', '') }}]</small>
+                                    }
+                                  </span>
+                                  <span class="vhs-penalty__status">{{ statusLabel(penalty.observed_status) }}</span>
+                                  <span class="vhs-penalty__points">
+                                    @if (penalty.penalty_capped_by_system) {
+                                      <del class="vhs-raw-penalty">-{{ penalty.penalty_raw_checkpoint }}</del>
+                                    }
+                                    -{{ penalty.penalty_applied }}
+                                  </span>
+                                  @if (penalty.is_vital) { <span class="vhs-flag vhs-flag--danger">Vital</span> }
+                                  @if (penalty.is_immobilizing) { <span class="vhs-flag vhs-flag--danger">Immobilisant</span> }
+                                </li>
+                              }
+                            </ul>
+                          </article>
+                        }
+                      </div>
+                    </div>
+                  } @else {
+                    <p class="vhs-empty">Le detail de cette inspection est momentanement indisponible.</p>
+                  }
+                </div>
+              }
+            </li>
+          }
+        </ul>
+      }
+    </section>
+  }
+</div>

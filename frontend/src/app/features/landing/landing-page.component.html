@@ -1,218 +1,350 @@
-﻿<main class="landing-page">
-  <section class="hero hero--immersive reveal" aria-labelledby="hero-title">
-    <div class="hero-background" aria-hidden="true"></div>
+<main class="lp">
+  <!-- ============================== HERO ============================== -->
+  <section class="lp-hero" aria-labelledby="hero-title">
+    <div class="lp-hero__bg" aria-hidden="true">
+      <span class="lp-orb lp-orb--1"></span>
+      <span class="lp-orb lp-orb--2"></span>
+      <span class="lp-grid"></span>
+    </div>
 
-    <div class="hero-copy">
-      <div class="hero-kicker"><span></span>IRIS Smart Decision Support</div>
-      <h1 id="hero-title">Mieux voir. Mieux prioriser. Mieux decider.</h1>
-      <p>
-        Une plateforme interne pour rassembler le contexte d'un dossier sinistre automobile,
-        mettre en evidence les situations necessitant une attention et guider une revue humaine.
+    <div class="lp-hero__copy">
+      <div class="lp-kicker" lpReveal>
+        <iris-logo [size]="18" />
+        <span>Plateforme intelligente · Sinistres automobiles</span>
+      </div>
+
+      <h1 id="hero-title" lpReveal [lpRevealDelay]="80">
+        L'œil intelligent de la
+        <span class="lp-gradient-text">gestion des sinistres</span>.
+      </h1>
+
+      <p class="lp-lead" lpReveal [lpRevealDelay]="160">
+        IRIS réunit tout le dossier sinistre en une vision claire, révèle les signaux
+        qui comptent et guide vos équipes vers la bonne décision — plus vite,
+        avec plus de confiance.
       </p>
-      <div class="hero-actions">
-        <a class="iris-button iris-button--primary" href="#valeur">Decouvrir IRIS</a>
-        <a class="iris-button iris-button--ghost" routerLink="/login">Se connecter</a>
-      </div>
-      <p class="human-note">Aide a l'analyse. Aucun jugement automatique. Decision finale humaine.</p>
 
-      <div class="hero-proof-grid" aria-label="Points de gouvernance IRIS">
-        <article *ngFor="let point of proofPoints">
-          <span>{{ point.label }}</span>
-          <strong>{{ point.value }}</strong>
-          <small>{{ point.helper }}</small>
-        </article>
+      <div class="lp-hero__actions" lpReveal [lpRevealDelay]="240">
+        <a class="lp-btn lp-btn--primary" routerLink="/login">
+          Accéder à la plateforme <span aria-hidden="true">→</span>
+        </a>
+        <a class="lp-btn lp-btn--ghost" href="#valeur">Découvrir IRIS</a>
+      </div>
+
+      <p class="lp-hero__trust" lpReveal [lpRevealDelay]="320">
+        <span class="lp-pulse-dot" aria-hidden="true"></span>
+        Conçu et déployé au sein de <strong>BNA Assurance</strong>
+      </p>
+
+      <div class="lp-hero__chips" lpReveal [lpRevealDelay]="400">
+        @for (chip of heroChips; track chip.title) {
+          <article class="lp-chip">
+            <strong>{{ chip.title }}</strong>
+            <span>{{ chip.text }}</span>
+          </article>
+        }
       </div>
     </div>
 
-    <aside class="hero-stage hero-stage--premium" aria-label="IRIS Decision Intelligence Flow">
-      <app-iris-hero-scene />
+    <div class="lp-hero__visual" aria-hidden="true">
+      <div class="lp-stage">
+        <app-iris-eye-scene />
 
-      <div class="flow-caption">Illustration produit - donnees fictives</div>
+        <div class="lp-stage__satellites">
+          <span class="lp-sat lp-sat--1">Client</span>
+          <span class="lp-sat lp-sat--2">Contrat</span>
+          <span class="lp-sat lp-sat--3">Véhicule</span>
+          <span class="lp-sat lp-sat--4">Garanties</span>
+        </div>
 
-      <div class="data-capsules" aria-label="Sources metier centralisees dans IRIS">
-        <span class="data-capsule data-capsule--client">Client</span>
-        <span class="data-capsule data-capsule--contract">Contrat</span>
-        <span class="data-capsule data-capsule--vehicle">Vehicule</span>
-        <span class="data-capsule data-capsule--coverage">Garanties</span>
-        <span class="data-capsule data-capsule--documents">Documents</span>
-        <span class="data-capsule data-capsule--inspection">Inspection</span>
-      </div>
-
-      <div class="flow-connector flow-connector--input" aria-hidden="true"></div>
-      <div class="flow-connector flow-connector--output" aria-hidden="true"></div>
-
-      <div class="decision-orbit" aria-hidden="true">
-        <span>Centraliser</span>
-        <span>Expliquer</span>
-        <span>Accompagner</span>
-      </div>
-
-      <div class="dashboard-card flow-card iris-card">
-        <div class="flow-card__header">
-          <span class="visual-logo"></span>
-          <div>
-            <span>DOSSIER SINISTRE</span>
-            <strong>SIN-2026-00452</strong>
+        <div class="lp-float-card lp-float-card--claim">
+          <header>
+            <span class="lp-float-card__ref">SIN-2847</span>
+            <span class="lp-badge lp-badge--high">Priorité haute</span>
+          </header>
+          <div class="lp-float-card__rows">
+            <span class="lp-mini-tag">Délai inhabituel</span>
+            <span class="lp-mini-tag">Historique chargé</span>
           </div>
-          <span class="iris-badge iris-badge--medium">IRIS</span>
+          <footer>Voir les raisons →</footer>
         </div>
 
-        <div class="claim-summary">
-          <strong>Examen renforce suggere</strong>
-          <span>3 elements a examiner</span>
-          <small>Confiance des donnees : moyenne</small>
+        <div class="lp-float-card lp-float-card--decision">
+          <span class="lp-float-card__check">✓</span>
+          <div>
+            <strong>Décision validée</strong>
+            <small>par le gestionnaire</small>
+          </div>
         </div>
-
-        <div class="signal-stack" aria-label="Elements metier a examiner">
-          <article class="signal-item signal-item--chrono">
-            <span>Chronologie</span>
-            <strong>Declaration apres 42 jours</strong>
-            <small>Ecart a verifier</small>
-          </article>
-          <article class="signal-item signal-item--comparison">
-            <span>Comparaison</span>
-            <strong>Montant +42 % vs mediane</strong>
-            <small>38 dossiers comparables</small>
-          </article>
-          <article class="signal-item signal-item--history">
-            <span>Historique vehicule</span>
-            <strong>3 sinistres sur 24 mois</strong>
-            <small>Historique a consulter</small>
-          </article>
-        </div>
-
-        <div class="mini-distribution" aria-hidden="true">
-          <span></span><span></span><span></span><span></span><span></span>
-          <i></i>
-        </div>
-
-        <div class="ml-note">
-          <span>Indice d'atypicite</span>
-          <strong>Signal complementaire</strong>
-        </div>
-      </div>
-
-      <div class="decision-panel iris-card">
-        <div>
-          <span>Action suggeree</span>
-          <strong>Verifier la chronologie et consulter l'historique</strong>
-        </div>
-        <div>
-          <span>Decision finale</span>
-          <strong>Gestionnaire</strong>
-        </div>
-      </div>
-    </aside>
-  </section>
-
-  <section class="workflow-strip reveal" aria-label="Parcours IRIS">
-    <span>Presentation</span>
-    <span>Connexion</span>
-    <span>Dashboard role</span>
-    <span>Dossiers</span>
-    <span>Revue humaine</span>
-  </section>
-
-  <section id="valeur" class="section section-anchor reveal">
-    <div class="section-heading split-heading">
-      <div>
-        <p class="iris-eyebrow">Probleme metier</p>
-        <h2>Prioriser correctement quand l'information est dispersee.</h2>
-      </div>
-      <p>IRIS transforme une recherche longue en parcours de revue clair, sans remplacer Power BI pour le pilotage global.</p>
-    </div>
-    <div class="issue-grid">
-      <article class="iris-card issue-card" *ngFor="let issue of businessIssues">
-        <span class="card-index">{{ issue.icon }}</span>
-        <h3>{{ issue.title }}</h3>
-        <p>{{ issue.text }}</p>
-      </article>
-    </div>
-  </section>
-
-  <section class="section response-section reveal">
-    <div class="response-panel iris-card">
-      <div class="section-heading">
-        <p class="iris-eyebrow">Reponse IRIS</p>
-        <h2>Une lecture dossier organisee autour du sens metier.</h2>
-        <p>Chaque capacite a un role precis : reunir, expliquer, contextualiser et tracer la revue.</p>
-      </div>
-      <div class="capability-grid">
-        <span *ngFor="let capability of capabilities">{{ capability }}</span>
       </div>
     </div>
   </section>
 
-  <section id="fonctionnement" class="section section-anchor reveal">
-    <div class="section-heading split-heading">
-      <div>
-        <p class="iris-eyebrow">Fonctionnement</p>
-        <h2>Un parcours lisible avant toute decision metier.</h2>
+  <!-- ============================== MARQUEE ============================== -->
+  <div class="lp-marquee" aria-hidden="true">
+    <div class="lp-marquee__track">
+      @for (pass of [0, 1]; track pass) {
+        @for (item of marqueeItems; track item) {
+          <span class="lp-marquee__item"><i></i>{{ item }}</span>
+        }
+      }
+    </div>
+  </div>
+
+  <!-- ============================== POURQUOI IRIS ============================== -->
+  <section id="valeur" class="lp-section lp-anchor" aria-labelledby="valeur-title">
+    <header class="lp-section__head" lpReveal>
+      <p class="lp-eyebrow">Pourquoi IRIS</p>
+      <h2 id="valeur-title">
+        L'information existe déjà.<br />
+        <span class="lp-gradient-text">IRIS la rend visible.</span>
+      </h2>
+      <p class="lp-section__sub">
+        Un sinistre automobile, c'est un client, un contrat, un véhicule, un historique.
+        IRIS transforme cette matière dispersée en une lecture immédiate.
+      </p>
+    </header>
+
+    <div class="lp-value-grid">
+      @for (card of valueCards; track card.index; let i = $index) {
+        <article class="lp-card lp-spot" lpReveal [lpRevealDelay]="i * 90" (mousemove)="onSpotlightMove($event)">
+          <span class="lp-card__index">{{ card.index }}</span>
+          <h3>{{ card.title }}</h3>
+          <p>{{ card.text }}</p>
+        </article>
+      }
+    </div>
+  </section>
+
+  <!-- ============================== PARCOURS ============================== -->
+  <section id="parcours" class="lp-section lp-anchor" aria-labelledby="parcours-title">
+    <header class="lp-section__head" lpReveal>
+      <p class="lp-eyebrow">Le parcours</p>
+      <h2 id="parcours-title">Un flux de travail intelligent, <span class="lp-gradient-text">de bout en bout</span>.</h2>
+      <p class="lp-section__sub">
+        De la connexion à la décision, chaque étape est pensée pour amplifier
+        l'expertise de vos équipes.
+      </p>
+    </header>
+
+    <div class="lp-flow" lpReveal>
+      <ol class="lp-flow__steps">
+        @for (step of steps; track step.label; let i = $index) {
+          <li>
+            <button
+              type="button"
+              class="lp-flow__step"
+              [class.is-active]="activeStep() === i"
+              (click)="selectStep(i)"
+            >
+              <span class="lp-flow__num">{{ i + 1 }}</span>
+              <span class="lp-flow__meta">
+                <strong>{{ step.label }}</strong>
+                <small>{{ step.title }}</small>
+              </span>
+              @if (activeStep() === i && autoplay()) {
+                <span class="lp-flow__progress" aria-hidden="true"></span>
+              }
+            </button>
+          </li>
+        }
+      </ol>
+
+      <div class="lp-flow__panel">
+        @for (step of steps; track step.label; let i = $index) {
+          @if (activeStep() === i) {
+            <div class="lp-flow__detail">
+              <h3>{{ step.title }}</h3>
+              <p>{{ step.text }}</p>
+
+              <div class="lp-mock" [attr.data-mock]="step.mock">
+                @switch (step.mock) {
+                  @case ('login') {
+                    <div class="lp-mock__window">
+                      <div class="lp-mock__bar"><i></i><i></i><i></i></div>
+                      <div class="lp-mock__roles">
+                        <span class="is-on">Gestionnaire</span>
+                        <span>Superviseur</span>
+                        <span>Auditeur</span>
+                        <span>Admin</span>
+                      </div>
+                      <div class="lp-mock__field"></div>
+                      <div class="lp-mock__field lp-mock__field--short"></div>
+                      <div class="lp-mock__cta">Entrer dans IRIS</div>
+                    </div>
+                  }
+                  @case ('dashboard') {
+                    <div class="lp-mock__window">
+                      <div class="lp-mock__bar"><i></i><i></i><i></i></div>
+                      <div class="lp-mock__kpis">
+                        <span><small>En cours</small><strong>128</strong></span>
+                        <span><small>Prioritaires</small><strong class="is-high">17</strong></span>
+                        <span><small>Traités</small><strong class="is-ok">64</strong></span>
+                      </div>
+                      <div class="lp-mock__chart">
+                        <i style="height: 32%"></i><i style="height: 58%"></i><i style="height: 44%"></i>
+                        <i style="height: 78%"></i><i style="height: 62%"></i><i style="height: 90%"></i>
+                        <i style="height: 70%"></i>
+                      </div>
+                    </div>
+                  }
+                  @case ('worklist') {
+                    <div class="lp-mock__window">
+                      <div class="lp-mock__bar"><i></i><i></i><i></i></div>
+                      <div class="lp-mock__row">
+                        <span>SIN-2847</span><span class="lp-badge lp-badge--high">Haute</span>
+                      </div>
+                      <div class="lp-mock__row">
+                        <span>SIN-2851</span><span class="lp-badge lp-badge--medium">Moyenne</span>
+                      </div>
+                      <div class="lp-mock__row">
+                        <span>SIN-2809</span><span class="lp-badge lp-badge--low">Modérée</span>
+                      </div>
+                      <div class="lp-mock__row is-dim">
+                        <span>SIN-2833</span><span class="lp-badge lp-badge--ok">Standard</span>
+                      </div>
+                    </div>
+                  }
+                  @case ('review') {
+                    <div class="lp-mock__window">
+                      <div class="lp-mock__bar"><i></i><i></i><i></i></div>
+                      <div class="lp-mock__signals">
+                        <span class="lp-mini-tag">Chronologie</span>
+                        <span class="lp-mini-tag">Historique véhicule</span>
+                        <span class="lp-mini-tag">Comparaison</span>
+                      </div>
+                      <div class="lp-mock__check"><i class="is-done"></i>Contexte du dossier consulté</div>
+                      <div class="lp-mock__check"><i class="is-done"></i>Signaux passés en revue</div>
+                      <div class="lp-mock__check"><i></i>Pièces justificatives vérifiées</div>
+                    </div>
+                  }
+                  @case ('decision') {
+                    <div class="lp-mock__window">
+                      <div class="lp-mock__bar"><i></i><i></i><i></i></div>
+                      <div class="lp-mock__decision">
+                        <span class="is-approve">✓ Valider</span>
+                        <span>Compléter</span>
+                        <span>Escalader</span>
+                      </div>
+                      <div class="lp-mock__trace">
+                        <i></i>
+                        <div>
+                          <strong>Décision enregistrée</strong>
+                          <small>Motivée · Horodatée · Traçable</small>
+                        </div>
+                      </div>
+                    </div>
+                  }
+                }
+              </div>
+            </div>
+          }
+        }
       </div>
-      <p>IRIS propose des elements a examiner. Le gestionnaire conserve la decision et la responsabilite de l'analyse.</p>
-    </div>
-    <ol class="step-list step-list--connected">
-      <li *ngFor="let step of steps; index as index">
-        <span>{{ index + 1 }}</span>
-        <strong>{{ step.title }}</strong>
-        <p>{{ step.text }}</p>
-        <small>{{ step.detail }}</small>
-      </li>
-    </ol>
-  </section>
-
-  <section id="modules" class="section section-anchor reveal">
-    <div class="section-heading">
-      <p class="iris-eyebrow">Modules</p>
-      <h2>Des signaux complementaires, separes et explicables.</h2>
-    </div>
-    <div class="module-grid module-grid--mosaic">
-      <article class="iris-card" *ngFor="let module of modules" [attr.data-tone]="module.tone">
-        <span>{{ module.code }}</span>
-        <h3>{{ module.title }}</h3>
-        <p>{{ module.text }}</p>
-      </article>
     </div>
   </section>
 
-  <section class="section value-section reveal">
-    <div class="section-heading split-heading">
-      <div>
-        <p class="iris-eyebrow">Valeur ajoutee</p>
-        <h2>Une experience de revue plus rapide, plus claire et plus defendable.</h2>
-      </div>
-      <p>Les benefices restent formules sans chiffres non valides : la valeur vient de la lisibilite et de la tracabilite.</p>
-    </div>
-    <div class="value-band iris-card">
-      <span *ngFor="let benefit of benefits">{{ benefit }}</span>
+  <!-- ============================== MODULES ============================== -->
+  <section id="modules" class="lp-section lp-anchor" aria-labelledby="modules-title">
+    <header class="lp-section__head" lpReveal>
+      <p class="lp-eyebrow">Les modules</p>
+      <h2 id="modules-title">Six regards complémentaires <span class="lp-gradient-text">sur chaque dossier</span>.</h2>
+      <p class="lp-section__sub">
+        Chaque module éclaire le dossier sous un angle différent. Ensemble,
+        ils composent une vision qu'aucun outil isolé ne peut offrir.
+      </p>
+    </header>
+
+    <div class="lp-module-grid">
+      @for (module of modules; track module.title; let i = $index) {
+        <article
+          class="lp-card lp-spot lp-module"
+          [attr.data-tone]="module.tone"
+          lpReveal
+          [lpRevealDelay]="(i % 3) * 90"
+          (mousemove)="onSpotlightMove($event)"
+        >
+          <span class="lp-module__code">{{ module.code }}</span>
+          <h3>{{ module.title }}</h3>
+          <p>{{ module.text }}</p>
+        </article>
+      }
     </div>
   </section>
 
-  <section id="gouvernance" class="section governance section-anchor reveal">
-    <div class="governance-card iris-card">
-      <div>
-        <p class="iris-eyebrow">Gouvernance</p>
-        <h2>IRIS explique des signaux. Le gestionnaire decide.</h2>
-        <p>
-          La plateforme ne confirme pas une fraude et ne remplace pas le jugement metier. Elle presente
-          les raisons, le contexte et les limites de qualite des donnees.
+  <!-- ============================== REPÈRES ============================== -->
+  <section class="lp-section" aria-label="IRIS en quelques repères">
+    <div class="lp-stats" #statsBand lpReveal>
+      <span class="lp-stats__glow" aria-hidden="true"></span>
+      @for (stat of stats; track stat.label; let i = $index) {
+        <div class="lp-stats__item">
+          <strong>{{ statValues()[i] }}{{ stat.suffix }}</strong>
+          <span>{{ stat.label }}</span>
+        </div>
+      }
+    </div>
+  </section>
+
+  <!-- ============================== CONFIANCE ============================== -->
+  <section id="confiance" class="lp-section lp-anchor" aria-labelledby="confiance-title">
+    <div class="lp-trust">
+      <div class="lp-trust__copy" lpReveal>
+        <p class="lp-eyebrow">La confiance, par conception</p>
+        <h2 id="confiance-title">L'IA éclaire.<br /><span class="lp-gradient-text">Vos experts décident.</span></h2>
+        <p class="lp-section__sub">
+          IRIS a été conçu autour d'un principe simple : la technologie révèle,
+          l'humain tranche. C'est ce qui en fait un outil que les équipes adoptent —
+          et auquel elles font confiance.
         </p>
       </div>
-      <div class="principle-list">
-        <article *ngFor="let principle of principles">
-          <strong>{{ principle.title }}</strong>
-          <span>{{ principle.text }}</span>
-        </article>
+
+      <div class="lp-trust__pillars">
+        @for (pillar of pillars; track pillar.title; let i = $index) {
+          <article class="lp-pillar" lpReveal [lpRevealDelay]="i * 110">
+            <span class="lp-pillar__dot" aria-hidden="true"></span>
+            <strong>{{ pillar.title }}</strong>
+            <p>{{ pillar.text }}</p>
+          </article>
+        }
       </div>
     </div>
   </section>
 
-  <section class="final-cta reveal">
-    <div>
-      <p class="iris-eyebrow">Espace decisionnel</p>
-      <h2>Acceder a l'espace decisionnel IRIS</h2>
-      <p>Prototype read-only pour la revue metier des dossiers sinistres automobiles.</p>
-    </div>
-    <a class="iris-button iris-button--primary" routerLink="/login">Se connecter a la plateforme</a>
+  <!-- ============================== CTA ============================== -->
+  <section class="lp-cta" lpReveal>
+    <span class="lp-cta__glow" aria-hidden="true"></span>
+    <iris-logo [size]="64" [animated]="true" />
+    <h2>Prêt à voir vos sinistres <span class="lp-gradient-text">autrement</span> ?</h2>
+    <p>
+      IRIS est déployé au sein de BNA Assurance.
+      Connectez-vous pour découvrir votre espace décisionnel.
+    </p>
+    <a class="lp-btn lp-btn--primary lp-btn--lg" routerLink="/login">
+      Se connecter à IRIS <span aria-hidden="true">→</span>
+    </a>
   </section>
+
+  <!-- ============================== FOOTER ============================== -->
+  <footer class="lp-footer">
+    <div class="lp-footer__brand">
+      <span class="lp-footer__logo">
+        <iris-logo [size]="30" />
+        <strong>IRIS</strong>
+      </span>
+      <p>
+        Plateforme intelligente d'aide à la décision pour les sinistres automobiles,
+        conçue au sein de BNA Assurance.
+      </p>
+    </div>
+
+    <nav class="lp-footer__nav" aria-label="Navigation pied de page">
+      <a href="#valeur">Pourquoi IRIS</a>
+      <a href="#parcours">Le parcours</a>
+      <a href="#modules">Modules</a>
+      <a href="#confiance">Confiance</a>
+      <a routerLink="/login">Se connecter</a>
+    </nav>
+
+    <p class="lp-footer__legal">© 2026 IRIS · BNA Assurance</p>
+  </footer>
 </main>

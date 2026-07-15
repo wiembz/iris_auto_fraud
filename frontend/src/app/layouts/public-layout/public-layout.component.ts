@@ -1,21 +1,23 @@
 ﻿import { CommonModule, DOCUMENT } from '@angular/common';
 import { Component, Inject } from '@angular/core';
 import { RouterLink, RouterOutlet } from '@angular/router';
+import { IrisLogoComponent } from '../../shared/ui/iris-logo.component';
 
 @Component({
   selector: 'app-public-layout',
-  imports: [CommonModule, RouterLink, RouterOutlet],
+  imports: [CommonModule, RouterLink, RouterOutlet, IrisLogoComponent],
   templateUrl: './public-layout.component.html',
   styleUrl: './public-layout.component.scss'
 })
 export class PublicLayoutComponent {
   theme: 'light' | 'dark' = 'light';
+  isMenuOpen = false;
 
   readonly navLinks = [
-    { label: 'Valeur', fragment: 'valeur' },
-    { label: 'Fonctionnement', fragment: 'fonctionnement' },
+    { label: 'Pourquoi IRIS', fragment: 'valeur' },
+    { label: 'Le parcours', fragment: 'parcours' },
     { label: 'Modules', fragment: 'modules' },
-    { label: 'Gouvernance', fragment: 'gouvernance' }
+    { label: 'Confiance', fragment: 'confiance' }
   ];
 
   constructor(@Inject(DOCUMENT) private readonly documentRef: Document) {
@@ -25,6 +27,14 @@ export class PublicLayoutComponent {
   toggleTheme(): void {
     this.theme = this.theme === 'light' ? 'dark' : 'light';
     this.applyTheme();
+  }
+
+  toggleMenu(): void {
+    this.isMenuOpen = !this.isMenuOpen;
+  }
+
+  closeMenu(): void {
+    this.isMenuOpen = false;
   }
 
   private applyTheme(): void {

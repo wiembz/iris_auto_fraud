@@ -1,0 +1,24 @@
+﻿<section class="worklist-summary" aria-label="Resume de la file de travail">
+  <article>
+    <span>Total dossiers</span>
+    <strong>{{ totalLabel }}</strong>
+    <small>{{ totalIsExact ? 'grain cible : dossier sinistre racine' : 'mode rapide sans comptage complet' }}</small>
+  </article>
+  <article>
+    <span>Page affichee</span>
+    <strong>{{ firstRow.toLocaleString('fr-FR') }} - {{ lastRow.toLocaleString('fr-FR') }}</strong>
+    <small>{{ visibleCount }} lignes visibles</small>
+  </article>
+  <article>
+    <span>Filtres actifs</span>
+    <strong>{{ activeFilterCount }}</strong>
+    <small>persistes cote navigateur</small>
+  </article>
+  <article>
+    <span>Vue</span>
+    <strong>{{ viewMode === 'compact' ? 'Compacte' : 'Confortable' }}</strong>
+    <small>lecture ajustable par utilisateur</small>
+  </article>
+</section>
+
+

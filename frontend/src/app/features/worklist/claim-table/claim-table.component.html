@@ -1,0 +1,77 @@
+﻿<section class="claim-table-shell" [attr.data-view]="viewMode" aria-label="Table des dossiers a examiner">
+  @if (loading) {
+    <div class="claim-table-skeleton" aria-label="Chargement des dossiers">
+      @for (row of skeletonRows; track row) {
+        <span></span>
+      }
+    </div>
+  } @else if (errorMessage) {
+    <div class="claim-table-state claim-table-state--error">
+      <strong>File de travail indisponible</strong>
+      <p>{{ errorMessage }}</p>
+    </div>
+  } @else if (claims.length === 0) {
+    <div class="claim-table-state">
+      <strong>Aucun dossier dans cette selection</strong>
+      <p>Elargissez les filtres pour afficher davantage de dossiers.</p>
+    </div>
+  } @else {
+    <div class="claim-table-scroll">
+      <table class="claim-table">
+        <thead>
+          <tr>
+            <th><button type="button" (click)="changeSort('claim_root_id')">Dossier {{ sortMarker('claim_root_id') }}</button></th>
+            <th><button type="button" (click)="changeSort('claim_date')">Date {{ sortMarker('claim_date') }}</button></th>
+            <th>Garantie</th>
+            <th><button type="button" (click)="changeSort('claim_amount')">Montant {{ sortMarker('claim_amount') }}</button></th>
+            <th><button type="button" (click)="changeSort('attention_score')">Attention {{ sortMarker('attention_score') }}</button></th>
+            <th>Motif principal</th>
+            <th>Confiance</th>
+            <th>Statut</th>
+            <th><button type="button" (click)="changeSort('age_days')">Anciennete {{ sortMarker('age_days') }}</button></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (claim of claims; track claim.claim_root_id) {
+            <tr>
+              <td>
+                <a class="claim-link" [routerLink]="['/app/claims', claim.claim_sk]">
+                  <strong>{{ claim.claim_root_id }}</strong>
+                </a>
+              </td>
+              <td>{{ displayDate(claim.claim_date) }}</td>
+              <td>{{ displayText(claim.guarantee_label) }}</td>
+              <td class="claim-amount-cell">{{ displayAmount(claim.claim_amount) }}</td>
+              <td>
+                <div class="score-cell" [attr.data-tone]="claim.attention_tone">
+                  <span class="score-cell__value">{{ claim.attention_score }}</span>
+                  <span class="score-cell__meta">
+                    <app-attention-badge [label]="claim.attention_level" />
+                    <span class="score-cell__track"><span [style.width.%]="claim.attention_score"></span></span>
+                  </span>
+                </div>
+              </td>
+              <td>
+                <span class="reason-text">{{ displayText(claim.main_reason) }}</span>
+                <span class="signal-pills">
+                  @if (claim.has_post_inspection_signal) { <small>Post-inspection</small> }
+                  @if (claim.has_ml_signal) { <small>Atypicite statistique</small> }
+                </span>
+              </td>
+              <td><app-attention-badge [label]="claim.confidence_level" variant="confidence" /></td>
+              <td><app-attention-badge [label]="displayText(claim.workflow_status)" variant="status" /></td>
+              <td>{{ displayAge(claim.age_days) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <footer class="claim-table-pagination">
+      <button type="button" (click)="previousPage()" [disabled]="page <= 1">Precedent</button>
+      <span>Page {{ page }}{{ hasNextPage ? '+' : '' }}</span>
+      <button type="button" (click)="nextPage()" [disabled]="!canGoNext">Suivant</button>
+    </footer>
+  }
+</section>
+

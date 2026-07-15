@@ -1,73 +1,186 @@
-﻿.app-shell {
+.app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: 268px minmax(0, 1fr);
   background: var(--iris-bg);
   color: var(--iris-text);
 }
 
+/* ============ Sidebar ============ */
 .sidebar {
+  position: sticky;
+  top: 0;
+  max-height: 100vh;
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding: 22px;
+  gap: 18px;
+  padding: 20px 16px;
   border-right: 1px solid var(--iris-border);
   background: var(--iris-surface);
+  overflow-y: auto;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 4px 8px;
   color: var(--iris-text);
-  font: 700 18px/1 var(--iris-font-display);
+  font: 600 18px/1 var(--iris-font-display);
   letter-spacing: 0.14em;
   text-decoration: none;
 }
 
-.brand-mark {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: var(--iris-gradient);
-  box-shadow: var(--iris-shadow-sm);
+.brand iris-logo {
+  filter: drop-shadow(0 2px 8px rgba(15, 182, 165, 0.35));
+}
+
+.nav-label {
+  margin: 4px 8px -8px;
+  color: var(--iris-text-3);
+  font: 800 10.5px/1 var(--iris-font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .sidebar nav {
   display: grid;
-  gap: 6px;
+  gap: 3px;
 }
 
 .sidebar nav a {
-  border-radius: var(--iris-radius-sm);
-  padding: 11px 12px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border-radius: 10px;
+  padding: 10px 12px;
   color: var(--iris-text-2);
+  font-size: 13.5px;
   font-weight: 750;
   text-decoration: none;
+  transition: background 0.16s ease, color 0.16s ease;
 }
 
-.sidebar nav a:hover,
+.sidebar nav a svg {
+  flex: none;
+  opacity: 0.75;
+}
+
+.sidebar nav a:hover {
+  color: var(--iris-primary-2);
+  background: var(--iris-primary-soft);
+}
+
 .sidebar nav a.active {
   color: var(--iris-primary-2);
   background: var(--iris-primary-soft);
 }
 
+.sidebar nav a.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--iris-gradient);
+}
+
+.sidebar nav a.active svg {
+  opacity: 1;
+}
+
 .governance-note {
   margin-top: auto;
-  display: grid;
-  gap: 6px;
-  border: 1px solid var(--iris-border);
-  border-radius: var(--iris-radius-md);
-  padding: 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  border: 1px dashed color-mix(in srgb, var(--iris-primary) 34%, var(--iris-border));
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--iris-primary-soft) 46%, transparent);
   color: var(--iris-text-2);
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 650;
 }
 
-.governance-note strong {
+.governance-note__dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--iris-primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--iris-primary) 16%, transparent);
+}
+
+.user-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--iris-border);
+  border-radius: 14px;
+  background: var(--iris-surface-2);
+}
+
+.user-card__meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-card__meta strong {
+  display: block;
+  overflow: hidden;
   color: var(--iris-text);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+.user-card__meta small {
+  display: block;
+  margin-top: 2px;
+  color: var(--iris-text-3);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.user-card__logout {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border: 1px solid var(--iris-border-2);
+  border-radius: 9px;
+  background: var(--iris-surface);
+  color: var(--iris-text-3);
+  cursor: pointer;
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+
+.user-card__logout:hover {
+  color: var(--iris-high);
+  border-color: color-mix(in srgb, var(--iris-high) 42%, var(--iris-border-2));
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 11px;
+  background: var(--iris-gradient);
+  color: #ffffff;
+  font: 700 12px/1 var(--iris-font-display);
+}
+
+/* ============ Workspace ============ */
 .workspace {
   min-width: 0;
   display: grid;
@@ -75,35 +188,39 @@
 }
 
 .topbar {
-  min-height: 70px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  min-height: 68px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 18px;
   border-bottom: 1px solid var(--iris-border);
-  padding: 14px 24px;
+  padding: 12px 26px;
   background: color-mix(in srgb, var(--iris-bg) 82%, transparent);
   backdrop-filter: blur(14px);
 }
 
-.topbar strong {
+.topbar-context strong {
   display: block;
   color: var(--iris-text);
-  font-size: 18px;
+  font: 650 16.5px/1.2 var(--iris-font-display);
 }
 
-.topbar small {
+.topbar-context small {
   display: block;
-  margin-top: 3px;
+  margin-top: 2px;
   color: var(--iris-text-3);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 650;
 }
 
 .topbar-search {
   flex: 1;
-  max-width: 360px;
+  max-width: 380px;
   color: var(--iris-text-3);
+  cursor: pointer;
 }
 
 .topbar-search span:not(.iris-search__kbd) {
@@ -118,37 +235,39 @@
   gap: 10px;
 }
 
-.avatar {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: var(--iris-gradient);
-  color: #fff;
-  font: 700 12px/1 var(--iris-font-display);
-  flex: none;
-}
-
-@media (max-width: 960px) {
-  .topbar-search {
-    display: none;
-  }
-}
-
 .theme-toggle {
   min-height: 38px;
   border: 1px solid var(--iris-border-2);
   border-radius: 999px;
-  padding: 0 13px;
+  padding: 0 14px;
   background: var(--iris-surface);
   color: var(--iris-text-2);
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
 }
 
 .app-content {
-  padding: 24px;
+  min-width: 0;
+  /* Une page enfant (ex. table large en file de travail) ne doit jamais
+     forcer un scroll horizontal sur toute l'application (sidebar comprise) :
+     tout debordement doit rester local a son propre conteneur scrollable. */
+  overflow-x: hidden;
+  padding: 26px 28px 40px;
+  background:
+    radial-gradient(760px 300px at 88% -8%, var(--iris-canvas-glow-1), transparent 60%),
+    var(--iris-bg);
+}
+
+/* ============ Responsive ============ */
+@media (max-width: 1080px) {
+  .app-shell {
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+
+  .topbar-search {
+    display: none;
+  }
 }
 
 @media (max-width: 860px) {
@@ -157,12 +276,18 @@
   }
 
   .sidebar {
+    position: static;
+    max-height: none;
     border-right: 0;
     border-bottom: 1px solid var(--iris-border);
   }
 
   .sidebar nav {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .governance-note {
+    display: none;
   }
 }
 
@@ -176,6 +301,8 @@
   .sidebar nav {
     grid-template-columns: 1fr;
   }
+
+  .app-content {
+    padding: 18px 16px 32px;
+  }
 }
-
-

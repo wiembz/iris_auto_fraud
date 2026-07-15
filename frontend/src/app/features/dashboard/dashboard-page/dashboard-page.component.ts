@@ -1,11 +1,17 @@
-﻿import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { Subscription } from 'rxjs';
+import { Subscription, forkJoin } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
-import { ClaimListItem, IrisApiService, SummaryResponse } from '../../../core/services/iris-api.service';
+import {
+  ClaimListItem,
+  IrisApiService,
+  PortfolioInsightsResponse,
+  SummaryResponse
+} from '../../../core/services/iris-api.service';
 import { AttentionChartComponent, AttentionChartRow, AttentionTone } from '../components/attention-chart/attention-chart.component';
 import { KpiCardComponent } from '../components/kpi-card/kpi-card.component';
 import { RecentClaimsComponent } from '../components/recent-claims/recent-claims.component';
+import { TrendChartComponent, TrendPoint } from '../components/trend-chart/trend-chart.component';
 import { WorkloadChartComponent, WorkloadRow } from '../components/workload-chart/workload-chart.component';
 
 interface DashboardKpi {
@@ -15,28 +21,6 @@ interface DashboardKpi {
   helper: string;
   tone: 'primary' | 'high' | 'medium' | 'low' | 'ok' | 'muted';
   status?: 'available' | 'pending';
-}
-
-interface CapabilityTile {
-  title: string;
-  text: string;
-  status: 'available' | 'waiting-data';
-  label: string;
-}
-
-interface DashboardPanel {
-  title: string;
-  metric: number | string;
-  helper: string;
-  status: 'available' | 'waiting-data';
-  label: string;
-}
-
-interface TimelinePoint {
-  label: string;
-  value: number | string;
-  helper: string;
-  status: 'available' | 'waiting-data';
 }
 
 const DEFAULT_SCORE_VERSION = 'IRIS_CLAIM_ATTENTION_HYBRID_ML_V1_CANDIDATE';
@@ -49,7 +33,8 @@ const DEFAULT_SCORE_VERSION = 'IRIS_CLAIM_ATTENTION_HYBRID_ML_V1_CANDIDATE';
     KpiCardComponent,
     AttentionChartComponent,
     WorkloadChartComponent,
-    RecentClaimsComponent
+    RecentClaimsComponent,
+    TrendChartComponent
   ],
   templateUrl: './dashboard-page.component.html',
   styleUrl: './dashboard-page.component.scss'
@@ -62,19 +47,19 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
   readonly loading = signal(true);
   readonly errorMessage = signal<string | null>(null);
   readonly summary = signal<SummaryResponse | null>(null);
+  readonly insights = signal<PortfolioInsightsResponse | null>(null);
   readonly attentionRows = signal<AttentionChartRow[]>([]);
   readonly confidenceRows = signal<AttentionChartRow[]>([]);
   readonly managerKpis = signal<DashboardKpi[]>([]);
   readonly handlerKpis = signal<DashboardKpi[]>([]);
   readonly workloadRows = signal<WorkloadRow[]>([]);
-  readonly governanceRows = signal<WorkloadRow[]>([]);
-  readonly managerReadinessPanels = signal<DashboardPanel[]>([]);
-  readonly handlerReadinessPanels = signal<DashboardPanel[]>([]);
+  readonly financialExposureRows = signal<WorkloadRow[]>([]);
+  readonly guaranteeRows = signal<WorkloadRow[]>([]);
+  readonly reasonRows = signal<WorkloadRow[]>([]);
+  readonly validationRows = signal<WorkloadRow[]>([]);
+  readonly trendPoints = signal<TrendPoint[]>([]);
   readonly signalFamilyRows = signal<WorkloadRow[]>([]);
-  readonly trendPoints = signal<TimelinePoint[]>([]);
   readonly topClaims = signal<ClaimListItem[]>([]);
-  readonly capabilityTiles = signal<CapabilityTile[]>([]);
-  readonly heatmapCells = Array.from({ length: 12 }, (_, index) => index);
 
   readonly user = this.auth.currentUser;
   readonly isHandlerDashboard = computed(() => this.user()?.role === 'gestionnaire');
@@ -83,22 +68,38 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
   );
   readonly dashboardSubtitle = computed(() =>
     this.isHandlerDashboard()
-      ? 'Espace de revue pret pour les tests humains : priorites, raisons, confiance et actions de consultation.'
-      : 'Cockpit de pilotage pret pour les tests humains : volumes, niveaux, qualite, signaux et besoins backend visibles.'
+      ? 'Vos priorites du jour : les dossiers a examiner, les raisons en clair et la confiance associee.'
+      : 'Volumes, exposition financiere, tendance et avancement de la revue humaine sur l ensemble du portefeuille.'
   );
 
   ngOnInit(): void {
-    this.subscription = this.api.getSummary(DEFAULT_SCORE_VERSION).subscribe({
-      next: (summary) => this.applySummary(summary),
-      error: () => {
-        this.errorMessage.set('Le resume IRIS est indisponible. Verifiez que l API Flask read-only est demarree.');
-        this.loading.set(false);
-      }
+    if (this.isHandlerDashboard()) {
+      this.subscription = this.api.getSummary(DEFAULT_SCORE_VERSION).subscribe({
+        next: (summary) => this.applySummary(summary),
+        error: () => this.onLoadError()
+      });
+      return;
+    }
+
+    this.subscription = forkJoin({
+      summary: this.api.getSummary(DEFAULT_SCORE_VERSION),
+      insights: this.api.getPortfolioInsights(DEFAULT_SCORE_VERSION)
+    }).subscribe({
+      next: ({ summary, insights }) => {
+        this.applySummary(summary);
+        this.applyInsights(insights);
+      },
+      error: () => this.onLoadError()
     });
   }
 
   ngOnDestroy(): void {
     this.subscription?.unsubscribe();
+  }
+
+  private onLoadError(): void {
+    this.errorMessage.set('Le resume IRIS est momentanement indisponible. Reessayez dans quelques instants.');
+    this.loading.set(false);
   }
 
   private applySummary(summary: SummaryResponse): void {
@@ -115,7 +116,7 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
       1
     );
     const confidenceRows = summary.confidence_distribution.map((item) => ({
-      label: item.confidence_level,
+      label: this.confidenceLabel(item.confidence_level),
       count: item.claims,
       share: (item.claims / confidenceTotal) * 100,
       tone: this.confidenceTone(item.confidence_level)
@@ -126,25 +127,22 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
     const reviewCount = priorityCount + reinforcedCount + this.countByTone(attentionRows, 'low');
     const highConfidenceShare = Math.round(confidenceRows.find((row) => row.tone === 'ok')?.share ?? 0);
     const topClaims = summary.top_claims.slice(0, 8);
-    const mlCount = topClaims.filter((claim) => claim.has_ml_signal).length;
-    const postInspectionCount = topClaims.filter((claim) => claim.has_post_inspection_signal).length;
-    const reasonCounts = this.buildReasonRows(topClaims);
 
-    this.managerKpis.set([
+    this.handlerKpis.set([
       {
-        label: 'Dossiers analyses',
-        value: summary.total_claims,
-        helper: 'volume couvert par le run affiche',
-        tone: 'primary'
+        label: 'Dossiers a examiner',
+        value: reviewCount,
+        helper: 'prioritaires, renforces ou a verifier',
+        tone: 'high'
       },
       {
-        label: 'Attention prioritaire',
+        label: 'Examen prioritaire',
         value: priorityCount,
         helper: 'dossiers au niveau le plus fort',
         tone: 'high'
       },
       {
-        label: 'Revue renforcee',
+        label: 'Examen renforce',
         value: reinforcedCount,
         helper: 'dossiers a suivre de pres',
         tone: 'medium'
@@ -158,194 +156,30 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
       }
     ]);
 
-    this.handlerKpis.set([
-      {
-        label: 'Dossiers a examiner',
-        value: reviewCount,
-        helper: 'prioritaires, renforces ou a verifier',
-        tone: 'high'
-      },
-      {
-        label: 'Acces rapide',
-        value: topClaims.length,
-        helper: 'dossiers visibles dans la liste prioritaire',
-        tone: 'primary'
-      },
-      {
-        label: 'Pieces en attente',
-        value: 'Pret UI',
-        helper: 'donnees backend pieces/documents attendues',
-        tone: 'muted',
-        status: 'pending'
-      },
-      {
-        label: 'Echeances proches',
-        value: 'Pret UI',
-        helper: 'dates de traitement metier attendues',
-        tone: 'muted',
-        status: 'pending'
-      }
-    ]);
-
     const maxAttention = Math.max(...attentionRows.map((row) => row.count), 1);
-    this.workloadRows.set([
-      ...attentionRows.slice(0, 4).map((row) => ({
+    this.workloadRows.set(
+      attentionRows.slice(0, 4).map((row) => ({
         label: row.label,
         value: row.count,
         share: (row.count / maxAttention) * 100,
         helper: 'charge de revue par niveau',
         status: 'available' as const
-      })),
-      {
-        label: 'Validations a completer',
-        value: 'Pret UI',
-        share: 0,
-        helper: 'module feedback metier attendu',
-        status: 'pending'
-      }
-    ]);
-
-    this.governanceRows.set([
-      {
-        label: 'Signal ML disponible dans la liste prioritaire',
-        value: mlCount,
-        share: topClaims.length ? (mlCount / topClaims.length) * 100 : 0,
-        helper: 'signal complementaire, separe du jugement metier',
-        status: 'available'
-      },
-      {
-        label: 'Signal post-inspection disponible',
-        value: postInspectionCount,
-        share: topClaims.length ? (postInspectionCount / topClaims.length) * 100 : 0,
-        helper: 'contexte temporel a consulter si present',
-        status: 'available'
-      },
-      {
-        label: 'Montants et agences',
-        value: 'Pret UI',
-        share: 0,
-        helper: 'endpoint de pilotage dedie attendu',
-        status: 'pending'
-      },
-      {
-        label: 'Tendance temporelle',
-        value: 'Pret UI',
-        share: 0,
-        helper: 'endpoint temporel attendu apres validation du grain dossier',
-        status: 'pending'
-      }
-    ]);
+      }))
+    );
 
     this.signalFamilyRows.set(
-      reasonCounts.length
-        ? reasonCounts
+      this.buildReasonRows(topClaims).length
+        ? this.buildReasonRows(topClaims)
         : [
             {
-              label: 'Distribution des familles de signaux',
-              value: 'Pret UI',
+              label: 'Aucune raison a afficher pour le moment',
+              value: 0,
               share: 0,
-              helper: 'endpoint agrege des familles attendu',
-              status: 'pending'
+              helper: 'les raisons apparaissent des qu un dossier prioritaire est disponible',
+              status: 'available'
             }
           ]
     );
-
-    this.handlerReadinessPanels.set([
-      {
-        title: 'File de travail',
-        metric: topClaims.length,
-        helper: 'dossiers accessibles depuis le resume courant',
-        status: 'available',
-        label: 'Disponible'
-      },
-      {
-        title: 'Pieces et documents',
-        metric: 'Pret UI',
-        helper: 'liste de pieces attendues, sans ecriture depuis Angular',
-        status: 'waiting-data',
-        label: 'Donnees attendues'
-      },
-      {
-        title: 'Echeances',
-        metric: 'Pret UI',
-        helper: 'priorisation calendaire a brancher sur le backend',
-        status: 'waiting-data',
-        label: 'Donnees attendues'
-      }
-    ]);
-
-    this.managerReadinessPanels.set([
-      {
-        title: 'Volumes et niveaux',
-        metric: summary.total_claims,
-        helper: 'branche sur le resume read-only',
-        status: 'available',
-        label: 'Disponible'
-      },
-      {
-        title: 'Charge par equipe',
-        metric: 'Pret UI',
-        helper: 'necessite un endpoint affectations/equipes',
-        status: 'waiting-data',
-        label: 'Donnees attendues'
-      },
-      {
-        title: 'Agences et regions',
-        metric: 'Pret UI',
-        helper: 'a afficher apres consolidation GEO et endpoint agrege',
-        status: 'waiting-data',
-        label: 'Donnees attendues'
-      },
-      {
-        title: 'Tendance temporelle',
-        metric: 'Pret UI',
-        helper: 'courbe prete, serie temporelle attendue',
-        status: 'waiting-data',
-        label: 'Donnees attendues'
-      }
-    ]);
-
-    this.trendPoints.set([
-      {
-        label: '7 jours',
-        value: 'Pret UI',
-        helper: 'serie backend attendue',
-        status: 'waiting-data'
-      },
-      {
-        label: '30 jours',
-        value: 'Pret UI',
-        helper: 'serie backend attendue',
-        status: 'waiting-data'
-      },
-      {
-        label: '90 jours',
-        value: 'Pret UI',
-        helper: 'serie backend attendue',
-        status: 'waiting-data'
-      }
-    ]);
-
-    this.capabilityTiles.set([
-      {
-        title: 'Heatmap agence / periode',
-        text: 'Structure visuelle prete pour afficher une matrice agence-periode lorsque l endpoint sera disponible.',
-        status: 'waiting-data',
-        label: 'Donnees attendues'
-      },
-      {
-        title: 'Carte GEO',
-        text: 'A afficher seulement lorsque le lot GEO est valide comme suffisamment fiable.',
-        status: 'waiting-data',
-        label: 'Decision GEO attendue'
-      },
-      {
-        title: 'Radar multi-dimensions',
-        text: 'Reserve aux comparaisons coherentes entre dimensions metier validees, sans usage decoratif.',
-        status: 'waiting-data',
-        label: 'Cadrage attendu'
-      }
-    ]);
 
     this.attentionRows.set(attentionRows);
     this.confidenceRows.set(confidenceRows);
@@ -353,6 +187,131 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
     this.summary.set(summary);
     this.errorMessage.set(null);
     this.loading.set(false);
+  }
+
+  private applyInsights(insights: PortfolioInsightsResponse): void {
+    this.insights.set(insights);
+
+    const totalExposure = insights.financial_exposure.reduce((sum, item) => sum + item.total_amount, 0);
+    const priorityExposure =
+      insights.financial_exposure.find((item) => this.toneFor(item.attention_level) === 'high')?.total_amount ?? 0;
+    const priorityClaims =
+      insights.financial_exposure.find((item) => this.toneFor(item.attention_level) === 'high')?.claims ?? 0;
+    const coverage = insights.validation_coverage;
+    const coverageShare = coverage && coverage.total_claims
+      ? Math.round((coverage.decided_claims / coverage.total_claims) * 100)
+      : 0;
+
+    this.managerKpis.set([
+      {
+        label: 'Dossiers analyses',
+        value: coverage?.total_claims ?? 0,
+        helper: 'volume couvert par la derniere analyse',
+        tone: 'primary'
+      },
+      {
+        label: 'Exposition financiere totale',
+        value: this.formatAmountShort(totalExposure),
+        helper: 'montant cumule des dossiers analyses',
+        tone: 'primary'
+      },
+      {
+        label: 'Examen prioritaire',
+        value: priorityClaims,
+        helper: `${this.formatAmountShort(priorityExposure)} en jeu sur ces dossiers`,
+        tone: 'high'
+      },
+      {
+        label: 'Couverture de la revue',
+        value: coverageShare,
+        suffix: '%',
+        helper: `${coverage?.decided_claims ?? 0} dossier(s) avec une decision humaine enregistree`,
+        tone: coverageShare > 0 ? 'ok' : 'muted',
+        status: coverageShare > 0 ? 'available' : 'pending'
+      }
+    ]);
+
+    const maxExposure = Math.max(...insights.financial_exposure.map((i) => i.total_amount), 1);
+    this.financialExposureRows.set(
+      insights.financial_exposure.map((item) => ({
+        label: item.attention_level,
+        value: this.formatAmountShort(item.total_amount),
+        share: (item.total_amount / maxExposure) * 100,
+        helper: `${item.claims.toLocaleString('fr-FR')} dossier(s) - moyenne ${this.formatAmountShort(item.avg_amount)}`,
+        status: 'available' as const
+      }))
+    );
+
+    const maxGuaranteeClaims = Math.max(...insights.guarantee_breakdown.map((i) => i.priority_claims), 1);
+    this.guaranteeRows.set(
+      insights.guarantee_breakdown.map((item) => ({
+        label: item.code_garantie,
+        value: item.priority_claims,
+        share: (item.priority_claims / maxGuaranteeClaims) * 100,
+        helper: `${item.claims.toLocaleString('fr-FR')} dossiers - ${this.formatAmountShort(item.total_amount)} au total`,
+        status: 'available' as const
+      }))
+    );
+
+    const maxReason = Math.max(...insights.reason_distribution.map((i) => i.claims), 1);
+    this.reasonRows.set(
+      insights.reason_distribution.map((item) => ({
+        label: item.reason,
+        value: item.claims,
+        share: (item.claims / maxReason) * 100,
+        helper: 'sur l ensemble du portefeuille analyse',
+        status: 'available' as const
+      }))
+    );
+
+    if (coverage) {
+      const nonReviewed = Math.max(coverage.total_claims - coverage.decided_claims, 0);
+      const maxValidation = Math.max(
+        coverage.suspicion_confirmed,
+        coverage.conforme,
+        coverage.a_completer,
+        nonReviewed,
+        1
+      );
+      this.validationRows.set([
+        {
+          label: 'Suspicion confirmee',
+          value: coverage.suspicion_confirmed,
+          share: (coverage.suspicion_confirmed / maxValidation) * 100,
+          helper: 'necessite une investigation ou un refus documente',
+          status: 'available'
+        },
+        {
+          label: 'Conforme',
+          value: coverage.conforme,
+          share: (coverage.conforme / maxValidation) * 100,
+          helper: 'aucune anomalie retenue apres verification',
+          status: 'available'
+        },
+        {
+          label: 'A completer',
+          value: coverage.a_completer,
+          share: (coverage.a_completer / maxValidation) * 100,
+          helper: 'elements manquants pour trancher',
+          status: 'available'
+        },
+        {
+          label: 'Non revu',
+          value: nonReviewed,
+          share: (nonReviewed / maxValidation) * 100,
+          helper: 'en attente d une decision humaine',
+          status: nonReviewed > 0 ? 'pending' : 'available'
+        }
+      ]);
+    }
+
+    this.trendPoints.set(
+      insights.monthly_trend.map((point) => ({
+        month: point.month,
+        claims: point.claims,
+        priorityClaims: point.priority_claims
+      }))
+    );
   }
 
   private toneFor(level: string): AttentionTone {
@@ -367,6 +326,20 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
       return 'low';
     }
     return 'ok';
+  }
+
+  private confidenceLabel(level: string): string {
+    const normalized = this.normalize(level ?? '');
+    if (normalized.includes('high') || normalized.includes('eleve')) {
+      return 'Confiance elevee';
+    }
+    if (normalized.includes('medium') || normalized.includes('moy')) {
+      return 'Confiance moyenne';
+    }
+    if (normalized.includes('low') || normalized.includes('limit')) {
+      return 'Confiance limitee';
+    }
+    return level;
   }
 
   private confidenceTone(level: string): AttentionTone {
@@ -410,10 +383,23 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
       }));
   }
 
+  private formatAmountShort(value: number): string {
+    if (!Number.isFinite(value)) {
+      return '0 TND';
+    }
+    if (value >= 1_000_000) {
+      return `${(value / 1_000_000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} M TND`;
+    }
+    if (value >= 1_000) {
+      return `${(value / 1_000).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} k TND`;
+    }
+    return `${Math.round(value).toLocaleString('fr-FR')} TND`;
+  }
+
   private normalize(value: string): string {
     return value
       .toLowerCase()
       .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '');
+      .replace(/[̀-ͯ]/g, '');
   }
 }

@@ -1,0 +1,57 @@
+﻿<section class="worklist-filters" aria-label="Filtres file de travail">
+  <form [formGroup]="form">
+    <label class="worklist-search">
+      <span>Recherche dossier</span>
+      <input type="search" formControlName="search" placeholder="Dossier, client, vehicule..." />
+    </label>
+
+    <label>
+      <span>Attention</span>
+      <select formControlName="attentionLevel">
+        @for (option of attentionOptions; track option.value) {
+          <option [value]="option.value">{{ option.label }}</option>
+        }
+      </select>
+    </label>
+
+    <label>
+      <span>Confiance</span>
+      <select formControlName="confidenceLevel">
+        @for (option of confidenceOptions; track option.value) {
+          <option [value]="option.value">{{ option.label }}</option>
+        }
+      </select>
+    </label>
+
+    <label>
+      <span>Validation</span>
+      <select formControlName="validationStatus">
+        @for (option of validationOptions; track option.value) {
+          <option [value]="option.value">{{ option.label }}</option>
+        }
+      </select>
+    </label>
+
+    <div class="worklist-filter-toggles" aria-label="Signaux disponibles">
+      <label>
+        <input type="checkbox" formControlName="hasPostInspection" />
+        <span>Post-inspection</span>
+      </label>
+      <label>
+        <input type="checkbox" formControlName="hasMl" />
+        <span>Atypicite statistique</span>
+      </label>
+    </div>
+
+    <div class="worklist-view-toggle" aria-label="Mode affichage">
+      <button type="button" [class.is-active]="form.controls.viewMode.value === 'comfortable'" (click)="form.controls.viewMode.setValue('comfortable')">
+        Confortable
+      </button>
+      <button type="button" [class.is-active]="form.controls.viewMode.value === 'compact'" (click)="form.controls.viewMode.setValue('compact')">
+        Compacte
+      </button>
+    </div>
+
+    <button class="worklist-reset" type="button" (click)="resetFilters.emit()">Reinitialiser</button>
+  </form>
+</section>

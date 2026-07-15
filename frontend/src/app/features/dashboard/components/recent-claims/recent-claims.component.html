@@ -8,7 +8,7 @@
   </header>
 
   @if (claims.length === 0) {
-    <div class="dashboard-empty">Aucun dossier disponible dans le resume courant.</div>
+    <div class="dashboard-empty">Aucun dossier prioritaire a afficher pour le moment.</div>
   } @else {
     <div class="recent-list">
       @for (claim of claims; track claim.claim_sk) {
@@ -26,7 +26,7 @@
               <small>Raison principale non renseignee</small>
             }
           </span>
-          <span class="recent-row__confidence">{{ claim.confidence_level }}</span>
+          <span class="recent-row__confidence">{{ confidenceLabel(claim.confidence_level) }}</span>
         </a>
       }
     </div>

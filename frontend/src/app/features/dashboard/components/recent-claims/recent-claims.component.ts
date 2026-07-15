@@ -11,7 +11,7 @@ import { ClaimListItem } from '../../../../core/services/iris-api.service';
 })
 export class RecentClaimsComponent {
   @Input() title = 'Dossiers a examiner';
-  @Input() subtitle = 'Dossiers remontes par le dernier run disponible';
+  @Input() subtitle = 'Dossiers remontes par la derniere analyse disponible';
   @Input() claims: ClaimListItem[] = [];
 
   reasonsFor(claim: ClaimListItem): string[] {
@@ -37,7 +37,21 @@ export class RecentClaimsComponent {
     return 'ok';
   }
 
-  claimRoute(claim: ClaimListItem): string | number {
-    return claim.claim_business_id ?? claim.claim_sk;
+  claimRoute(claim: ClaimListItem): number {
+    return claim.claim_sk;
+  }
+
+  confidenceLabel(level: string): string {
+    const normalized = (level ?? '').toLowerCase();
+    if (normalized.includes('high') || normalized.includes('elev')) {
+      return 'Confiance elevee';
+    }
+    if (normalized.includes('medium') || normalized.includes('moy')) {
+      return 'Confiance moyenne';
+    }
+    if (normalized.includes('low') || normalized.includes('limit')) {
+      return 'Confiance limitee';
+    }
+    return level;
   }
 }

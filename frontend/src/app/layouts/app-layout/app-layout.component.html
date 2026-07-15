@@ -1,37 +1,64 @@
-﻿<div class="app-shell">
+<div class="app-shell">
   <aside class="sidebar" aria-label="Navigation IRIS applicative">
     <a class="brand" routerLink="/app/dashboard">
-      <span class="brand-mark" aria-hidden="true"></span>
-      <span>IRIS</span>
+      <iris-logo [size]="32" />
+      <span class="brand-word">IRIS</span>
     </a>
 
+    <p class="nav-label">Espace de travail</p>
+
     <nav>
-      <a *ngFor="let item of visibleNavItems()" [routerLink]="item.route" routerLinkActive="active">{{ item.label }}</a>
+      @for (item of visibleNavItems(); track item.route) {
+        <a [routerLink]="item.route" routerLinkActive="active">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            @for (d of item.icon; track d) {
+              <path [attr.d]="d" />
+            }
+          </svg>
+          <span>{{ item.label }}</span>
+        </a>
+      }
     </nav>
 
     <section class="governance-note">
-      <strong>Aide a l'analyse</strong>
-      <span>Les elements affiches accompagnent la revue. La decision finale reste humaine.</span>
+      <span class="governance-note__dot" aria-hidden="true"></span>
+      <span>IRIS éclaire l'analyse — la décision finale reste humaine.</span>
+    </section>
+
+    <section class="user-card">
+      <span class="avatar" aria-hidden="true">{{ userInitials() }}</span>
+      <div class="user-card__meta">
+        <strong>{{ user()?.displayName }}</strong>
+        <small>{{ user()?.roleLabel }}</small>
+      </div>
+      <button type="button" class="user-card__logout" (click)="signOut()" title="Se déconnecter" aria-label="Se déconnecter">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <path d="m16 17 5-5-5-5" />
+          <path d="M21 12H9" />
+        </svg>
+      </button>
     </section>
   </aside>
 
   <section class="workspace">
     <header class="topbar">
-      <div>
-        <span class="iris-eyebrow">Espace decisionnel</span>
-        <strong>MVP de validation metier</strong>
-        <small *ngIf="user()">{{ user()?.roleLabel }}</small>
+      <div class="topbar-context">
+        <strong>Bonjour{{ firstName() ? ', ' + firstName() : '' }} 👋</strong>
+        <small>Voici l'état de vos dossiers sinistres.</small>
       </div>
+
       <div class="iris-search topbar-search">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-        <span>Rechercher un dossier, un assure, une plaque...</span>
+        <span>Rechercher un dossier, un assuré, une plaque...</span>
         <span class="iris-search__kbd">Ctrl K</span>
       </div>
+
       <div class="topbar-actions">
         <button type="button" class="theme-toggle" (click)="toggleTheme()">
-          {{ theme === 'light' ? 'Mode sombre' : 'Mode clair' }}
+          {{ theme === 'light' ? 'Sombre' : 'Clair' }}
         </button>
-        <a class="iris-button iris-button--ghost" routerLink="/">Presentation</a>
+        <a class="iris-button iris-button--ghost" routerLink="/">Présentation</a>
         <span class="avatar" aria-hidden="true">{{ userInitials() }}</span>
       </div>
     </header>

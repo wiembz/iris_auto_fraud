@@ -1,0 +1,98 @@
+<div class="eye-scene" aria-hidden="true">
+  <svg viewBox="0 0 600 600" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <radialGradient id="eye-pupil-g" cx="0.38" cy="0.32" r="0.95">
+        <stop offset="0" stop-color="#0d4a52" />
+        <stop offset="1" stop-color="#041c22" />
+      </radialGradient>
+      <radialGradient id="eye-glow-g" cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0" stop-color="rgba(31, 190, 219, 0.2)" />
+        <stop offset="0.62" stop-color="rgba(31, 190, 219, 0.07)" />
+        <stop offset="1" stop-color="rgba(31, 190, 219, 0)" />
+      </radialGradient>
+    </defs>
+
+    <!-- Halo ambiant -->
+    <circle cx="300" cy="300" r="256" fill="url(#eye-glow-g)" />
+
+    <!-- Anneaux orbitaux -->
+    <g class="ring ring--outer">
+      <circle cx="300" cy="300" r="232" class="ring-stroke" stroke-dasharray="4 16" />
+    </g>
+    <g class="ring ring--inner">
+      <circle cx="300" cy="300" r="206" class="ring-stroke ring-stroke--faint" stroke-dasharray="1.5 9" />
+    </g>
+
+    <!-- Flux de donnees : entrant (sous l'oeil, les points disparaissent dessous) -->
+    <g class="streams">
+      <path id="eye-in-1" class="stream-path" d="M -30 150 C 110 170 200 220 258 262" />
+      <path id="eye-in-2" class="stream-path" d="M -30 300 C 100 300 180 300 246 300" />
+      <path id="eye-in-3" class="stream-path" d="M -30 452 C 110 430 200 352 258 338" />
+      <path id="eye-in-4" class="stream-path" d="M 630 128 C 500 158 400 220 344 260" />
+      <path id="eye-in-5" class="stream-path" d="M 630 332 C 520 332 420 316 354 306" />
+      <path id="eye-out" class="stream-path stream-path--out" d="M 310 348 C 340 430 440 482 645 522" />
+
+      <circle r="4.5" class="stream-dot">
+        <animateMotion dur="4.4s" repeatCount="indefinite" begin="0s"><mpath href="#eye-in-1" /></animateMotion>
+      </circle>
+      <circle r="3.5" class="stream-dot">
+        <animateMotion dur="4.4s" repeatCount="indefinite" begin="-2.2s"><mpath href="#eye-in-1" /></animateMotion>
+      </circle>
+      <circle r="4.5" class="stream-dot">
+        <animateMotion dur="5.1s" repeatCount="indefinite" begin="-1.4s"><mpath href="#eye-in-2" /></animateMotion>
+      </circle>
+      <circle r="4.5" class="stream-dot">
+        <animateMotion dur="4.8s" repeatCount="indefinite" begin="-0.6s"><mpath href="#eye-in-3" /></animateMotion>
+      </circle>
+      <circle r="3.5" class="stream-dot">
+        <animateMotion dur="4.8s" repeatCount="indefinite" begin="-3s"><mpath href="#eye-in-3" /></animateMotion>
+      </circle>
+      <circle r="4.5" class="stream-dot">
+        <animateMotion dur="4.6s" repeatCount="indefinite" begin="-1.9s"><mpath href="#eye-in-4" /></animateMotion>
+      </circle>
+      <circle r="4.5" class="stream-dot">
+        <animateMotion dur="5.3s" repeatCount="indefinite" begin="-3.6s"><mpath href="#eye-in-5" /></animateMotion>
+      </circle>
+
+      <circle r="5" class="stream-dot stream-dot--out">
+        <animateMotion dur="4.2s" repeatCount="indefinite" begin="-0.8s"><mpath href="#eye-out" /></animateMotion>
+      </circle>
+      <circle r="4" class="stream-dot stream-dot--out">
+        <animateMotion dur="4.2s" repeatCount="indefinite" begin="-2.9s"><mpath href="#eye-out" /></animateMotion>
+      </circle>
+    </g>
+
+    <!-- L'iris : la fleur du logo, en grand -->
+    <g class="petals-spin">
+      <g class="petals-dilate">
+        @for (petal of petals; track petal.angle; let i = $index) {
+          <path
+            d="M 0 -8 C 7.5 -9.5 13.5 -15 13 -26.5 C 4.5 -28.5 -3.5 -24 -5.8 -16.8 C -7.2 -12.2 -4.6 -8.8 0 -8 Z"
+            [attr.transform]="'translate(300 300) rotate(' + petal.angle + ') scale(6.2)'"
+            [attr.fill]="petal.color"
+            [attr.opacity]="i % 2 === 0 ? 0.94 : 0.66"
+          />
+        }
+      </g>
+    </g>
+
+    <!-- Striations de l'iris -->
+    <g class="striations">
+      <circle cx="300" cy="300" r="64" stroke-dasharray="1.5 7" />
+      <circle cx="300" cy="300" r="80" stroke-dasharray="2 10" />
+      <circle cx="300" cy="300" r="98" stroke-dasharray="1.5 13" />
+    </g>
+
+    <!-- Pupille (suit le curseur) -->
+    <g class="pupil">
+      <circle cx="300" cy="300" r="52" fill="url(#eye-pupil-g)">
+        <animate attributeName="r" values="52;57;52" dur="7s" repeatCount="indefinite" />
+      </circle>
+      <circle cx="300" cy="300" r="52" class="pupil-ring">
+        <animate attributeName="r" values="52;57;52" dur="7s" repeatCount="indefinite" />
+      </circle>
+      <circle cx="282" cy="282" r="10" class="pupil-glint" />
+      <circle cx="317" cy="315" r="4" class="pupil-glint pupil-glint--small" />
+    </g>
+  </svg>
+</div>

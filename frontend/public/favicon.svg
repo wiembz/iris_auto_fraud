@@ -1,0 +1,21 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="p" cx="0.38" cy="0.32" r="0.9">
+      <stop offset="0" stop-color="#0d4a52"/>
+      <stop offset="1" stop-color="#041c22"/>
+    </radialGradient>
+  </defs>
+  <g>
+    <path d="M 0 -8 C 7.5 -9.5 13.5 -15 13 -26.5 C 4.5 -28.5 -3.5 -24 -5.8 -16.8 C -7.2 -12.2 -4.6 -8.8 0 -8 Z" transform="translate(32 32) rotate(0)" fill="#1ee6c0" opacity="0.96"/>
+    <path d="M 0 -8 C 7.5 -9.5 13.5 -15 13 -26.5 C 4.5 -28.5 -3.5 -24 -5.8 -16.8 C -7.2 -12.2 -4.6 -8.8 0 -8 Z" transform="translate(32 32) rotate(45)" fill="#1fd2ce" opacity="0.66"/>
+    <path d="M 0 -8 C 7.5 -9.5 13.5 -15 13 -26.5 C 4.5 -28.5 -3.5 -24 -5.8 -16.8 C -7.2 -12.2 -4.6 -8.8 0 -8 Z" transform="translate(32 32) rotate(90)" fill="#1fbedb" opacity="0.96"/>
+    <path d="M 0 -8 C 7.5 -9.5 13.5 -15 13 -26.5 C 4.5 -28.5 -3.5 -24 -5.8 -16.8 C -7.2 -12.2 -4.6 -8.8 0 -8 Z" transform="translate(32 32) rotate(135)" fill="#2ba7e5" opacity="0.66"/>
+    <path d="M 0 -8 C 7.5 -9.5 13.5 -15 13 -26.5 C 4.5 -28.5 -3.5 -24 -5.8 -16.8 C -7.2 -12.2 -4.6 -8.8 0 -8 Z" transform="translate(32 32) rotate(180)" fill="#3f8fee" opacity="0.96"/>
+    <path d="M 0 -8 C 7.5 -9.5 13.5 -15 13 -26.5 C 4.5 -28.5 -3.5 -24 -5.8 -16.8 C -7.2 -12.2 -4.6 -8.8 0 -8 Z" transform="translate(32 32) rotate(225)" fill="#2ba7e5" opacity="0.66"/>
+    <path d="M 0 -8 C 7.5 -9.5 13.5 -15 13 -26.5 C 4.5 -28.5 -3.5 -24 -5.8 -16.8 C -7.2 -12.2 -4.6 -8.8 0 -8 Z" transform="translate(32 32) rotate(270)" fill="#1fbedb" opacity="0.96"/>
+    <path d="M 0 -8 C 7.5 -9.5 13.5 -15 13 -26.5 C 4.5 -28.5 -3.5 -24 -5.8 -16.8 C -7.2 -12.2 -4.6 -8.8 0 -8 Z" transform="translate(32 32) rotate(315)" fill="#1fd2ce" opacity="0.66"/>
+  </g>
+  <circle cx="32" cy="32" r="7.4" fill="url(#p)"/>
+  <circle cx="32" cy="32" r="7.4" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>
+  <circle cx="29.5" cy="29.3" r="1.7" fill="#eafffb" opacity="0.9"/>
+</svg>

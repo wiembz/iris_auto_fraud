@@ -1,0 +1,81 @@
+<div class="validations-page">
+  <header class="validations-hero">
+    <div>
+      <p class="iris-eyebrow">Validation metier</p>
+      <h1>{{ pageTitle() }}</h1>
+      <p>{{ pageSubtitle() }}</p>
+    </div>
+  </header>
+
+  @if (!loading() && !errorMessage()) {
+    <section class="validations-counters" aria-label="Repartition des decisions">
+      <article class="iris-card">
+        <span>Decisions enregistrees</span>
+        <strong>{{ counts().total }}</strong>
+      </article>
+      <article class="iris-card" data-tone="high">
+        <span>Suspicion confirmee</span>
+        <strong>{{ counts().suspicion }}</strong>
+      </article>
+      <article class="iris-card" data-tone="ok">
+        <span>Conforme</span>
+        <strong>{{ counts().conforme }}</strong>
+      </article>
+      <article class="iris-card" data-tone="medium">
+        <span>A completer</span>
+        <strong>{{ counts().aCompleter }}</strong>
+      </article>
+    </section>
+  }
+
+  @if (loading()) {
+    <section class="validations-loading" aria-label="Chargement des validations">
+      <span></span><span></span><span></span>
+    </section>
+  } @else if (errorMessage()) {
+    <section class="iris-card validations-error">
+      <strong>Validations indisponibles</strong>
+      <p>{{ errorMessage() }}</p>
+    </section>
+  } @else if (items().length === 0) {
+    <section class="iris-card validations-empty">
+      <strong>Aucune decision enregistree pour le moment</strong>
+      <p>
+        @if (isPersonalView()) {
+          Vos decisions sur les dossiers examines apparaitront ici des que vous en aurez valide un.
+        } @else {
+          Les decisions de l equipe apparaitront ici des qu un gestionnaire aura valide un dossier.
+        }
+      </p>
+      <a class="iris-button iris-button--ghost" routerLink="/app/claims">Ouvrir la file de travail</a>
+    </section>
+  } @else {
+    <ul class="validations-list">
+      @for (item of items(); track item.decision_id) {
+        <li class="iris-card validations-item">
+          <div class="validations-item__head">
+            <a [routerLink]="['/app/claims', item.claim_sk]" class="validations-item__claim">
+              {{ item.claim_business_id ?? 'Dossier ' + item.claim_sk }}
+            </a>
+            <span class="validations-item__badge" [attr.data-decision]="item.decision">
+              {{ decisionLabel(item.decision) }}
+            </span>
+          </div>
+          <p class="validations-item__meta">
+            @if (!isPersonalView()) { {{ item.reviewer_email }} · }
+            {{ item.decided_at | date: 'dd/MM/yyyy HH:mm' }}
+            @if (item.attention_score !== null && item.attention_score !== undefined) {
+              · score {{ item.attention_score }}/100
+            }
+          </p>
+          @if (correctionNote(item); as note) {
+            <p class="validations-item__correction">{{ note }}</p>
+          }
+          @if (item.comment) {
+            <p class="validations-item__comment">{{ item.comment }}</p>
+          }
+        </li>
+      }
+    </ul>
+  }
+</div>

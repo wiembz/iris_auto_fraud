@@ -1,0 +1,53 @@
+﻿<div class="worklist-page">
+  <header class="worklist-hero">
+    <div>
+      <p class="iris-eyebrow">Dossiers a examiner</p>
+      <h1>File de travail</h1>
+      <p>
+        Les dossiers sont classes par niveau d attention. Ouvrez un dossier pour consulter
+        les raisons en clair, la chronologie et le contexte vehicule avant de decider.
+      </p>
+    </div>
+    <aside>
+      <span>Aide a la decision</span>
+      <strong>La decision finale reste humaine</strong>
+    </aside>
+  </header>
+
+  <nav class="worklist-triage" aria-label="Triage rapide par niveau d attention">
+    @for (chip of triageChips(); track chip.value) {
+      <button
+        type="button"
+        class="worklist-triage__chip"
+        [attr.data-tone]="chip.tone"
+        [class.is-active]="chip.active"
+        (click)="applyTriage(chip.value)"
+      >
+        <strong>{{ chip.count !== null ? chip.count.toLocaleString('fr-FR') : '—' }}</strong>
+        <span>{{ chip.label }}</span>
+      </button>
+    }
+  </nav>
+
+  <app-worklist-filters
+    [filters]="filters()"
+    (filtersChange)="updateFilters($event)"
+    (resetFilters)="resetFilters()"
+  />
+
+  <app-claim-table
+    [claims]="claims()"
+    [loading]="loading()"
+    [errorMessage]="errorMessage()"
+    [total]="total()"
+    [page]="filters().page"
+    [pageSize]="filters().pageSize"
+    [sortBy]="filters().sortBy"
+    [sortDirection]="filters().sortDirection"
+    [viewMode]="filters().viewMode"
+    [hasNextPage]="hasNextPage()"
+    (pageChange)="updatePage($event)"
+    (sortChange)="updateSort($event)"
+  />
+</div>
+

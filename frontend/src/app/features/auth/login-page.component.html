@@ -1,31 +1,111 @@
-﻿<main class="login-page">
-  <section class="login-card iris-card" aria-labelledby="login-title">
-    <p class="iris-eyebrow">Acces prototype</p>
-    <h1 id="login-title">Connexion a l'espace IRIS</h1>
-    <p>
-      Cette page prepare le parcours d'acces au prototype de revue metier. Elle ne remplace
-      pas une authentification de production.
-    </p>
+<main class="login">
+  <div class="login__bg" aria-hidden="true">
+    <span class="login__orb login__orb--1"></span>
+    <span class="login__orb login__orb--2"></span>
+    <span class="login__grid"></span>
+  </div>
 
-    <form (ngSubmit)="signIn()">
-      <label>
-        Identifiant
-        <input type="text" placeholder="Matricule ou email professionnel" aria-label="Identifiant" />
-      </label>
-      <label>
-        Role de consultation
-        <select name="role" aria-label="Role de consultation" [(ngModel)]="selectedRole">
-          <option value="gestionnaire">Gestionnaire sinistre</option>
-          <option value="responsable">Responsable sinistre</option>
-          <option value="manager">Manager</option>
-          <option value="administrateur">Administrateur</option>
-        </select>
-      </label>
-      <p class="prototype-note">
-        Aucun mot de passe n'est stocke dans le frontend. Les roles sont simules pour la demonstration.
-      </p>
-      <button class="iris-button iris-button--primary" type="submit">Entrer dans IRIS</button>
-      <a class="back-link" routerLink="/">Retour a la presentation</a>
-    </form>
+  <section class="login-shell" aria-labelledby="login-title">
+    <!-- ============ Panneau visuel : l'œil vivant ============ -->
+    <aside class="login-scene" aria-hidden="true">
+      <app-iris-eye-scene />
+
+      <div class="login-scene__chip login-scene__chip--top">
+        <span class="login-scene__lock">
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="3" y="7" width="10" height="7" rx="1.6" fill="currentColor" />
+            <path d="M5 7V5a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="1.7" fill="none" />
+          </svg>
+        </span>
+        <div>
+          <strong>Accès sécurisé</strong>
+          <small>Réservé au domaine BNA Assurance</small>
+        </div>
+      </div>
+
+      <div class="login-scene__chip login-scene__chip--bottom">
+        <div>
+          <strong>IRIS vous attend</strong>
+          <small>Votre espace décisionnel est prêt</small>
+        </div>
+      </div>
+
+      <p class="login-scene__caption">L'œil intelligent de la gestion des sinistres</p>
+    </aside>
+
+    <!-- ============ Panneau formulaire ============ -->
+    <section class="login-card">
+      <a class="login-back" routerLink="/">
+        <span aria-hidden="true">←</span> Retour à la présentation
+      </a>
+
+      <header class="login-head">
+        <iris-logo [size]="44" [animated]="true" />
+        <p class="login-eyebrow">Espace BNA Assurance</p>
+        <h1 id="login-title">Bon retour sur <span class="login-gradient">IRIS</span>.</h1>
+        <p class="login-intro">
+          Connectez-vous avec votre adresse professionnelle pour retrouver
+          votre espace décisionnel.
+        </p>
+      </header>
+
+      <form #loginForm="ngForm" novalidate (ngSubmit)="signIn(loginForm)">
+        <label class="login-field" for="work-email">
+          <span class="login-field__label">Email professionnel</span>
+          <div class="login-input" [class.login-input--error]="domainErrorVisible && !isBnaEmail">
+            <span class="login-input__icon" aria-hidden="true">&#64;</span>
+            <input
+              id="work-email"
+              name="email"
+              type="email"
+              inputmode="email"
+              autocomplete="email"
+              placeholder="prenom.nom@bnaassurance.com"
+              required
+              [(ngModel)]="email"
+              aria-describedby="email-help email-error"
+            />
+            @if (isBnaEmail) {
+              <span class="login-input__valid" aria-hidden="true">✓</span>
+            }
+          </div>
+        </label>
+        <p id="email-help" class="login-help">
+          Seules les adresses se terminant par {{ allowedDomain }} sont autorisées.
+        </p>
+        @if (domainErrorVisible && !isBnaEmail) {
+          <p id="email-error" class="login-error">
+            Utilisez votre adresse professionnelle BNA Assurance pour accéder à IRIS.
+          </p>
+        }
+
+        <fieldset class="login-roles">
+          <legend>Votre profil</legend>
+          <div class="login-roles__grid">
+            @for (option of roleOptions; track option.role) {
+              <button
+                type="button"
+                class="login-role"
+                [class.login-role--active]="selectedRole === option.role"
+                (click)="selectRole(option.role)"
+              >
+                <span class="login-role__check" aria-hidden="true">✓</span>
+                <span class="login-role__title">{{ option.title }}</span>
+                <small>{{ option.description }}</small>
+              </button>
+            }
+          </div>
+        </fieldset>
+
+        <button class="login-submit" type="submit" [disabled]="!isBnaEmail">
+          Entrer dans IRIS <span aria-hidden="true">→</span>
+        </button>
+
+        <p class="login-note">
+          <span class="login-note__dot" aria-hidden="true"></span>
+          IRIS éclaire l'analyse — la décision finale reste à vos experts.
+        </p>
+      </form>
+    </section>
   </section>
 </main>
