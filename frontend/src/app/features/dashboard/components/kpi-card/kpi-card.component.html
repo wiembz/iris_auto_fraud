@@ -1,0 +1,6 @@
+﻿<article class="dashboard-kpi" [attr.data-tone]="tone" [attr.data-status]="status">
+  <span class="dashboard-kpi__accent" aria-hidden="true"></span>
+  <span class="dashboard-kpi__label">{{ label }}</span>
+  <strong class="dashboard-kpi__value">{{ formattedValue() }}</strong>
+  <small class="dashboard-kpi__helper">{{ helper }}</small>
+</article>

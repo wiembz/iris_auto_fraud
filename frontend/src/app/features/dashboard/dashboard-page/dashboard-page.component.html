@@ -1,0 +1,201 @@
+﻿<div class="decision-dashboard">
+  <header class="dashboard-hero">
+    <div>
+      <p class="iris-eyebrow">{{ user()?.roleLabel ?? 'Espace IRIS' }}</p>
+      <h1>{{ dashboardTitle() }}</h1>
+      <p>{{ dashboardSubtitle() }}</p>
+    </div>
+
+    <div class="dashboard-run-card">
+      @if (summary(); as s) {
+        <span>Run affiche</span>
+        <strong>{{ s.score_version }}</strong>
+        @if (s.score_run_id) {
+          <small>{{ s.score_run_id }}</small>
+        }
+        @if (s.cache?.hit) {
+          <small>Resume servi depuis le cache API</small>
+        }
+      } @else {
+        <span>Run affiche</span>
+        <strong>En attente</strong>
+        <small>Connexion API read-only requise</small>
+      }
+    </div>
+  </header>
+
+  @if (loading()) {
+    <section class="dashboard-loading" aria-label="Chargement du dashboard">
+      <span></span><span></span><span></span><span></span>
+    </section>
+  } @else if (errorMessage()) {
+    <section class="dashboard-error iris-card">
+      <strong>Resume indisponible</strong>
+      <p>{{ errorMessage() }}</p>
+      <a class="iris-button iris-button--ghost" routerLink="/app/claims">Aller a la file de travail</a>
+    </section>
+  } @else {
+    @if (isHandlerDashboard()) {
+      <section class="dashboard-kpi-grid" aria-label="Indicateurs gestionnaire">
+        @for (kpi of handlerKpis(); track kpi.label) {
+          <app-kpi-card
+            [label]="kpi.label"
+            [value]="kpi.value"
+            [suffix]="kpi.suffix ?? ''"
+            [helper]="kpi.helper"
+            [tone]="kpi.tone"
+            [status]="kpi.status ?? 'available'"
+          />
+        }
+      </section>
+
+      <section class="dashboard-section-title">
+        <div>
+          <span>Revue quotidienne</span>
+          <h2>Consulter, comprendre, prioriser</h2>
+        </div>
+        <a class="dashboard-card__link" routerLink="/app/claims">Ouvrir la file de travail</a>
+      </section>
+
+      <section class="dashboard-layout dashboard-layout--handler">
+        <app-workload-chart
+          title="Priorites de revue"
+          subtitle="Synthese operationnelle issue du resume de scoring"
+          [rows]="workloadRows()"
+        />
+        <app-attention-chart
+          title="Niveaux d attention"
+          subtitle="Lecture rapide des dossiers a traiter"
+          [rows]="attentionRows()"
+          mode="stacked"
+        />
+        <app-workload-chart
+          title="Raisons visibles"
+          subtitle="Raisons principales observees dans la liste prioritaire"
+          [rows]="signalFamilyRows()"
+        />
+        <app-recent-claims
+          title="Acces rapide a la file de travail"
+          subtitle="Dossiers les plus prioritaires du resume courant"
+          [claims]="topClaims()"
+        />
+      </section>
+
+      <section class="dashboard-readiness" aria-label="Etat des parcours gestionnaire">
+        @for (panel of handlerReadinessPanels(); track panel.title) {
+          <article class="readiness-panel" [attr.data-status]="panel.status">
+            <span>{{ panel.label }}</span>
+            <strong>{{ panel.title }}</strong>
+            <b>{{ panel.metric }}</b>
+            <p>{{ panel.helper }}</p>
+          </article>
+        }
+      </section>
+    } @else {
+      <section class="dashboard-kpi-grid" aria-label="Indicateurs manager">
+        @for (kpi of managerKpis(); track kpi.label) {
+          <app-kpi-card
+            [label]="kpi.label"
+            [value]="kpi.value"
+            [suffix]="kpi.suffix ?? ''"
+            [helper]="kpi.helper"
+            [tone]="kpi.tone"
+            [status]="kpi.status ?? 'available'"
+          />
+        }
+      </section>
+
+      <section class="dashboard-section-title">
+        <div>
+          <span>Pilotage decisionnel</span>
+          <h2>Volumes, niveaux, qualite et signaux</h2>
+        </div>
+        <a class="dashboard-card__link" routerLink="/app/claims">Voir les dossiers</a>
+      </section>
+
+      <section class="dashboard-layout dashboard-layout--manager">
+        <app-attention-chart
+          title="Dossiers par niveau d attention"
+          subtitle="Stacked bars par niveau, sans conclusion automatique"
+          [rows]="attentionRows()"
+          mode="stacked"
+        />
+        <app-attention-chart
+          title="Qualite et confiance des donnees"
+          subtitle="La qualite informe la lecture, elle n augmente pas l attention"
+          [rows]="confidenceRows()"
+        />
+        <app-workload-chart
+          title="Signaux et donnees de pilotage"
+          subtitle="Ce qui est disponible maintenant et ce qui necessite un endpoint dedie"
+          [rows]="governanceRows()"
+        />
+        <app-workload-chart
+          title="Distribution des raisons"
+          subtitle="Lecture agregee des raisons principales disponibles"
+          [rows]="signalFamilyRows()"
+        />
+        <app-recent-claims
+          title="Dossiers a verifier en priorite"
+          subtitle="Echantillon de pilotage pour revue metier"
+          [claims]="topClaims()"
+        />
+      </section>
+
+      <section class="dashboard-advanced-grid" aria-label="Visualisations de pilotage avancees">
+        <article class="dashboard-card dashboard-trend-card">
+          <header class="dashboard-card__head">
+            <div>
+              <h2>Tendance temporelle</h2>
+              <p>Courbe prete cote interface, serie backend attendue.</p>
+            </div>
+          </header>
+          <div class="trend-rail" aria-hidden="true">
+            @for (point of trendPoints(); track point.label) {
+              <span [attr.data-status]="point.status">
+                <b>{{ point.label }}</b>
+                <small>{{ point.value }}</small>
+              </span>
+            }
+          </div>
+        </article>
+
+        <article class="dashboard-card dashboard-heatmap-card">
+          <header class="dashboard-card__head">
+            <div>
+              <h2>Heatmap agence / periode</h2>
+              <p>Matrice preparee sans inventer de volumes.</p>
+            </div>
+          </header>
+          <div class="heatmap-shell" aria-hidden="true">
+            @for (cell of heatmapCells; track cell) {
+              <span></span>
+            }
+          </div>
+          <p class="dashboard-empty">Donnees backend attendues pour afficher agences, periodes et volumes.</p>
+        </article>
+      </section>
+
+      <section class="dashboard-readiness" aria-label="Etat de preparation du pilotage">
+        @for (panel of managerReadinessPanels(); track panel.title) {
+          <article class="readiness-panel" [attr.data-status]="panel.status">
+            <span>{{ panel.label }}</span>
+            <strong>{{ panel.title }}</strong>
+            <b>{{ panel.metric }}</b>
+            <p>{{ panel.helper }}</p>
+          </article>
+        }
+      </section>
+
+      <section class="dashboard-capabilities" aria-label="Visualisations avancees planifiees">
+        @for (tile of capabilityTiles(); track tile.title) {
+          <article class="capability-card" [attr.data-status]="tile.status">
+            <span>{{ tile.label }}</span>
+            <strong>{{ tile.title }}</strong>
+            <p>{{ tile.text }}</p>
+          </article>
+        }
+      </section>
+    }
+  }
+</div>

@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import text
 
 from backend.config import ApiConfig
+from backend.services.decision_service import ALLOWED_DECISIONS
 from backend.services.query_helpers import (
     latest_ml_signal_run_sql,
     latest_post_inspection_run_sql,
@@ -37,6 +38,26 @@ def _latest_post_inspection_run(conn, config: ApiConfig) -> str | None:
 
 def _bool_filter(value: Any) -> bool:
     return str(value).lower() == "true"
+
+
+def _include_total(value: Any) -> bool:
+    return str(value).lower() not in {"false", "0", "no"}
+
+
+def _sort_clause(sort_by: Any, sort_direction: Any) -> str:
+    allowed_columns = {
+        "attention_score": "s.attention_score",
+        "claim_sk": "s.claim_sk",
+        "claim_root_id": "s.claim_business_id",
+        "claim_date": "f.claim_date",
+        "claim_amount": "f.claim_amount",
+        "age_days": "f.claim_date",
+    }
+    column = allowed_columns.get(str(sort_by or "attention_score"), "s.attention_score")
+    direction = "ASC" if str(sort_direction).lower() == "asc" else "DESC"
+    if column == "f.claim_date" and str(sort_by) == "age_days":
+        direction = "ASC" if direction == "DESC" else "DESC"
+    return f"{column} {direction}, s.claim_sk ASC"
 
 
 def _safe_int(value: Any, default: int, min_value: int, max_value: int | None = None) -> int:
@@ -73,11 +94,14 @@ def list_claims(engine, config: ApiConfig, filters: dict[str, Any]) -> dict[str,
         max_value=config.max_page_size,
     )
     offset = (page - 1) * page_size
+    include_total = _include_total(filters.get("include_total"))
+    fetch_limit = page_size if include_total else page_size + 1
+    order_by_sql = _sort_clause(filters.get("sort_by"), filters.get("sort_direction"))
 
     where = ["s.score_version = :score_version", "s.score_run_id = :score_run_id"]
     params: dict[str, Any] = {
         "score_version": score_version,
-        "page_size": page_size,
+        "page_size": fetch_limit,
         "offset": offset,
     }
 
@@ -96,6 +120,13 @@ def list_claims(engine, config: ApiConfig, filters: dict[str, Any]) -> dict[str,
     if filters.get("search"):
         where.append("s.claim_business_id ILIKE :search")
         params["search"] = f"%{filters['search']}%"
+
+    validation_status = filters.get("validation_status")
+    if validation_status == "NONE":
+        where.append("d.decision IS NULL")
+    elif validation_status in ALLOWED_DECISIONS:
+        where.append("d.decision = :validation_status")
+        params["validation_status"] = validation_status
 
     with engine.connect() as conn:
         score_run_id = _latest_score_run(conn, score_version)
@@ -131,12 +162,15 @@ def list_claims(engine, config: ApiConfig, filters: dict[str, Any]) -> dict[str,
 
         where_sql = " AND ".join(where)
 
-        count_sql = f"""
-            SELECT COUNT(*) AS total
-            FROM mart.fact_claim_attention_score s
-            WHERE {where_sql}
-        """
-        total = conn.execute(text(count_sql), params).scalar_one()
+        total = None
+        if include_total:
+            count_sql = f"""
+                SELECT COUNT(*) AS total
+                FROM mart.fact_claim_attention_score s
+                LEFT JOIN app.claim_review_decision_latest d ON d.claim_sk = s.claim_sk
+                WHERE {where_sql}
+            """
+            total = conn.execute(text(count_sql), params).scalar_one()
 
         query_sql = f"""
             SELECT
@@ -158,16 +192,24 @@ def list_claims(engine, config: ApiConfig, filters: dict[str, Any]) -> dict[str,
                 s.score_run_id,
                 s.created_at,
                 {ml_exists_sql} AS has_ml_signal,
-                {post_inspection_exists_sql} AS has_post_inspection_signal
+                {post_inspection_exists_sql} AS has_post_inspection_signal,
+                d.decision AS validation_status,
+                d.decided_at AS validation_decided_at,
+                d.reviewer_email AS validation_reviewer_email
             FROM mart.fact_claim_attention_score s
             LEFT JOIN mart.fact_claim_scoring_features f
                 ON f.claim_sk = s.claim_sk
                AND f.feature_run_id = s.feature_run_id
+            LEFT JOIN app.claim_review_decision_latest d ON d.claim_sk = s.claim_sk
             WHERE {where_sql}
-            ORDER BY s.attention_score DESC, s.claim_sk
+            ORDER BY {order_by_sql}
             LIMIT :page_size OFFSET :offset
         """
         rows = conn.execute(text(query_sql), params).fetchall()
+        has_next = False
+        if not include_total and len(rows) > page_size:
+            has_next = True
+            rows = rows[:page_size]
 
     return {
         "score_version": score_version,
@@ -177,7 +219,9 @@ def list_claims(engine, config: ApiConfig, filters: dict[str, Any]) -> dict[str,
         "page": page,
         "page_size": page_size,
         "max_page_size": config.max_page_size,
-        "total": total,
+        "total": total if total is not None else offset + len(rows) + (1 if has_next else 0),
+        "has_next": has_next if not include_total else (offset + len(rows) < total),
+        "total_is_exact": include_total,
         "items": rows_to_dicts(rows),
     }
 

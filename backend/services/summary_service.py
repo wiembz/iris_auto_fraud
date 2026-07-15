@@ -7,7 +7,12 @@ from copy import deepcopy
 from sqlalchemy import text
 
 from backend.config import ApiConfig
-from backend.services.query_helpers import latest_score_run_sql, scalar_or_none
+from backend.services.query_helpers import (
+    latest_ml_signal_run_sql,
+    latest_post_inspection_run_sql,
+    latest_score_run_sql,
+    scalar_or_none,
+)
 from backend.services.serialization import rows_to_dicts
 
 _SUMMARY_CACHE: dict[tuple[str, int], tuple[float, dict]] = {}
@@ -110,24 +115,58 @@ def get_summary(engine, config: ApiConfig, score_version: str | None = None) -> 
             {"score_version": selected_version, "score_run_id": score_run_id},
         ).fetchall()
 
+        ml_run_id = scalar_or_none(
+            conn,
+            latest_ml_signal_run_sql(),
+            {"signal_version": config.ml_signal_version},
+        )
+        post_run_id = scalar_or_none(
+            conn,
+            latest_post_inspection_run_sql(),
+            {"signal_version": config.post_inspection_signal_version},
+        )
+
         top_claims = conn.execute(
             text(
                 """
                 SELECT
-                    claim_sk,
-                    claim_business_id,
-                    attention_score,
-                    attention_level,
-                    confidence_level,
-                    main_reason_1
-                FROM mart.fact_claim_attention_score
-                WHERE score_version = :score_version
-                  AND score_run_id = :score_run_id
-                ORDER BY attention_score DESC, claim_sk
+                    s.claim_sk,
+                    s.claim_business_id,
+                    s.attention_score,
+                    s.attention_level,
+                    s.confidence_level,
+                    s.main_reason_1,
+                    s.main_reason_2,
+                    s.main_reason_3,
+                    EXISTS (
+                        SELECT 1
+                        FROM mart.fact_claim_ml_anomaly_signal ml
+                        WHERE ml.claim_sk = s.claim_sk
+                          AND ml.signal_version = :ml_signal_version
+                          AND ml.signal_run_id = :ml_signal_run_id
+                    ) AS has_ml_signal,
+                    EXISTS (
+                        SELECT 1
+                        FROM mart.fact_post_inspection_attention_signal pi
+                        WHERE pi.claim_sk = s.claim_sk
+                          AND pi.signal_version = :post_signal_version
+                          AND pi.signal_run_id = :post_signal_run_id
+                    ) AS has_post_inspection_signal
+                FROM mart.fact_claim_attention_score s
+                WHERE s.score_version = :score_version
+                  AND s.score_run_id = :score_run_id
+                ORDER BY s.attention_score DESC, s.claim_sk
                 LIMIT 20
                 """
             ),
-            {"score_version": selected_version, "score_run_id": score_run_id},
+            {
+                "score_version": selected_version,
+                "score_run_id": score_run_id,
+                "ml_signal_version": config.ml_signal_version,
+                "ml_signal_run_id": ml_run_id or "__NO_ML_RUN__",
+                "post_signal_version": config.post_inspection_signal_version,
+                "post_signal_run_id": post_run_id or "__NO_PI_RUN__",
+            },
         ).fetchall()
 
     result = {

@@ -227,6 +227,20 @@ def transform_dim_intermediaire(
         if col not in merged.columns:
             merged[col] = None
 
+    # Ligne technique UNKNOWN (intermediaire_sk = 0) : fact_contrat référence
+    # intermediaire_sk = 0 quand l'intermédiaire source est absent.
+    unknown_row = pd.DataFrame([{
+        "intermediaire_sk":      0,
+        "code_intermediaire":    "UNKNOWN",
+        "nature_intermediaire":  "UNKNOWN",
+        "id_intermediaire":      "UNKNOWN",
+        "libelle_intermediaire": "UNKNOWN",
+        "source_system":         "TECHNICAL",
+        "created_at":            TODAY,
+    }])
+    merged = pd.concat([unknown_row[final_cols], merged[final_cols]], ignore_index=True)
+    merged["intermediaire_sk"] = merged["intermediaire_sk"].astype("int64")
+
     n_non_renseigne = int((merged["libelle_intermediaire"] == NON_RENSEIGNE).sum())
 
     top_natures = (

@@ -1,0 +1,34 @@
+﻿<section class="dashboard-card recent-claims" aria-labelledby="recent-claims-title">
+  <header class="dashboard-card__head">
+    <div>
+      <h2 id="recent-claims-title">{{ title }}</h2>
+      <p>{{ subtitle }}</p>
+    </div>
+    <a class="dashboard-card__link" routerLink="/app/claims">Ouvrir la file de travail</a>
+  </header>
+
+  @if (claims.length === 0) {
+    <div class="dashboard-empty">Aucun dossier disponible dans le resume courant.</div>
+  } @else {
+    <div class="recent-list">
+      @for (claim of claims; track claim.claim_sk) {
+        <a class="recent-row" [routerLink]="['/app/claims', claimRoute(claim)]">
+          <span class="recent-row__id">{{ claim.claim_business_id ?? '#' + claim.claim_sk }}</span>
+          <span class="recent-row__score">{{ claim.attention_score }}</span>
+          <span class="recent-row__badge" [attr.data-tone]="toneFor(claim.attention_level)">
+            {{ claim.attention_level }}
+          </span>
+          <span class="recent-row__reasons">
+            @for (reason of reasonsFor(claim).slice(0, 2); track reason) {
+              <small>{{ reason }}</small>
+            }
+            @if (reasonsFor(claim).length === 0) {
+              <small>Raison principale non renseignee</small>
+            }
+          </span>
+          <span class="recent-row__confidence">{{ claim.confidence_level }}</span>
+        </a>
+      }
+    </div>
+  }
+</section>

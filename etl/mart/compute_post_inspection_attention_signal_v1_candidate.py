@@ -665,18 +665,28 @@ def _read_checkpoints(engine) -> pd.DataFrame:
 
 
 def _read_claims(engine) -> pd.DataFrame:
+    # Meme regle AUTO_SCOPE_001 que compute_claim_scoring_features_v1.py :
+    # cette table est lue independamment de fact_claim_scoring_features
+    # (jointure par vehicule_sk sur les inspections), donc le filtre doit
+    # etre reapplique ici pour ne pas laisser fuiter les sinistres non-auto.
     query = text("""
         SELECT
-            fact_sinistre_sk,
-            sinistre_garantie_key,
-            contrat_sk,
-            client_sk,
-            vehicule_sk,
-            date_survenance_sk,
-            code_garantie,
-            motif_cloture_garantie,
-            etat_garantie_sinistre
-        FROM dwh.fact_sinistre
+            f.fact_sinistre_sk,
+            f.sinistre_garantie_key,
+            f.contrat_sk,
+            f.client_sk,
+            f.vehicule_sk,
+            f.date_survenance_sk,
+            f.code_garantie,
+            f.motif_cloture_garantie,
+            f.etat_garantie_sinistre
+        FROM dwh.fact_sinistre f
+        JOIN (
+            SELECT UPPER(TRIM(numsnt)) AS numero_sinistre, bool_or(is_auto_scope) AS is_auto_scope
+            FROM staging.stg_sinistres
+            GROUP BY 1
+        ) scope ON scope.numero_sinistre = f.numero_sinistre
+        WHERE scope.is_auto_scope
     """)
     with engine.connect() as conn:
         return pd.read_sql(query, conn)

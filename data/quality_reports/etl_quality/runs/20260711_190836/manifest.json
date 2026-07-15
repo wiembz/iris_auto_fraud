@@ -1,0 +1,31 @@
+{
+  "run_id": "20260711_190836",
+  "generated_at_utc": "2026-07-11T19:08:55.237081+00:00",
+  "sections": {
+    "table_counts": {
+      "OK": 20
+    },
+    "key_quality": {
+      "OK": 15
+    },
+    "business_key_quality": {
+      "OK": 13
+    },
+    "fk_coverage": {
+      "OK": 27
+    },
+    "technical_unknown_rows": {
+      "OK": 12
+    },
+    "critical_completeness": {
+      "OK": 2
+    },
+    "domain_quality": {
+      "OK": 16,
+      "WARN": 5
+    }
+  },
+  "findings_fail": 0,
+  "findings_warn": 5,
+  "status": "WARN"
+}

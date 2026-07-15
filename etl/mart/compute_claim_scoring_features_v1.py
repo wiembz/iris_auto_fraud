@@ -652,8 +652,25 @@ def _write_feature_reports(features: pd.DataFrame, source_count: int, run_id: st
 
 
 def _read_claim_source(engine) -> pd.DataFrame:
-    cols = ", ".join(SOURCE_COLUMNS)
-    query = text(f"SELECT {cols} FROM dwh.fact_sinistre")
+    # IRIS est scope automobile (regle AUTO_SCOPE_001, deja calculee dans
+    # staging.stg_sinistres.is_auto_scope a partir du produit reel du contrat,
+    # plus fiable que le codfam declare sur la ligne sinistre). Sans ce filtre,
+    # les sinistres hors auto (sante "MALA", transport, etc.) fuient dans tout
+    # le pipeline de scoring et jusque dans l'application.
+    # is_auto_scope est calcule au niveau sinistre (un seul valeur par numsnt) ;
+    # bool_or + GROUP BY dedoublonne le cote multi-garantie de stg_sinistres
+    # pour eviter un fan-out du JOIN.
+    cols = ", ".join(f"f.{c}" for c in SOURCE_COLUMNS)
+    query = text(f"""
+        SELECT {cols}
+        FROM dwh.fact_sinistre f
+        JOIN (
+            SELECT UPPER(TRIM(numsnt)) AS numero_sinistre, bool_or(is_auto_scope) AS is_auto_scope
+            FROM staging.stg_sinistres
+            GROUP BY 1
+        ) scope ON scope.numero_sinistre = f.numero_sinistre
+        WHERE scope.is_auto_scope
+    """)
     with engine.connect() as conn:
         return pd.read_sql(query, conn)
 

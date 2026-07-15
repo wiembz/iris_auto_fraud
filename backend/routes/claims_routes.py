@@ -31,8 +31,12 @@ def claims():
         "search": request.args.get("search"),
         "has_ml": request.args.get("has_ml"),
         "has_post_inspection": request.args.get("has_post_inspection"),
+        "validation_status": request.args.get("validation_status"),
         "page": request.args.get("page"),
         "page_size": request.args.get("page_size"),
+        "sort_by": request.args.get("sort_by"),
+        "sort_direction": request.args.get("sort_direction"),
+        "include_total": request.args.get("include_total"),
     }
     return jsonify(list_claims(_engine(), _config(), filters))
 

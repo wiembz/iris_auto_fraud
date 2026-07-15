@@ -42,6 +42,12 @@ if hasattr(sys.stdout, "reconfigure"):
 
 # ─── 2. Paths and constants ───────────────────────────────────────────────────
 BASE_DIR  = Path(__file__).resolve().parent.parent
+
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+from etl.utils.date_parsing import parse_date_value
+
 DATA_RAW  = BASE_DIR / "data" / "raw"
 DATA_PROC = BASE_DIR / "data" / "processed"
 REPORTS   = DATA_PROC / "reports"
@@ -119,22 +125,13 @@ def normalize_immat(value: Any) -> str | None:
 
 
 def parse_date_safe(series: pd.Series) -> pd.Series:
-    """Convertit une Series en datetime. Gère NaN, '0', '00000000'."""
-    def _parse(v):
-        if v is None:
-            return pd.NaT
-        if isinstance(v, float) and (np.isnan(v) or v == 0):
-            return pd.NaT
-        if isinstance(v, (pd.Timestamp, datetime)):
-            return v
-        s = str(v).strip()
-        if s in ("", "0", "00000000", "nan", "NaT", "None"):
-            return pd.NaT
-        try:
-            return pd.to_datetime(s, dayfirst=True, errors="coerce")
-        except Exception:
-            return pd.NaT
-    return series.apply(_parse)
+    """Convertit une Series en datetime. Gère NaN, '0', '00000000'.
+
+    Délègue à etl.utils.date_parsing : les exports BNA encodent les dates en
+    entiers YYYYMMDD, que dayfirst=True inversait (jour<->mois) dès que le
+    jour réel était <= 12 — format %Y%m%d explicite désormais.
+    """
+    return series.apply(parse_date_value)
 
 
 def parse_numeric_safe(series: pd.Series) -> pd.Series:
@@ -368,9 +365,15 @@ def safe_read_excel(
 
 
 def _detect_date_cols(df: pd.DataFrame) -> list[str]:
-    return [c for c in df.columns
-            if any(k in c.upper() for k in ["DAT", "DATE", "DT"])
-            and c not in ("UPDATE_IDENT",)]
+    # Préfixes DT/DAT ou mot DATE, en excluant UPDATE_* : un simple substring
+    # "DT" capturait LIBPRDT (libellé produit) et le détruisait en NaT.
+    def _is_date_col(name: str) -> bool:
+        u = str(name).upper()
+        if "UPDATE" in u:
+            return False
+        return u.startswith(("DT", "DAT")) or "DATE" in u
+
+    return [c for c in df.columns if _is_date_col(c)]
 
 
 def _detect_amount_cols(df: pd.DataFrame) -> list[str]:

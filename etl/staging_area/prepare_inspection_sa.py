@@ -93,6 +93,30 @@ COLUMN_RENAME_MAP: dict[str, str] = {
     "Commentaire.4":          "commentaire_entretien",
 }
 
+def _norm_source_column_name(name: object) -> str:
+    """Normalize Excel headers for robust source-to-staging mapping."""
+    text = unicodedata.normalize("NFKD", str(name).strip())
+    text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+_RENAME_LOOKUP: dict[str, str] = {
+    _norm_source_column_name(source): target
+    for source, target in COLUMN_RENAME_MAP.items()
+}
+
+
+def _build_rename_map(columns: pd.Index) -> dict[str, str]:
+    """Build a robust rename map while keeping the first source per target."""
+    rename_eff: dict[str, str] = {}
+    seen_targets: set[str] = set()
+    for col in columns:
+        target = _RENAME_LOOKUP.get(_norm_source_column_name(col))
+        if target and target not in seen_targets:
+            rename_eff[col] = target
+            seen_targets.add(target)
+    return rename_eff
+
 
 # ---------------------------------------------------------------------------
 # Colonnes checkpoint par section (noms UTF-8 exacts du fichier Excel)
@@ -635,7 +659,7 @@ def transform_inspection(
     # ── 1. Normalisation noms de colonnes ──────────────────────────────────
     logger.info("  [STEP 1] Renommage colonnes")
     df.columns = [c.strip() for c in df.columns]
-    rename_eff  = {k: v for k, v in COLUMN_RENAME_MAP.items() if k in df.columns}
+    rename_eff = _build_rename_map(df.columns)
     df = df.rename(columns=rename_eff)
 
     # Supprimer colonnes images (non analytiques)

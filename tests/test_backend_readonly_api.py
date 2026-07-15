@@ -35,11 +35,12 @@ def _backend_text() -> str:
     ).lower()
 
 
-def _service_text() -> str:
+def _service_text(exclude: tuple[str, ...] = ()) -> str:
     services_dir = BACKEND_DIR / "services"
     return "\n".join(
         path.read_text(encoding="utf-8")
         for path in services_dir.rglob("*.py")
+        if path.name not in exclude
     ).lower()
 
 
@@ -69,7 +70,11 @@ def test_serialization_converts_common_database_values():
 
 
 def test_backend_service_sql_stays_read_only():
-    text = _service_text()
+    # decision_service.py is the single deliberate write path introduced for
+    # human review decisions (schema `app`, append-only, DB trigger blocks
+    # UPDATE/DELETE). It is excluded here and checked precisely below instead
+    # of weakening this guarantee for every other service.
+    text = _service_text(exclude=("decision_service.py",))
 
     forbidden_patterns = [
         r"(?<!path\.)\binsert\b",
@@ -83,6 +88,22 @@ def test_backend_service_sql_stays_read_only():
     ]
     for pattern in forbidden_patterns:
         assert re.search(pattern, text) is None
+
+
+def test_decision_service_only_writes_to_app_schema():
+    decision_text = (BACKEND_DIR / "services" / "decision_service.py").read_text(encoding="utf-8").lower()
+
+    assert "insert into app.claim_review_decision" in decision_text
+    assert "update " not in decision_text
+    assert "delete " not in decision_text
+    assert "drop " not in decision_text
+    assert "truncate" not in decision_text
+    assert "alter " not in decision_text
+    # Le seul write autorise reste confine au schema applicatif `app` :
+    # jamais d'ecriture dans dwh/mart/staging depuis les services backend.
+    assert "insert into dwh." not in decision_text
+    assert "insert into mart." not in decision_text
+    assert "insert into staging." not in decision_text
 
 
 def test_claim_list_query_uses_exists_instead_of_signal_joins():

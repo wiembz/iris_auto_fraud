@@ -1,0 +1,61 @@
+{
+  "signal_version": "IRIS_CLAIM_ML_ANOMALY_SIGNAL_V1_CANDIDATE",
+  "profile_name": "CLAIM_ML_ANOMALY_SIGNAL_V1_CANDIDATE",
+  "model": {
+    "type": "IsolationForest",
+    "random_state": 42,
+    "n_estimators": 200,
+    "contamination": "auto",
+    "max_samples": "auto",
+    "n_jobs": -1
+  },
+  "features": [
+    "claim_amount",
+    "amount_percentile_by_guarantee",
+    "amount_vs_guarantee_median_ratio",
+    "client_claim_count_12m",
+    "client_claim_count_24m",
+    "vehicle_claim_count_12m",
+    "driver_claim_count_12m",
+    "third_party_claim_count_12m",
+    "client_guarantee_claim_count_12m",
+    "days_since_previous_claim",
+    "vehicle_days_since_previous_claim",
+    "driver_days_since_previous_claim",
+    "third_party_days_since_previous_claim",
+    "days_claim_to_declaration",
+    "days_contract_start_to_claim",
+    "post_inspection_signal_flag",
+    "post_inspection_signal_count"
+  ],
+  "preprocessing": {
+    "clip_quantiles": [
+      0.01,
+      0.99
+    ],
+    "impute_strategy": "median"
+  },
+  "calibration": {
+    "method": "population_percentile",
+    "score_meaning": "score_ml=0.95 means the claim is more atypical than 95 percent of claims in the run population"
+  },
+  "explanation": {
+    "top_variable_count": 3,
+    "store_top_variable_json_only": true
+  },
+  "points": {
+    "max_points": 10,
+    "high_percentile": 0.98,
+    "medium_percentile": 0.95,
+    "low_percentile": 0.9,
+    "high_points": 10,
+    "medium_points": 7,
+    "low_points": 4
+  },
+  "governance": {
+    "candidate_only": true,
+    "human_review_only": true,
+    "do_not_modify_vhs": true,
+    "do_not_modify_claim_attention_v1": true
+  }
+}

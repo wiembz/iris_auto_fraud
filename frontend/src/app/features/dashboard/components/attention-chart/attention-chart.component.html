@@ -1,0 +1,35 @@
+﻿<section class="dashboard-card attention-chart" aria-labelledby="attention-chart-title">
+  <header class="dashboard-card__head">
+    <div>
+      <h2 id="attention-chart-title">{{ title }}</h2>
+      <p>{{ subtitle }}</p>
+    </div>
+  </header>
+
+  @if (mode === 'stacked') {
+    <div class="attention-stack" role="img" aria-label="Distribution empilee par niveau d attention">
+      @for (row of rows; track row.label) {
+        <span
+          [attr.data-tone]="row.tone"
+          [style.width.%]="row.share"
+          [title]="row.label + ' : ' + row.count.toLocaleString('fr-FR') + ' dossiers'"
+        ></span>
+      }
+    </div>
+  }
+
+  <div class="attention-bars" role="img" aria-label="Distribution par niveau d attention">
+    @for (row of rows; track row.label) {
+      <div class="attention-row" [attr.data-tone]="row.tone">
+        <span class="attention-row__label">{{ row.label }}</span>
+        <span class="attention-row__track">
+          <span class="attention-row__fill" [style.width.%]="row.share"></span>
+        </span>
+        <span class="attention-row__value">
+          {{ row.count.toLocaleString('fr-FR') }}
+          <small>{{ row.share.toFixed(0) }}%</small>
+        </span>
+      </div>
+    }
+  </div>
+</section>

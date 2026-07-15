@@ -92,21 +92,39 @@ def build_dim_date(date_debut: str = DATE_DEBUT, date_fin: str = DATE_FIN) -> pd
     df["semaine_annee"] = df["date_complete"].dt.isocalendar().week.astype(int)
     df["est_weekend"] = df["jour_semaine"].isin([6, 7])
 
-    df = df[
-        [
-            "date_sk",
-            "date_complete",
-            "annee",
-            "trimestre",
-            "mois",
-            "libelle_mois",
-            "jour",
-            "jour_semaine",
-            "libelle_jour",
-            "semaine_annee",
-            "est_weekend",
-        ]
+    colonnes = [
+        "date_sk",
+        "date_complete",
+        "annee",
+        "trimestre",
+        "mois",
+        "libelle_mois",
+        "jour",
+        "jour_semaine",
+        "libelle_jour",
+        "semaine_annee",
+        "est_weekend",
     ]
+    df = df[colonnes]
+
+    # Ligne technique UNKNOWN (date_sk = 0) : les facts référencent date_sk = 0
+    # quand la date source est absente ou non applicable (ex. date_cloture_sk
+    # d'un sinistre encore ouvert). Cette ligne doit toujours exister.
+    unknown_row = pd.DataFrame([{
+        "date_sk":       0,
+        "date_complete": pd.NaT,
+        "annee":         0,
+        "trimestre":     0,
+        "mois":          0,
+        "libelle_mois":  "UNKNOWN",
+        "jour":          0,
+        "jour_semaine":  0,
+        "libelle_jour":  "UNKNOWN",
+        "semaine_annee": 0,
+        "est_weekend":   False,
+    }])
+    df = pd.concat([unknown_row[colonnes], df], ignore_index=True)
+    df["date_sk"] = df["date_sk"].astype("int64")
 
     return df.reset_index(drop=True)
 

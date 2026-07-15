@@ -1,9 +1,9 @@
 # Claim Attention Hybrid ML V1 candidate validation
 
-- **Run ID:** `IRIS_CLAIM_ATTENTION_HYBRID_ML_V1_CANDIDATE_20260708_212204`
+- **Run ID:** `IRIS_CLAIM_ATTENTION_HYBRID_ML_V1_CANDIDATE_20260713_222301`
 - **Score version:** `IRIS_CLAIM_ATTENTION_HYBRID_ML_V1_CANDIDATE`
-- **Score rows:** 381893
-- **Signal detail rows:** 684971
+- **Score rows:** 367464
+- **Signal detail rows:** 522420
 
 This score combines the base hybrid score with a calibrated ML anomaly signal. It remains a prioritization aid only.
 
@@ -11,8 +11,8 @@ This score combines the base hybrid score with a calibrated ML anomaly signal. I
 
 | Check | Rows |
 |---|---:|
-| score_rows | 381893 |
-| detail_rows | 684971 |
+| score_rows | 367464 |
+| detail_rows | 522420 |
 | duplicate_score_rows | 0 |
 | score_out_of_range_rows | 0 |
 | null_level_rows | 0 |

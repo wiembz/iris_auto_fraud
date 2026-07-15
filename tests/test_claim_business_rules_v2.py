@@ -82,6 +82,34 @@ def test_inactive_rule_and_missing_required_field_do_not_emit_signal():
     assert "COMP_CRITICAL_DOCUMENT_MISSING" not in set(signals["rule_code"])
 
 
+def test_every_rule_declares_grain_and_validation_traceability():
+    catalog = load_rule_catalog()
+    for rule in catalog["rules"]:
+        assert rule["grain"] in {"GUARANTEE", "DOSSIER"}
+        assert isinstance(rule["threshold_source"], str) and rule["threshold_source"].strip()
+        for key in ["validated_by", "validated_on"]:
+            assert rule[key] is None or (isinstance(rule[key], str) and rule[key].strip())
+
+
+def test_catalog_validation_rejects_missing_grain_and_empty_threshold_source():
+    catalog = load_rule_catalog()
+
+    missing_grain = copy.deepcopy(catalog)
+    del missing_grain["rules"][0]["grain"]
+    bad_grain = copy.deepcopy(catalog)
+    bad_grain["rules"][0]["grain"] = "CLIENT"
+    empty_source = copy.deepcopy(catalog)
+    empty_source["rules"][0]["threshold_source"] = "  "
+
+    for modified in [missing_grain, bad_grain, empty_source]:
+        try:
+            validate_rule_catalog(modified)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Expected grain/traceability validation to fail")
+
+
 def test_catalog_validation_rejects_accusatory_wording():
     catalog = load_rule_catalog()
     modified = copy.deepcopy(catalog)

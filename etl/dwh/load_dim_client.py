@@ -1249,6 +1249,31 @@ def transform_dim_client(df_raw: pd.DataFrame, logger) -> tuple[pd.DataFrame, di
         if col not in df.columns:
             df[col] = None
 
+    # 14. Ligne technique UNKNOWN (client_sk = 0)
+    # fact_sinistre et fact_contrat référencent client_sk = 0 quand le client
+    # source est introuvable. Cette ligne doit toujours exister dans dim_client.
+    unknown_row = pd.DataFrame([{
+        "client_sk":           0,
+        "idclt":               "UNKNOWN",
+        "typeid":              None,
+        "id_piece":            None,
+        "nature_client":       "UNKNOWN",
+        "adr1":                None,
+        "cpost":               None,
+        "cite":                None,
+        "gouvernor":           "UNKNOWN",
+        "pays":                "UNKNOWN",
+        "localite":            "UNKNOWN",
+        "date_naissance":      pd.NaT,
+        "sexe":                "UNKNOWN",
+        "nombre_enfant":       None,
+        "situation_familiale": None,
+        "source_system":       "TECHNICAL",
+        "created_at":          TODAY,
+    }])
+    df = pd.concat([unknown_row[final_cols], df[final_cols]], ignore_index=True)
+    df["client_sk"] = df["client_sk"].astype("int64")
+
     n_tn      = int((df["pays"] == "TUNISIE").sum())
     n_hors    = int((df["gouvernor"] == "HORS_TUNISIE").sum())
     n_unk_gov = int((df["gouvernor"] == "UNKNOWN").sum())

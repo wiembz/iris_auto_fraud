@@ -182,7 +182,9 @@ def transform_dim_camtier(
         logger.info(f"  Doublons supprimés : {n_dupes}")
     logger.info(f"  Camtiers distincts après dédup : {len(df)}")
 
-    df = df.reset_index(drop=True)
+    # Tri déterministe : SELECT DISTINCT ne garantit aucun ordre, et les SK
+    # doivent être reproductibles d'un run à l'autre (facts rechargés ensuite).
+    df = df.sort_values("code_camtier").reset_index(drop=True)
     df.insert(0, "camtier_sk", range(1, len(df) + 1))
     df["source_system"] = SOURCE_SYSTEM
     df["created_at"]    = TODAY
@@ -191,7 +193,18 @@ def transform_dim_camtier(
         if col not in df.columns:
             df[col] = None
 
-    df_final = df[FINAL_COLS].copy()
+    # Ligne technique UNKNOWN (camtier_sk = 0) : fact_sinistre référence
+    # camtier_sk = 0 pour les sinistres sans camtier exploitable.
+    unknown_row = pd.DataFrame([{
+        "camtier_sk":     0,
+        "nature_camtier": "UNKNOWN",
+        "id_camtier":     "UNKNOWN",
+        "code_camtier":   "UNKNOWN",
+        "source_system":  "TECHNICAL",
+        "created_at":     TODAY,
+    }])
+    df_final = pd.concat([unknown_row, df[FINAL_COLS]], ignore_index=True)
+    df_final["camtier_sk"] = df_final["camtier_sk"].astype("int64")
 
     metrics = {
         "n_raw":          n_raw,

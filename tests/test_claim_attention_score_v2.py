@@ -63,6 +63,29 @@ def test_family_caps_and_global_cap_are_applied():
     assert scores.set_index("claim_sk").loc[1, "main_reason_1"] in set(details[details["awarded_points"].gt(0)]["business_label"])
 
 
+def test_golden_dossier_exact_score_level_and_top_reasons():
+    """Golden dataset: any silent change of thresholds, points or caps must break this test."""
+    scores, details = compute_claim_attention_score_v2(_features(), score_run_id="GOLDEN_RUN")
+    by_claim = scores.set_index("claim_sk")
+
+    # Claim 1: CHRONOLOGY capped 20+12->25, HISTORY 12, COMPARISON 15, COMPLETENESS 15 = 67.
+    assert by_claim.loc[1, "attention_score"] == 67
+    assert by_claim.loc[1, "attention_level"] == "Examen renforce suggere"
+    assert by_claim.loc[1, "main_reason_1"] == "Sinistre avant debut contrat"
+    assert by_claim.loc[1, "main_reason_2"] == "Montant superieur aux dossiers comparables"
+    assert by_claim.loc[1, "main_reason_3"] == "Piece critique manquante"
+
+    # Claim 2: no rule fires, clean data.
+    assert by_claim.loc[2, "attention_score"] == 0
+    assert by_claim.loc[2, "attention_level"] == "Analyse standard"
+    assert pd.isna(by_claim.loc[2, "main_reason_1"])
+
+    # Intra-family cap detail: the 12-point chronology rule only gets the 5 remaining points.
+    delay_detail = details[details["claim_sk"].eq(1) & details["rule_code"].eq("CHR_DECLARATION_DELAY_HIGH")]
+    assert delay_detail["raw_points"].eq(12).all()
+    assert delay_detail["awarded_points"].eq(5).all()
+
+
 def test_pd_na_confidence_level_does_not_fail():
     scores, _ = compute_claim_attention_score_v2(_features(confidence=pd.NA))
     assert scores.set_index("claim_sk").loc[1, "confidence_level"] == "LOW"

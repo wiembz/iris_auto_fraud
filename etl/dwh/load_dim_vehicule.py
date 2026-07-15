@@ -229,6 +229,19 @@ def _source_system_from_flags(row: pd.Series) -> str:
     return SOURCE_SYSTEM_CLAIM
 
 
+def _unknown_vehicle_row() -> pd.DataFrame:
+    """Ligne technique UNKNOWN (vehicule_sk = 0) référencée par les facts
+    quand l'immatriculation source est absente ou invalide."""
+    return pd.DataFrame([{
+        "vehicule_sk": 0,
+        "immatriculation": "UNKNOWN",
+        "vin": None,
+        "motorisation": None,
+        "source_system": "TECHNICAL",
+        "created_at": datetime.now(timezone.utc).replace(tzinfo=None),
+    }])
+
+
 def transform_dim_vehicule(
     df_inspection: pd.DataFrame,
     logger,
@@ -238,7 +251,7 @@ def transform_dim_vehicule(
     df = _select_best_per_immat(candidates, logger)
 
     if df.empty:
-        return pd.DataFrame(columns=FINAL_COLS)
+        return _unknown_vehicle_row()[FINAL_COLS]
 
     df = df.sort_values("immatriculation", na_position="last").reset_index(drop=True)
     df.insert(0, "vehicule_sk", range(1, len(df) + 1))
@@ -249,7 +262,10 @@ def transform_dim_vehicule(
         if col not in df.columns:
             df[col] = None
 
-    df_final = df[FINAL_COLS].copy()
+    df_final = pd.concat(
+        [_unknown_vehicle_row()[FINAL_COLS], df[FINAL_COLS]], ignore_index=True
+    )
+    df_final["vehicule_sk"] = df_final["vehicule_sk"].astype("int64")
 
     n_claim_only = int((df["_has_claim_source"] & ~df["_has_inspection_source"]).sum())
     n_inspection_only = int((df["_has_inspection_source"] & ~df["_has_claim_source"]).sum())

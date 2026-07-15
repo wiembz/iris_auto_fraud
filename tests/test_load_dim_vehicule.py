@@ -28,6 +28,29 @@ def _claim_df(rows):
     return pd.DataFrame(rows)
 
 
+def _split_technical(df):
+    """Sépare la ligne technique UNKNOWN (vehicule_sk = 0) des véhicules réels."""
+    technical = df[df["vehicule_sk"] == 0]
+    real = df[df["vehicule_sk"] != 0].reset_index(drop=True)
+    return technical, real
+
+
+def test_transform_always_emits_unknown_technical_row():
+    df = transform_dim_vehicule(
+        _inspection_df([]),
+        DummyLogger(),
+        _claim_df([{"immat": "4639 TU 204"}]),
+    )
+
+    technical, _ = _split_technical(df)
+    assert len(technical) == 1
+    row = technical.iloc[0]
+    assert row["immatriculation"] == "UNKNOWN"
+    assert row["source_system"] == "TECHNICAL"
+    assert pd.isna(row["vin"])
+    assert pd.isna(row["motorisation"])
+
+
 def test_inspection_only_vehicle_preserves_vin_and_motorisation():
     df = transform_dim_vehicule(
         _inspection_df(
@@ -46,8 +69,9 @@ def test_inspection_only_vehicle_preserves_vin_and_motorisation():
     )
 
     assert list(df.columns) == FINAL_COLS
-    assert len(df) == 1
-    row = df.iloc[0]
+    _, real = _split_technical(df)
+    assert len(real) == 1
+    row = real.iloc[0]
     assert row["immatriculation"] == "1234TU567"
     assert row["vin"] == "VIN-001"
     assert row["motorisation"] == "DIESEL"
@@ -62,8 +86,9 @@ def test_claim_only_vehicle_is_kept_without_vin_or_motorisation():
     )
 
     assert list(df.columns) == FINAL_COLS
-    assert len(df) == 1
-    row = df.iloc[0]
+    _, real = _split_technical(df)
+    assert len(real) == 1
+    row = real.iloc[0]
     assert row["immatriculation"] == "4639TU204"
     assert pd.isna(row["vin"])
     assert pd.isna(row["motorisation"])
@@ -88,8 +113,9 @@ def test_inspection_and_claim_duplicate_merge_to_one_vehicle():
     )
 
     assert list(df.columns) == FINAL_COLS
-    assert len(df) == 1
-    row = df.iloc[0]
+    _, real = _split_technical(df)
+    assert len(real) == 1
+    row = real.iloc[0]
     assert row["immatriculation"] == "4639TU204"
     assert row["vin"] == "VIN123"
     assert row["motorisation"] == "ESSENCE"
@@ -121,8 +147,9 @@ def test_best_inspection_row_prefers_complete_vehicle_attributes():
     )
 
     assert list(df.columns) == FINAL_COLS
-    assert len(df) == 1
-    row = df.iloc[0]
+    _, real = _split_technical(df)
+    assert len(real) == 1
+    row = real.iloc[0]
     assert row["vin"] == "VIN-COMPLETE"
     assert row["motorisation"] == "HYBRIDE"
     assert row["source_system"] == SOURCE_SYSTEM_INSPECTION
@@ -136,4 +163,6 @@ def test_invalid_immatriculations_do_not_create_dimension_rows():
     )
 
     assert list(df.columns) == FINAL_COLS
-    assert df.empty
+    technical, real = _split_technical(df)
+    assert len(technical) == 1
+    assert real.empty

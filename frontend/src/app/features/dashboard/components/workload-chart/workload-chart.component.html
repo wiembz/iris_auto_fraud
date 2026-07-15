@@ -1,0 +1,25 @@
+﻿<section class="dashboard-card workload-chart" aria-labelledby="workload-title">
+  <header class="dashboard-card__head">
+    <div>
+      <h2 id="workload-title">{{ title }}</h2>
+      <p>{{ subtitle }}</p>
+    </div>
+  </header>
+
+  <div class="workload-list">
+    @for (row of rows; track row.label) {
+      <article class="workload-row" [attr.data-status]="row.status ?? 'available'">
+        <div>
+          <strong>{{ row.label }}</strong>
+          @if (row.helper) {
+            <small>{{ row.helper }}</small>
+          }
+        </div>
+        <span class="workload-row__metric">{{ formatValue(row.value) }}</span>
+        <span class="workload-row__track" aria-hidden="true">
+          <span [style.width.%]="row.share"></span>
+        </span>
+      </article>
+    }
+  </div>
+</section>
