@@ -1,4 +1,4 @@
-﻿<section class="dashboard-card recent-claims" aria-labelledby="recent-claims-title">
+<section class="dashboard-card recent-claims" aria-labelledby="recent-claims-title">
   <header class="dashboard-card__head">
     <div>
       <h2 id="recent-claims-title">{{ title }}</h2>
@@ -27,6 +27,11 @@
             }
           </span>
           <span class="recent-row__confidence">{{ confidenceLabel(claim.confidence_level) }}</span>
+          <span class="recent-row__action" style="display: inline-flex; align-items: center; justify-content: center; color: var(--iris-text-3); transition: transform 0.2s ease, color 0.2s ease;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </span>
         </a>
       }
     </div>

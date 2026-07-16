@@ -28,15 +28,22 @@
 .trend-chart__dot--priority { background: var(--iris-high); }
 
 .trend-chart__body {
-  height: 190px;
+  height: 200px;
+  position: relative;
+  border-bottom: 2px solid var(--iris-border);
+  /* Scientific Grid Lines */
+  background-image: linear-gradient(to top, var(--iris-border) 1px, transparent 1px);
+  background-size: 100% 40px; /* 5 grid sections */
 }
 
 .trend-chart__columns {
   display: flex;
   align-items: flex-end;
   height: 100%;
-  gap: 6px;
-  padding-top: 28px;
+  gap: 8px;
+  padding-top: 32px;
+  position: relative;
+  z-index: 2;
 }
 
 .trend-chart__column {
@@ -48,71 +55,98 @@
   align-items: center;
   justify-content: flex-end;
   min-width: 0;
+  cursor: pointer;
 }
 
 .trend-chart__bar {
   position: relative;
-  width: 62%;
-  min-height: 3px;
-  border-radius: 5px 5px 2px 2px;
-  background: color-mix(in srgb, var(--iris-primary) 78%, transparent);
+  width: 52%;
+  max-width: 32px;
+  min-height: 4px;
+  border-radius: 6px 6px 0 0;
+  background: linear-gradient(to top, color-mix(in srgb, var(--iris-primary) 18%, transparent) 0%, var(--iris-primary) 100%);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--iris-primary) 14%, transparent);
   transform-origin: bottom;
-  animation: dashboard-grow-y 0.7s cubic-bezier(0.2, 0.75, 0.24, 1) both;
+  animation: dashboard-grow-y 0.8s cubic-bezier(0.2, 0.75, 0.24, 1) both;
+  transition: background 0.22s ease, box-shadow 0.22s ease;
 }
 
 .trend-chart__column.is-hovered .trend-chart__bar {
-  background: var(--iris-primary);
+  background: linear-gradient(to top, color-mix(in srgb, var(--iris-primary) 40%, transparent) 0%, var(--iris-primary-2) 100%);
+  box-shadow: 0 4px 20px -2px color-mix(in srgb, var(--iris-primary) 48%, transparent);
 }
 
 .trend-chart__bar-value {
   position: absolute;
-  top: -20px;
+  top: -24px;
   left: 50%;
-  transform: translateX(-50%);
-  color: var(--iris-text-3);
-  font-size: 10px;
-  font-weight: 800;
+  transform: translateX(-50%) translateY(4px);
+  color: var(--iris-text-2);
+  background: var(--iris-surface-2);
+  border: 1px solid var(--iris-border);
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 850;
+  font-family: var(--iris-font-sans);
   white-space: nowrap;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  pointer-events: none;
+  box-shadow: var(--iris-shadow-sm);
+  transition: opacity 0.18s cubic-bezier(0.2, 0.75, 0.24, 1), transform 0.18s cubic-bezier(0.2, 0.75, 0.24, 1);
 }
 
 .trend-chart__column.is-hovered .trend-chart__bar-value {
   opacity: 1;
+  transform: translateX(-50%) translateY(0);
   color: var(--iris-text);
+  background: var(--iris-surface);
 }
 
 .trend-chart__priority-marker {
   position: absolute;
   left: 50%;
   transform: translate(-50%, 50%);
-  z-index: 2;
-  width: 8px;
-  height: 8px;
+  z-index: 3;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--iris-high);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--iris-surface) 85%, transparent);
+  box-shadow: 0 0 10px var(--iris-high), 0 0 0 3px color-mix(in srgb, var(--iris-surface) 90%, transparent);
+  transition: transform 0.2s cubic-bezier(0.2, 0.75, 0.24, 1), box-shadow 0.2s ease;
+}
+
+.trend-chart__column.is-hovered .trend-chart__priority-marker {
+  transform: translate(-50%, 50%) scale(1.35);
+  box-shadow: 0 0 14px var(--iris-high), 0 0 0 4px color-mix(in srgb, var(--iris-surface) 70%, transparent);
 }
 
 .trend-chart__priority-value {
   position: absolute;
-  bottom: 12px;
+  bottom: 16px;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) translateY(4px);
   color: var(--iris-high);
-  font-size: 10px;
+  background: var(--iris-high-bg);
+  border: 1px solid color-mix(in srgb, var(--iris-high) 20%, transparent);
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 10.5px;
   font-weight: 850;
   white-space: nowrap;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  pointer-events: none;
+  box-shadow: var(--iris-shadow-sm);
+  transition: opacity 0.18s cubic-bezier(0.2, 0.75, 0.24, 1), transform 0.18s cubic-bezier(0.2, 0.75, 0.24, 1);
 }
 
 .trend-chart__column.is-hovered .trend-chart__priority-value {
   opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .trend-chart__month {
-  margin-top: 8px;
+  margin-top: 10px;
   color: var(--iris-text-3);
   font-size: 11px;
   font-weight: 800;
@@ -126,7 +160,7 @@
 .trend-chart__summary {
   display: flex;
   gap: 22px;
-  margin-top: 4px;
+  margin-top: 12px;
   color: var(--iris-text-3);
   font-size: 12.5px;
 }

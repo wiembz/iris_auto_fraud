@@ -1,4 +1,11 @@
-﻿<div class="decision-dashboard">
+<div class="decision-dashboard">
+  <!-- Brand Decorative Background Orbs & Grid Patterns -->
+  <div class="dashboard-bg" aria-hidden="true">
+    <span class="dashboard-orb dashboard-orb--1"></span>
+    <span class="dashboard-orb dashboard-orb--2"></span>
+    <span class="dashboard-grid-pattern"></span>
+  </div>
+
   <header class="dashboard-hero">
     <div>
       <p class="iris-eyebrow">{{ user()?.roleLabel ?? 'Espace IRIS' }}</p>
@@ -8,13 +15,19 @@
 
     <div class="dashboard-run-card">
       @if (summary(); as s) {
-        <span>Analyse IRIS</span>
-        <strong>Score d attention</strong>
-        <small>{{ s.total_claims }} dossiers couverts par la derniere analyse</small>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 2px;">
+          <span class="dashboard-pulse-dot" aria-hidden="true"></span>
+          <span>Analyse active</span>
+        </div>
+        <strong>Score d'attention</strong>
+        <small>{{ s.total_claims }} dossiers analysés récemment</small>
       } @else {
-        <span>Analyse IRIS</span>
-        <strong>Chargement</strong>
-        <small>Le resume arrive dans un instant</small>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 2px;">
+          <span class="dashboard-pulse-dot" style="background: var(--iris-neutral);" aria-hidden="true"></span>
+          <span>Chargement</span>
+        </div>
+        <strong>Analyse IRIS</strong>
+        <small>Mise à jour en cours...</small>
       }
     </div>
   </header>
