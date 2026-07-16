@@ -1,4 +1,5 @@
 ﻿import { Routes } from '@angular/router';
+import { AnalyticsPageComponent } from './features/analytics/analytics-page.component';
 import { LoginPageComponent } from './features/auth/login-page.component';
 import { ClaimDetailPageComponent } from './features/claim-detail/claim-detail-page.component';
 import { AppPlaceholderPageComponent } from './features/dashboard/app-placeholder-page.component';
@@ -30,6 +31,7 @@ export const routes: Routes = [
       { path: 'claims', component: WorklistPageComponent },
       { path: 'claims/:claimSk', component: ClaimDetailPageComponent },
       { path: 'vehicle', component: VhsPageComponent },
+      { path: 'analytics', component: AnalyticsPageComponent },
       {
         path: 'signals',
         component: AppPlaceholderPageComponent,

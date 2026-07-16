@@ -50,6 +50,12 @@ export class AppLayoutComponent {
       ]
     },
     {
+      label: 'Analytique Power BI',
+      route: '/app/analytics',
+      roles: ['responsable', 'manager', 'administrateur'],
+      icon: ['M3 3v16a2 2 0 0 0 2 2h16', 'M7 13.5 11 9l3.5 3.5L20 6', 'M20 6h-4', 'M20 6v4']
+    },
+    {
       label: 'Signaux & explications',
       route: '/app/signals',
       roles: ['gestionnaire', 'responsable', 'manager'],

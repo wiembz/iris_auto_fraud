@@ -95,6 +95,7 @@ models/
 # Keep documented SQL design/audit scripts
 !docs/vhs/governance/sql/*.sql
 !docs/geo/sql/*.sql
+!etl/powerbi/*.sql
 
 *.dump
 *.backup

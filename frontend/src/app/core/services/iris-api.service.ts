@@ -255,6 +255,13 @@ export interface VhsZonePenalty {
   critical_count: number;
 }
 
+export interface PowerbiGovernanceComponent {
+  component: string;
+  version: string;
+  run_id: string;
+  row_count: number;
+}
+
 export interface VhsOverviewResponse {
   run_id: string | null;
   total_vehicles: number;
@@ -413,6 +420,12 @@ export class IrisApiService {
       params = params.set('reviewer_email', reviewerEmail);
     }
     return this.http.get<{ items: ClaimDecisionRecord[] }>(`${this.apiBaseUrl}/decisions`, { params });
+  }
+
+  getPowerbiGovernance(): Observable<{ components: PowerbiGovernanceComponent[] }> {
+    return this.http.get<{ components: PowerbiGovernanceComponent[] }>(
+      `${this.apiBaseUrl}/powerbi/governance`
+    );
   }
 
   getVhsOverview(): Observable<VhsOverviewResponse> {

@@ -1,0 +1,118 @@
+<div class="analytics-page">
+  <header class="analytics-hero">
+    <div>
+      <p class="iris-eyebrow">Espace analytique</p>
+      <h1>Analyse du portefeuille avec Power BI</h1>
+      <p>
+        L application IRIS et le rapport Power BI lisent les memes donnees mais ne font pas
+        le meme metier : ici vous agissez sur un dossier, la-bas vous comprenez le portefeuille.
+      </p>
+    </div>
+    <aside>
+      @if (reportUrl) {
+        <a class="analytics-open" [href]="reportUrl" target="_blank" rel="noopener">
+          Ouvrir le rapport
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            <path d="M15 3h6v6" /><path d="M10 14 21 3" />
+          </svg>
+        </a>
+      } @else {
+        <span class="analytics-pending">
+          <strong>Publication a venir</strong>
+          Rapport en cours de deploiement sur Power BI Report Server
+        </span>
+      }
+    </aside>
+  </header>
+
+  <section class="analytics-split" aria-label="Repartition des roles">
+    <article class="iris-card analytics-split__card" data-side="app">
+      <header>
+        <span class="analytics-split__badge">Dans l application</span>
+        <h2>Agir sur un dossier</h2>
+      </header>
+      <ul>
+        <li>Trier la file de travail et ouvrir un dossier</li>
+        <li>Lire les signaux expliques, la chronologie, l inspection du vehicule</li>
+        <li>Enregistrer une decision de validation, corrigeable et auditee</li>
+      </ul>
+      <footer>Grain : le dossier individuel — gestionnaires et responsables</footer>
+    </article>
+
+    <article class="iris-card analytics-split__card" data-side="bi">
+      <header>
+        <span class="analytics-split__badge">Dans Power BI</span>
+        <h2>Comprendre le portefeuille</h2>
+      </header>
+      <ul>
+        <li>Tendances, segments, concentrations et montants agreges</li>
+        <li>Contribution des regles et convergence du signal ML</li>
+        <li>Qualite des donnees et gouvernance des versions de score</li>
+      </ul>
+      <footer>Grain : cohortes et agregats — management et analystes</footer>
+    </article>
+  </section>
+
+  <section class="iris-card analytics-pages" aria-label="Pages du rapport">
+    <header class="analytics-pages__head">
+      <div>
+        <h2>Le rapport en 5 questions</h2>
+        <p>Chaque page repond a une question que le management se pose reellement.</p>
+      </div>
+    </header>
+    <div class="analytics-pages__grid">
+      @for (page of reportPages; track page.code) {
+        <article class="analytics-page-card">
+          <header>
+            <span class="analytics-page-card__code">{{ page.code }}</span>
+            <div>
+              <h3>{{ page.title }}</h3>
+              <p class="analytics-page-card__question">« {{ page.question }} »</p>
+            </div>
+          </header>
+          <ul>
+            @for (visual of page.visuals; track visual) {
+              <li>{{ visual }}</li>
+            }
+          </ul>
+          <footer>{{ page.audience }}</footer>
+        </article>
+      }
+    </div>
+    <p class="analytics-pages__note">
+      Une sixieme page masquee (detail dossier, accessible par drill-through) est la seule
+      restitution analytique au grain sinistre x garantie — sans aucune action possible.
+    </p>
+  </section>
+
+  <section class="iris-card analytics-governance" aria-label="Gouvernance des donnees">
+    <header>
+      <h2>Memes donnees, memes chiffres</h2>
+      <p>
+        Le rapport ne lit que des vues dediees en lecture seule, verrouillees sur la version
+        de score servie par cette application. Etat actuel des composants exposes :
+      </p>
+    </header>
+    @if (governanceLoading()) {
+      <div class="analytics-loading"><span></span><span></span><span></span></div>
+    } @else if (governance().length === 0) {
+      <p class="analytics-empty">Gouvernance momentanement indisponible.</p>
+    } @else {
+      <ul class="analytics-governance__list">
+        @for (item of governance(); track item.component) {
+          <li>
+            <strong>{{ componentLabel(item.component) }}</strong>
+            <span class="analytics-governance__version">{{ item.version }}</span>
+            <span class="analytics-governance__meta">
+              {{ formatRows(item.row_count) }} lignes · calcule le {{ shortRun(item.run_id) }}
+            </span>
+          </li>
+        }
+      </ul>
+    }
+    <footer class="analytics-governance__foot">
+      Aide a l analyse — la decision finale reste sous la responsabilite du gestionnaire.
+    </footer>
+  </section>
+</div>
