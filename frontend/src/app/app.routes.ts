@@ -69,26 +69,21 @@ export const routes: Routes = [
       {
         path: 'assignments',
         loadComponent: () =>
-          import('./features/dashboard/app-placeholder-page.component').then(
-            (m) => m.AppPlaceholderPageComponent
-          ),
-        data: { title: 'Affectations' }
+          import('./features/assignments/assignments-page.component').then(
+            (m) => m.AssignmentsPageComponent
+          )
       },
       {
         path: 'audit',
         loadComponent: () =>
-          import('./features/dashboard/app-placeholder-page.component').then(
-            (m) => m.AppPlaceholderPageComponent
-          ),
-        data: { title: 'Audit' }
+          import('./features/audit/audit-page.component').then((m) => m.AuditPageComponent)
       },
       {
         path: 'administration',
         loadComponent: () =>
-          import('./features/dashboard/app-placeholder-page.component').then(
-            (m) => m.AppPlaceholderPageComponent
-          ),
-        data: { title: 'Administration' }
+          import('./features/administration/administration-page.component').then(
+            (m) => m.AdministrationPageComponent
+          )
       }
     ]
   },

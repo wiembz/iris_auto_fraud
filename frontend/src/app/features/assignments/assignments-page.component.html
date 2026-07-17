@@ -1,0 +1,128 @@
+<div class="assign-page">
+  <header class="assign-hero">
+    <div>
+      <p class="iris-eyebrow">Affectations</p>
+      <h1>Organisation de la revue</h1>
+      <p>
+        Repartissez l effort de votre equipe : la file ci-dessous liste les dossiers
+        prioritaires encore sans decision, et le panneau d activite montre qui a traite quoi.
+      </p>
+    </div>
+    <aside>
+      <span>Regle d or</span>
+      <strong>Un dossier prioritaire = une revue approfondie, pas une case cochee</strong>
+    </aside>
+  </header>
+
+  @if (loading()) {
+    <section class="assign-loading" aria-label="Chargement">
+      <span></span><span></span><span></span>
+    </section>
+  } @else if (errorMessage()) {
+    <section class="iris-card assign-error">
+      <strong>Donnees indisponibles</strong>
+      <p>{{ errorMessage() }}</p>
+    </section>
+  } @else {
+    <section class="assign-kpis" aria-label="Charge de travail">
+      <article class="iris-card assign-kpi" data-tone="high">
+        <span>Prioritaires a traiter</span>
+        <b>{{ formatCount(priorityTotal()) }}</b>
+        <small>sans decision enregistree</small>
+      </article>
+      <article class="iris-card assign-kpi" data-tone="medium">
+        <span>Renforces a traiter</span>
+        <b>{{ formatCount(reinforcedTotal()) }}</b>
+        <small>seconde vague de revue</small>
+      </article>
+      <article class="iris-card assign-kpi">
+        <span>Decisions enregistrees</span>
+        <b>{{ decisionsTotal().toLocaleString('fr-FR') }}</b>
+        <small>sur les 200 dernieres activites</small>
+      </article>
+      <article class="iris-card assign-kpi">
+        <span>Relecteurs actifs</span>
+        <b>{{ reviewers().length }}</b>
+        <small>ayant au moins une decision</small>
+      </article>
+    </section>
+
+    <div class="assign-layout">
+      <section class="iris-card assign-queue" aria-label="File a repartir">
+        <header>
+          <div>
+            <h2>File a repartir</h2>
+            <p>Les dossiers en examen prioritaire encore sans decision, du score le plus haut au plus bas</p>
+          </div>
+          <a class="assign-queue__all" routerLink="/app/claims">Ouvrir la file complete</a>
+        </header>
+        @if (priorityQueue().length === 0) {
+          <p class="assign-empty">
+            Aucun dossier prioritaire en attente : la revue est a jour.
+          </p>
+        } @else {
+          <ul class="assign-queue__list">
+            @for (claim of priorityQueue(); track claim.claim_sk) {
+              <li>
+                <a [routerLink]="['/app/claims', claim.claim_sk]" class="assign-claim">
+                  <span class="assign-claim__score">{{ roundScore(claim.attention_score) }}</span>
+                  <span class="assign-claim__body">
+                    <strong>{{ claim.claim_business_id || claim.claim_root_id || claim.claim_sk }}</strong>
+                    <small>
+                      {{ claim.code_garantie || '—' }} · {{ formatAmount(claim.claim_amount) }} ·
+                      {{ formatDate(claim.claim_date) }}
+                    </small>
+                    <em>{{ claim.main_reason_1 || 'Signal a examiner' }}</em>
+                  </span>
+                  <span class="assign-claim__cta">Examiner →</span>
+                </a>
+              </li>
+            }
+          </ul>
+        }
+      </section>
+
+      <section class="iris-card assign-team" aria-label="Activite de l equipe">
+        <header>
+          <h2>Activite de l equipe</h2>
+          <p>Decisions par relecteur — corrections comprises, rien n est efface</p>
+        </header>
+        @if (reviewers().length === 0) {
+          <p class="assign-empty">
+            Aucune decision enregistree pour le moment. L activite apparaitra ici des la premiere validation.
+          </p>
+        } @else {
+          <ul class="assign-team__list">
+            @for (reviewer of reviewers(); track reviewer.email) {
+              <li>
+                <span class="assign-team__avatar">{{ reviewer.initials }}</span>
+                <div class="assign-team__info">
+                  <div class="assign-team__head">
+                    <strong>{{ reviewer.displayName }}</strong>
+                    <small>derniere activite : {{ formatDate(reviewer.lastActivity) }}</small>
+                  </div>
+                  <span class="assign-team__track">
+                    <i [style.width.%]="reviewerShare(reviewer)"></i>
+                  </span>
+                  <div class="assign-team__badges">
+                    <span data-tone="high">{{ reviewer.confirmed }} suspicion(s)</span>
+                    <span data-tone="ok">{{ reviewer.conforme }} conforme(s)</span>
+                    <span data-tone="medium">{{ reviewer.aCompleter }} a completer</span>
+                    @if (reviewer.corrections > 0) {
+                      <span data-tone="muted">{{ reviewer.corrections }} correction(s)</span>
+                    }
+                  </div>
+                </div>
+                <b class="assign-team__total">{{ reviewer.total }}</b>
+              </li>
+            }
+          </ul>
+        }
+        <footer class="assign-team__foot">
+          Les decisions sont conservees en historique complet : une correction ne remplace
+          jamais la decision d origine, elle s y ajoute.
+        </footer>
+      </section>
+    </div>
+  }
+</div>

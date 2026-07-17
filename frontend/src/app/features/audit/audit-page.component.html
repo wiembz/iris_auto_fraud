@@ -1,0 +1,129 @@
+<div class="audit-page">
+  <header class="audit-hero">
+    <div>
+      <p class="iris-eyebrow">Audit</p>
+      <h1>Journal des decisions humaines</h1>
+      <p>
+        Chaque decision de validation est horodatee, attribuee et conservee pour toujours :
+        la base rejette physiquement toute modification ou suppression. Les corrections
+        s ajoutent a l historique sans jamais l ecraser.
+      </p>
+    </div>
+    <aside>
+      <span>Garantie structurelle</span>
+      <strong>Append-only : l historique est infalsifiable, par construction</strong>
+    </aside>
+  </header>
+
+  @if (loading()) {
+    <section class="audit-loading" aria-label="Chargement">
+      <span></span><span></span><span></span>
+    </section>
+  } @else if (errorMessage()) {
+    <section class="iris-card audit-error">
+      <strong>Donnees indisponibles</strong>
+      <p>{{ errorMessage() }}</p>
+    </section>
+  } @else {
+    <section class="audit-kpis" aria-label="Synthese du journal">
+      <article class="iris-card audit-kpi">
+        <span>Decisions au journal</span>
+        <b>{{ totalDecisions() }}</b>
+      </article>
+      <article class="iris-card audit-kpi">
+        <span>Dossiers couverts</span>
+        <b>{{ distinctClaims() }}</b>
+      </article>
+      <article class="iris-card audit-kpi">
+        <span>Corrections tracees</span>
+        <b>{{ totalCorrections() }}</b>
+        <small>aucune decision effacee</small>
+      </article>
+      <article class="iris-card audit-kpi">
+        <span>Relecteurs</span>
+        <b>{{ distinctReviewers() }}</b>
+      </article>
+    </section>
+
+    <nav class="audit-filters" aria-label="Filtrer le journal">
+      @for (chip of filterChips(); track chip.value) {
+        <button
+          type="button"
+          class="audit-filters__chip"
+          [class.is-active]="decisionFilter() === chip.value"
+          (click)="applyFilter(chip.value)"
+        >
+          {{ chip.label }} <b>{{ chip.count }}</b>
+        </button>
+      }
+    </nav>
+
+    <div class="audit-layout">
+      <section class="iris-card audit-trail" aria-label="Journal">
+        @if (filteredDecisions().length === 0) {
+          <p class="audit-empty">Aucune entree pour ce filtre.</p>
+        } @else {
+          <ol class="audit-trail__list">
+            @for (entry of filteredDecisions(); track entry.decision_id) {
+              <li>
+                <span class="audit-entry__marker" [attr.data-tone]="decisionTone(entry.decision)"></span>
+                <div class="audit-entry">
+                  <div class="audit-entry__head">
+                    <span class="audit-entry__decision" [attr.data-tone]="decisionTone(entry.decision)">
+                      {{ decisionLabel(entry.decision) }}
+                    </span>
+                    @if (entry.corrects_decision_id) {
+                      <span class="audit-entry__correction">
+                        corrige « {{ decisionLabel(entry.corrected_decision_value) }} »
+                        (decision #{{ entry.corrects_decision_id }})
+                      </span>
+                    }
+                    <time>{{ formatDateTime(entry.decided_at) }}</time>
+                  </div>
+                  <div class="audit-entry__meta">
+                    <a [routerLink]="['/app/claims', entry.claim_sk]">
+                      {{ entry.claim_business_id || ('Dossier ' + entry.claim_sk) }}
+                    </a>
+                    <span>par {{ entry.reviewer_email }}</span>
+                    @if (entry.reviewer_role) {
+                      <span class="audit-entry__role">{{ entry.reviewer_role }}</span>
+                    }
+                  </div>
+                  @if (entry.comment) {
+                    <p class="audit-entry__comment">« {{ entry.comment }} »</p>
+                  }
+                </div>
+              </li>
+            }
+          </ol>
+        }
+      </section>
+
+      <aside class="audit-side">
+        <section class="iris-card audit-governance" aria-label="Gouvernance des calculs">
+          <h2>Gouvernance des calculs</h2>
+          <p>Versions servies actuellement — identiques dans l application et Power BI.</p>
+          <ul>
+            @for (item of governance(); track item.component) {
+              <li>
+                <strong>{{ componentLabel(item.component) }}</strong>
+                <small>{{ item.version }}</small>
+                <span>{{ formatRows(item.row_count) }} lignes · {{ shortRun(item.run_id) }}</span>
+              </li>
+            }
+          </ul>
+        </section>
+
+        <section class="iris-card audit-principles" aria-label="Principes">
+          <h2>Ce que garantit la plateforme</h2>
+          <ul>
+            <li>API en lecture seule — une seule ecriture possible : la decision de validation.</li>
+            <li>Trigger PostgreSQL : UPDATE et DELETE rejetes sur le journal.</li>
+            <li>Chaque score porte sa version et son run — tout resultat est rejouable.</li>
+            <li>Les corrections pointent la decision d origine (lien de correction).</li>
+          </ul>
+        </section>
+      </aside>
+    </div>
+  }
+</div>

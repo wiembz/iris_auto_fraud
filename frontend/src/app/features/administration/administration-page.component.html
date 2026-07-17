@@ -1,0 +1,106 @@
+<div class="admin-page">
+  <header class="admin-hero">
+    <div>
+      <p class="iris-eyebrow">Administration</p>
+      <h1>Etat de la plateforme</h1>
+      <p>
+        Sante des services, gouvernance des donnees servies et regles d acces —
+        l espace de controle de l administrateur, en lecture sur l etat reel du systeme.
+      </p>
+    </div>
+    <aside [attr.data-status]="apiStatus()">
+      <span>API IRIS</span>
+      @if (apiStatus() === 'checking') {
+        <strong>Verification en cours…</strong>
+      } @else if (apiStatus() === 'up') {
+        <strong>Operationnelle · {{ apiLatencyMs() }} ms</strong>
+      } @else {
+        <strong>Indisponible — verifier le service backend</strong>
+      }
+    </aside>
+  </header>
+
+  <section class="admin-grid">
+    <article class="iris-card admin-card admin-card--session" aria-label="Session en cours">
+      <h2>Session en cours</h2>
+      @if (user(); as currentUser) {
+        <div class="admin-session">
+          <span class="admin-session__avatar">{{ currentUser.displayName.charAt(0) }}</span>
+          <div>
+            <strong>{{ currentUser.displayName }}</strong>
+            <small>{{ currentUser.email }}</small>
+            <span class="admin-session__role">{{ currentUser.role }}</span>
+          </div>
+        </div>
+      } @else {
+        <p class="admin-muted">Aucune session active.</p>
+      }
+      <p class="admin-muted">
+        Domaine autorise : &#64;bnaassurance.com — session locale au navigateur, aucun mot de
+        passe stocke par IRIS.
+      </p>
+    </article>
+
+    <article class="iris-card admin-card" aria-label="Donnees servies">
+      <h2>Donnees servies</h2>
+      @if (governanceLoading()) {
+        <div class="admin-loading"><span></span><span></span><span></span></div>
+      } @else if (governance().length === 0) {
+        <p class="admin-muted">Gouvernance momentanement indisponible.</p>
+      } @else {
+        <ul class="admin-components">
+          @for (item of governance(); track item.component) {
+            <li>
+              <strong>{{ componentLabel(item.component) }}</strong>
+              <span>{{ formatRows(item.row_count) }} lignes · calcule le {{ shortRun(item.run_id) }}</span>
+              <small>{{ item.version }}</small>
+            </li>
+          }
+        </ul>
+        <footer class="admin-components__foot">
+          {{ formatRows(totalRows()) }} lignes de resultats exposees, toutes versionnees.
+        </footer>
+      }
+    </article>
+  </section>
+
+  <section class="iris-card admin-matrix-card" aria-label="Matrice des acces">
+    <header>
+      <h2>Matrice des acces (RBAC)</h2>
+      <p>Chaque espace de la plateforme est reserve aux roles qui en ont l usage metier.</p>
+    </header>
+    <div class="admin-matrix-scroll">
+      <table class="admin-matrix">
+        <thead>
+          <tr>
+            <th scope="col">Espace</th>
+            <th scope="col">Gestionnaire</th>
+            <th scope="col">Responsable</th>
+            <th scope="col">Manager</th>
+            <th scope="col">Administrateur</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of accessMatrix; track row.space) {
+            <tr>
+              <th scope="row">{{ row.space }}</th>
+              <td [attr.data-granted]="row.gestionnaire">{{ row.gestionnaire ? '✓' : '—' }}</td>
+              <td [attr.data-granted]="row.responsable">{{ row.responsable ? '✓' : '—' }}</td>
+              <td [attr.data-granted]="row.manager">{{ row.manager ? '✓' : '—' }}</td>
+              <td [attr.data-granted]="row.administrateur">{{ row.administrateur ? '✓' : '—' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="admin-principles" aria-label="Garanties de la plateforme">
+    @for (principle of principles; track principle.title) {
+      <article class="iris-card admin-principle">
+        <h3>{{ principle.title }}</h3>
+        <p>{{ principle.text }}</p>
+      </article>
+    }
+  </section>
+</div>
