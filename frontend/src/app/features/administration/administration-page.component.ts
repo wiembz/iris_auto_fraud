@@ -55,25 +55,6 @@ export class AdministrationPageComponent implements OnInit, OnDestroy {
     { space: 'Administration', gestionnaire: false, responsable: false, manager: false, administrateur: true }
   ];
 
-  readonly principles = [
-    {
-      title: 'API en lecture seule',
-      text: "Une seule ecriture existe dans toute la plateforme : l enregistrement d une decision de validation. Un test automatise fait echouer la build si une autre ecriture SQL apparait."
-    },
-    {
-      title: 'Journal infalsifiable',
-      text: 'Les decisions humaines sont protegees par un trigger PostgreSQL qui rejette toute modification ou suppression. Les corrections s ajoutent, liees a la decision d origine.'
-    },
-    {
-      title: 'Acces par domaine et par role',
-      text: "La connexion exige une adresse @bnaassurance.com et chaque espace est filtre par role (matrice ci-contre). Un profil ne voit que ce que son metier requiert."
-    },
-    {
-      title: 'Resultats versionnes',
-      text: 'Chaque score porte sa version et son run : tout resultat historique est rejouable et auditables — rien n est jamais ecrase.'
-    }
-  ];
-
   ngOnInit(): void {
     const startedAt = performance.now();
     this.healthSubscription = this.api.getSummary().subscribe({

@@ -4,15 +4,10 @@
       <p class="iris-eyebrow">Audit</p>
       <h1>Journal des decisions humaines</h1>
       <p>
-        Chaque decision de validation est horodatee, attribuee et conservee pour toujours :
-        la base rejette physiquement toute modification ou suppression. Les corrections
-        s ajoutent a l historique sans jamais l ecraser.
+        Historique complet des decisions de validation : horodatees, attribuees,
+        corrections liees a la decision d origine.
       </p>
     </div>
-    <aside>
-      <span>Garantie structurelle</span>
-      <strong>Append-only : l historique est infalsifiable, par construction</strong>
-    </aside>
   </header>
 
   @if (loading()) {
@@ -114,15 +109,6 @@
           </ul>
         </section>
 
-        <section class="iris-card audit-principles" aria-label="Principes">
-          <h2>Ce que garantit la plateforme</h2>
-          <ul>
-            <li>API en lecture seule — une seule ecriture possible : la decision de validation.</li>
-            <li>Trigger PostgreSQL : UPDATE et DELETE rejetes sur le journal.</li>
-            <li>Chaque score porte sa version et son run — tout resultat est rejouable.</li>
-            <li>Les corrections pointent la decision d origine (lien de correction).</li>
-          </ul>
-        </section>
       </aside>
     </div>
   }

@@ -244,29 +244,6 @@
   }
 }
 
-.admin-principles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 12px;
-}
-
-.admin-principle {
-  padding: 18px;
-  border-top: 3px solid var(--iris-accent, #0f766e);
-
-  h3 {
-    margin: 0 0 6px;
-    font-size: 0.95rem;
-  }
-
-  p {
-    margin: 0;
-    font-size: 0.8rem;
-    line-height: 1.5;
-    color: var(--iris-text-muted, #5b6e82);
-  }
-}
-
 .admin-loading {
   display: flex;
   gap: 6px;

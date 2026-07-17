@@ -270,8 +270,7 @@
   align-content: start;
 }
 
-.audit-governance,
-.audit-principles {
+.audit-governance {
   padding: 18px;
 
   h2 {
@@ -317,16 +316,6 @@
       color: var(--iris-text-muted, #5b6e82);
     }
   }
-}
-
-.audit-principles ul {
-  margin: 0;
-  padding: 0 0 0 18px;
-  display: grid;
-  gap: 8px;
-  font-size: 0.82rem;
-  color: var(--iris-text-muted, #47596b);
-  line-height: 1.45;
 }
 
 .audit-empty {

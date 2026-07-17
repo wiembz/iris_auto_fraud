@@ -4,8 +4,8 @@
       <p class="iris-eyebrow">Espace analytique</p>
       <h1>Analyse du portefeuille avec Power BI</h1>
       <p>
-        L application IRIS et le rapport Power BI lisent les memes donnees mais ne font pas
-        le meme metier : ici vous agissez sur un dossier, la-bas vous comprenez le portefeuille.
+        Cohortes, tendances et gouvernance du portefeuille — sur les memes donnees que
+        cette application.
       </p>
     </div>
     <aside>
@@ -25,34 +25,6 @@
       }
     </aside>
   </header>
-
-  <section class="analytics-split" aria-label="Repartition des roles">
-    <article class="iris-card analytics-split__card" data-side="app">
-      <header>
-        <span class="analytics-split__badge">Dans l application</span>
-        <h2>Agir sur un dossier</h2>
-      </header>
-      <ul>
-        <li>Trier la file de travail et ouvrir un dossier</li>
-        <li>Lire les signaux expliques, la chronologie, l inspection du vehicule</li>
-        <li>Enregistrer une decision de validation, corrigeable et auditee</li>
-      </ul>
-      <footer>Grain : le dossier individuel — gestionnaires et responsables</footer>
-    </article>
-
-    <article class="iris-card analytics-split__card" data-side="bi">
-      <header>
-        <span class="analytics-split__badge">Dans Power BI</span>
-        <h2>Comprendre le portefeuille</h2>
-      </header>
-      <ul>
-        <li>Tendances, segments, concentrations et montants agreges</li>
-        <li>Contribution des regles et convergence du signal ML</li>
-        <li>Qualite des donnees et gouvernance des versions de score</li>
-      </ul>
-      <footer>Grain : cohortes et agregats — management et analystes</footer>
-    </article>
-  </section>
 
   <section class="iris-card analytics-pages" aria-label="Pages du rapport">
     <header class="analytics-pages__head">
@@ -80,19 +52,12 @@
         </article>
       }
     </div>
-    <p class="analytics-pages__note">
-      Une sixieme page masquee (detail dossier, accessible par drill-through) est la seule
-      restitution analytique au grain sinistre x garantie — sans aucune action possible.
-    </p>
   </section>
 
   <section class="iris-card analytics-governance" aria-label="Gouvernance des donnees">
     <header>
-      <h2>Memes donnees, memes chiffres</h2>
-      <p>
-        Le rapport ne lit que des vues dediees en lecture seule, verrouillees sur la version
-        de score servie par cette application. Etat actuel des composants exposes :
-      </p>
+      <h2>Donnees servies au rapport</h2>
+      <p>Version de score identique a celle de l application.</p>
     </header>
     @if (governanceLoading()) {
       <div class="analytics-loading"><span></span><span></span><span></span></div>
@@ -111,8 +76,5 @@
         }
       </ul>
     }
-    <footer class="analytics-governance__foot">
-      Aide a l analyse — la decision finale reste sous la responsabilite du gestionnaire.
-    </footer>
   </section>
 </div>
