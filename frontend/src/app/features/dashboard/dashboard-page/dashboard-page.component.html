@@ -20,7 +20,7 @@
           <span>Analyse active</span>
         </div>
         <strong>Score d'attention</strong>
-        <small>{{ s.total_claims }} dossiers analysés récemment</small>
+        <small>{{ s.total_claims.toLocaleString('fr-FR') }} dossiers analysés récemment</small>
       } @else {
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 2px;">
           <span class="dashboard-pulse-dot" style="background: var(--iris-neutral);" aria-hidden="true"></span>

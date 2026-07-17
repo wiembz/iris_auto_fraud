@@ -60,7 +60,7 @@
               </td>
               <td><app-attention-badge [label]="claim.confidence_level" variant="confidence" /></td>
               <td><app-attention-badge [label]="displayText(claim.workflow_status)" variant="status" /></td>
-              <td>{{ displayAge(claim.age_days) }}</td>
+              <td>{{ displayAge(claim.age_days, claim.claim_date) }}</td>
             </tr>
           }
         </tbody>

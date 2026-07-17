@@ -85,8 +85,15 @@ export class ClaimTableComponent {
     return value === null ? '—' : `${value.toLocaleString('fr-FR')} TND`;
   }
 
-  displayAge(value: number | null): string {
-    return value === null ? '—' : `${value} j`;
+  displayAge(value: number | null | undefined, claimDate?: string | null): string {
+    let days = value ?? null;
+    if (days === null && claimDate) {
+      const date = new Date(claimDate);
+      if (!Number.isNaN(date.getTime())) {
+        days = Math.max(0, Math.floor((Date.now() - date.getTime()) / 86_400_000));
+      }
+    }
+    return days === null ? '—' : `${days.toLocaleString('fr-FR')} j`;
   }
 }
 
