@@ -19,6 +19,13 @@
 --     dans v_quality_kpis.
 --   * Wording non accusatoire : les libelles proviennent des tables mart,
 --     deja testees.
+--   * Convention d'affichage : tout champ texte nullable expose a Power BI
+--     est enveloppe dans COALESCE(..., 'Non renseigne') pour eviter les
+--     cellules/segments vides (Blank) cote rapport.
+--   * idclt (identifiant metier client, dwh.dim_client) est expose a cote de
+--     client_sk. Il n'existe PAS de nom/raison sociale client dans les
+--     sources actuelles (Clients.xlsx ne contient aucun champ nom) : c'est
+--     une limite de donnee source, pas un oubli de vue.
 -- ============================================================================
 
 CREATE SCHEMA IF NOT EXISTS powerbi_v;
@@ -68,14 +75,15 @@ SELECT
     f.days_contract_start_to_claim,
     sc.attention_score,
     sc.attention_level,
-    sc.confidence_level,
-    sc.main_reason_1,
-    sc.main_reason_2,
-    sc.main_reason_3,
+    COALESCE(sc.confidence_level, 'Non renseigne') AS confidence_level,
+    COALESCE(sc.main_reason_1, 'Non renseigne')    AS main_reason_1,
+    COALESCE(sc.main_reason_2, 'Non renseigne')    AS main_reason_2,
+    COALESCE(sc.main_reason_3, 'Non renseigne')    AS main_reason_3,
     sc.score_version,
     sc.score_run_id,
     sc.feature_run_id,
-    sc.created_at
+    sc.created_at,
+    f.claim_geo_sk
 FROM mart.fact_claim_attention_score sc
 JOIN powerbi_v.v_current_run r
   ON sc.score_version = r.score_version
@@ -128,8 +136,21 @@ SELECT
     a.claim_date,
     a.declaration_date,
     r.score_version,
-    r.score_run_id
+    r.score_run_id,
+    COALESCE(
+        CASE WHEN geo.gouvernorat = 'UNKNOWN' THEN NULL ELSE geo.gouvernorat END,
+        'Non renseigne'
+    ) AS gouvernorat,
+    COALESCE(
+        CASE WHEN geo.region = 'UNKNOWN' THEN NULL ELSE geo.region END,
+        'Non renseigne'
+    ) AS geo_region,
+    cl.idclt                AS client_business_id
 FROM ranked r
+LEFT JOIN dwh.dim_geo geo
+  ON geo.geo_sk = r.claim_geo_sk
+LEFT JOIN dwh.dim_client cl
+  ON cl.client_sk = r.client_sk
 JOIN agg a ON a.claim_root_id = r.claim_root_id
 WHERE r.rn = 1;
 
@@ -143,11 +164,11 @@ SELECT
     split_part(d.claim_business_id, '|', 1) AS claim_root_id,
     d.signal_family,
     d.signal_code,
-    d.signal_label,
+    COALESCE(d.signal_label, 'Non renseigne')         AS signal_label,
     d.signal_value,
     d.points,
     d.severity,
-    d.business_explanation,
+    COALESCE(d.business_explanation, 'Non renseigne') AS business_explanation,
     d.score_version,
     d.score_run_id
 FROM mart.fact_claim_attention_signal_detail d
@@ -173,7 +194,8 @@ SELECT
             ('Examen renforce suggere', 'Examen prioritaire suggere')
     )                                           AS high_attention_dossier_count,
     MAX(g.client_claim_count_12m)               AS max_claim_count_12m,
-    (MAX(g.client_claim_count_12m) >= 3)        AS is_multiclaim_12m
+    (MAX(g.client_claim_count_12m) >= 3)        AS is_multiclaim_12m,
+    MAX(d.client_business_id)                   AS idclt
 FROM powerbi_v.v_dossier_attention d
 LEFT JOIN powerbi_v.v_claim_attention_guarantee g
   ON g.claim_root_id = d.claim_root_id
@@ -188,18 +210,24 @@ CREATE OR REPLACE VIEW powerbi_v.v_inspection AS
 SELECT
     i.inspection_key,
     i.vehicule_sk,
-    i.immatriculation_norm,
+    COALESCE(i.immatriculation_norm, 'Non renseigne') AS immatriculation_norm,
     CASE
         WHEN i.date_inspection_sk > 19000101
         THEN to_date(i.date_inspection_sk::text, 'YYYYMMDD')
     END                                          AS inspection_date,
     COUNT(c.checkpoint_code)                     AS checkpoint_count,
     COUNT(*) FILTER (WHERE c.est_anomalie)           AS defect_count,
-    COUNT(*) FILTER (WHERE c.est_anomalie_critique)  AS critical_defect_count
+    COUNT(*) FILTER (WHERE c.est_anomalie_critique)  AS critical_defect_count,
+    i.indicateur_inspection_complete,
+    -- Le champ source ("NOM DE L'AGENT") melange nom du garage et localite,
+    -- ex. "HM AUTO - BIZERTE" -> garage_nom="HM AUTO", garage_localite="BIZERTE".
+    COALESCE(NULLIF(BTRIM(split_part(regexp_replace(i.agent_controle, '\s*-\s*', ' - '), ' - ', 1)), ''), 'Non renseigne') AS garage_nom,
+    COALESCE(NULLIF(BTRIM(split_part(regexp_replace(i.agent_controle, '\s*-\s*', ' - '), ' - ', 2)), ''), 'Non renseigne') AS garage_localite
 FROM dwh.fact_inspection_vehicule i
 LEFT JOIN dwh.fact_inspection_checkpoint c
   ON c.inspection_key = i.inspection_key
-GROUP BY i.inspection_key, i.vehicule_sk, i.immatriculation_norm, i.date_inspection_sk;
+GROUP BY i.inspection_key, i.vehicule_sk, i.immatriculation_norm,
+         i.indicateur_inspection_complete, i.date_inspection_sk, i.agent_controle;
 
 -- Pareto des defauts par checkpoint (page P4).
 CREATE OR REPLACE VIEW powerbi_v.v_inspection_checkpoint_defect AS
@@ -235,9 +263,46 @@ SELECT
     v.nb_anomalies_total,
     v.nb_anomalies_critiques,
     v.rule_version,
-    v.run_id
+    v.run_id,
+    -- Le grade A-D est un code technique backend : le gestionnaire voit le
+    -- libelle metier (docs/vhs/vhs_business_label_mapping.md).
+    CASE v.safety_grade
+        WHEN 'A' THEN 'Aucun signal technique majeur'
+        WHEN 'B' THEN 'Quelques points a surveiller'
+        WHEN 'C' THEN 'Degradation technique notable'
+        WHEN 'D' THEN 'Situation technique sensible'
+        ELSE 'Non renseigne'
+    END                                          AS grade_label,
+    CASE v.decision
+        WHEN 'OK'         THEN 'Etat satisfaisant'
+        WHEN 'DEGRADE'    THEN 'Etat a surveiller'
+        WHEN 'IMMOBILISE' THEN 'Usage deconseille'
+        WHEN 'CRITIQUE'   THEN 'Examen prioritaire suggere'
+        ELSE 'Non renseigne'
+    END                                          AS decision_label,
+    -- Explication metier courte (docs/vhs/vhs_business_explanation.md,
+    -- section "Lecture recommandee dans IRIS").
+    CASE v.decision
+        WHEN 'OK' THEN
+            'Le vehicule ne presente pas de signal technique majeur dans les points analyses.'
+        WHEN 'DEGRADE' THEN
+            'Le vehicule presente plusieurs points techniques a surveiller. Une verification complementaire peut etre utile.'
+        WHEN 'IMMOBILISE' THEN
+            'IRIS a releve un point technique sensible. L''usage du vehicule est deconseille sans verification complementaire.'
+        WHEN 'CRITIQUE' THEN
+            'IRIS a releve plusieurs signaux techniques importants. Un examen prioritaire du dossier est suggere.'
+        ELSE 'Non renseigne'
+    END                                          AS business_explanation,
+    i.indicateur_inspection_complete,
+    COALESCE(NULLIF(BTRIM(split_part(regexp_replace(i.agent_controle, '\s*-\s*', ' - '), ' - ', 1)), ''), 'Non renseigne') AS garage_nom,
+    COALESCE(NULLIF(BTRIM(split_part(regexp_replace(i.agent_controle, '\s*-\s*', ' - '), ' - ', 2)), ''), 'Non renseigne') AS garage_localite
 FROM mart.fact_vhs_score v
-WHERE v.run_id = (SELECT MAX(run_id) FROM mart.fact_vhs_score);
+LEFT JOIN dwh.fact_inspection_vehicule i
+  ON i.inspection_key = v.inspection_key
+WHERE v.run_id = (SELECT MAX(run_id) FROM mart.fact_vhs_score)
+  -- Regle metier : pas de score exploitable sans immatriculation complete
+  -- (le gestionnaire ne peut pas rattacher le score a un vehicule identifie).
+  AND v.immatriculation_norm IS NOT NULL;
 
 -- ----------------------------------------------------------------------------
 -- 7. Croisement inspection -> sinistre (page P4) - dernier run du signal
@@ -253,15 +318,15 @@ SELECT
     p.claim_date,
     p.days_inspection_to_claim,
     p.delay_bucket,
-    p.defective_zone,
+    COALESCE(p.defective_zone, 'Non renseigne')       AS defective_zone,
     p.defective_checkpoint_count,
     p.critical_checkpoint_count,
     p.claim_guarantee_code,
-    p.claim_guarantee_label,
-    p.zone_match_status,
+    COALESCE(p.claim_guarantee_label, 'Non renseigne') AS claim_guarantee_label,
+    COALESCE(p.zone_match_status, 'Non renseigne')     AS zone_match_status,
     p.attention_level,
-    p.confidence_level,
-    p.business_explanation,
+    COALESCE(p.confidence_level, 'Non renseigne')      AS confidence_level,
+    COALESCE(p.business_explanation, 'Non renseigne')  AS business_explanation,
     p.scenario_code,
     p.signal_version,
     p.signal_run_id
@@ -283,9 +348,9 @@ SELECT
     m.anomaly_percentile_score,
     m.score_ml,
     m.ml_attention_level,
-    m.top_variable_1,
-    m.top_variable_2,
-    m.top_variable_3,
+    COALESCE(m.top_variable_1, 'Non renseigne') AS top_variable_1,
+    COALESCE(m.top_variable_2, 'Non renseigne') AS top_variable_2,
+    COALESCE(m.top_variable_3, 'Non renseigne') AS top_variable_3,
     m.signal_version,
     m.signal_run_id
 FROM mart.fact_claim_ml_anomaly_signal m
@@ -308,7 +373,11 @@ SELECT
              THEN 1.0 ELSE 0.0 END)                             AS pct_invalid_dates,
     AVG(CASE WHEN f.migration_2019_flag THEN 1.0 ELSE 0.0 END)  AS pct_migration_2019,
     AVG(CASE WHEN sc.confidence_level = 'HIGH'
-             THEN 1.0 ELSE 0.0 END)                             AS pct_confidence_high
+             THEN 1.0 ELSE 0.0 END)                             AS pct_confidence_high,
+    (SELECT AVG(CASE WHEN v2.immatriculation_norm IS NULL THEN 1.0 ELSE 0.0 END)
+       FROM mart.fact_vhs_score v2
+      WHERE v2.run_id = (SELECT MAX(run_id) FROM mart.fact_vhs_score)
+    )                                                            AS pct_vhs_missing_immatriculation
 FROM mart.fact_claim_attention_score sc
 JOIN powerbi_v.v_current_run r
   ON sc.score_version = r.score_version
