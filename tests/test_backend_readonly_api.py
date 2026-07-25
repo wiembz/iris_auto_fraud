@@ -163,3 +163,128 @@ def test_backend_claim_review_service_is_available_for_future_frontend():
     assert "def get_claim_review(" in service_text
 
 
+def test_confidence_explanation_flags_unknown_driver_even_when_confidence_high():
+    from backend.services.claim_review_service import _confidence_explanation
+
+    explanation = _confidence_explanation(
+        conf_level="HIGH",
+        missing_keys=0,
+        unknown_dims=1,
+        weak_join=False,
+        missing_driver=True,
+        missing_client=False,
+    )
+    assert explanation == "Qualité partielle — conducteur non identifié."
+
+
+def test_confidence_explanation_lists_both_identity_gaps():
+    from backend.services.claim_review_service import _confidence_explanation
+
+    explanation = _confidence_explanation(
+        conf_level="HIGH",
+        missing_keys=0,
+        unknown_dims=2,
+        weak_join=False,
+        missing_driver=True,
+        missing_client=True,
+    )
+    assert explanation == "Qualité partielle — conducteur non identifié, client non identifié."
+
+
+def test_confidence_explanation_still_reports_optimal_when_no_identity_gap():
+    from backend.services.claim_review_service import _confidence_explanation
+
+    explanation = _confidence_explanation(
+        conf_level="HIGH",
+        missing_keys=0,
+        unknown_dims=0,
+        weak_join=False,
+        missing_driver=False,
+        missing_client=False,
+    )
+    assert explanation == "Qualité de données optimale : aucune clé manquante, jointures complètes, géolocalisation cohérente."
+
+
+def test_confidence_explanation_medium_and_low_unchanged_without_identity_gap():
+    from backend.services.claim_review_service import _confidence_explanation
+
+    medium = _confidence_explanation("MEDIUM", 1, 0, False, False, False)
+    assert medium == "Confiance modérée : 1 clé(s) manquante(s)."
+
+    low = _confidence_explanation("LOW", 0, 0, True, False, False)
+    assert low == "Confiance limitée : jointures défaillantes."
+
+
+class _FakeRow:
+    """Minimal stand-in for a SQLAlchemy Row exposing ._mapping like the real rows."""
+
+    def __init__(self, mapping: dict):
+        self._mapping = mapping
+
+
+def test_timeline_groups_same_stafim_inspection_into_one_event():
+    from backend.services.claim_review_service import _timeline_from_feature_and_inspections
+
+    inspection_rows = [
+        _FakeRow({
+            "inspection_sk": 500,
+            "vehicule_sk": 12776,
+            "inspection_date": "2025-10-23",
+            "days_inspection_to_claim": 42,
+            "defective_zone": "ENTRETIEN",
+            "business_explanation": "Un sinistre est survenu peu apres une inspection STAFFIM du meme vehicule.",
+        }),
+        _FakeRow({
+            "inspection_sk": 500,
+            "vehicule_sk": 12776,
+            "inspection_date": "2025-10-23",
+            "days_inspection_to_claim": 42,
+            "defective_zone": "INTERIEUR",
+            "business_explanation": "Un sinistre est survenu peu apres une inspection STAFFIM du meme vehicule.",
+        }),
+        _FakeRow({
+            "inspection_sk": 500,
+            "vehicule_sk": 12776,
+            "inspection_date": "2025-10-23",
+            "days_inspection_to_claim": 42,
+            "defective_zone": "SOUS_VEHICULE",
+            "business_explanation": "Un sinistre est survenu peu apres une inspection STAFFIM du meme vehicule.",
+        }),
+    ]
+
+    timeline = _timeline_from_feature_and_inspections(None, inspection_rows)
+
+    stafim_events = [e for e in timeline if e["event_type"] == "Inspection STAFFIM"]
+    assert len(stafim_events) == 1
+    assert "ENTRETIEN" in stafim_events[0]["description"]
+    assert "INTERIEUR" in stafim_events[0]["description"]
+    assert "SOUS_VEHICULE" in stafim_events[0]["description"]
+
+
+def test_timeline_keeps_distinct_inspections_separate():
+    from backend.services.claim_review_service import _timeline_from_feature_and_inspections
+
+    inspection_rows = [
+        _FakeRow({
+            "inspection_sk": 500,
+            "vehicule_sk": 12776,
+            "inspection_date": "2025-10-23",
+            "days_inspection_to_claim": 42,
+            "defective_zone": "ENTRETIEN",
+            "business_explanation": "x",
+        }),
+        _FakeRow({
+            "inspection_sk": 501,
+            "vehicule_sk": 12776,
+            "inspection_date": "2025-06-01",
+            "days_inspection_to_claim": 186,
+            "defective_zone": "SOUS_CAPOT",
+            "business_explanation": "y",
+        }),
+    ]
+
+    timeline = _timeline_from_feature_and_inspections(None, inspection_rows)
+    stafim_events = [e for e in timeline if e["event_type"] == "Inspection STAFFIM"]
+    assert len(stafim_events) == 2
+
+

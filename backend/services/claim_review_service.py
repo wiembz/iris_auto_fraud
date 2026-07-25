@@ -42,6 +42,49 @@ def _parse_signal_value(val) -> dict:
 
 
 
+def _confidence_explanation(
+    conf_level,
+    missing_keys: int,
+    unknown_dims: int,
+    weak_join: bool,
+    missing_driver: bool,
+    missing_client: bool,
+) -> str:
+    """Build the human-readable data-quality badge text.
+
+    An unresolved driver/client identity is a material limitation even when
+    confidence_level is HIGH (that tier only checks missing_keys_count and
+    unknown_dimensions_count, not driver identity specifically) -- never
+    claim "qualite optimale" in that case.
+    """
+    identity_gaps = []
+    if missing_driver:
+        identity_gaps.append("conducteur non identifié")
+    if missing_client:
+        identity_gaps.append("client non identifié")
+
+    if identity_gaps:
+        return f"Qualité partielle — {', '.join(identity_gaps)}."
+
+    if conf_level == "HIGH" or conf_level == "Elevee":
+        return "Qualité de données optimale : aucune clé manquante, jointures complètes, géolocalisation cohérente."
+
+    reasons = []
+    if missing_keys > 0:
+        reasons.append(f"{missing_keys} clé(s) manquante(s)")
+    if unknown_dims > 0:
+        reasons.append(f"{unknown_dims} dimension(s) non mappée(s)")
+
+    if conf_level == "MEDIUM" or conf_level == "Moyenne":
+        if weak_join:
+            reasons.append("jointures faibles détectées")
+        return f"Confiance modérée : {', '.join(reasons)}."
+
+    if weak_join:
+        reasons.append("jointures défaillantes")
+    return f"Confiance limitée : {', '.join(reasons)}."
+
+
 def _timeline_from_feature_and_inspections(feature_row, inspection_rows) -> list[dict]:
     events = []
     if feature_row:
@@ -71,16 +114,32 @@ def _timeline_from_feature_and_inspections(feature_row, inspection_rows) -> list
                 "description": "Derniere analyse du dossier par IRIS.",
             })
 
+    # Une inspection STAFIM produit un signal par zone de checkpoint defectueuse
+    # (meme inspection_sk) : regrouper en UN seul evenement chronologique, sinon
+    # les zones d'une meme inspection apparaissent comme des inspections
+    # distinctes separees par un faux delai "0 jour".
+    inspections_by_key: dict[object, list] = {}
+    inspection_order: list[object] = []
     for row in inspection_rows:
         item = row._mapping
+        key = item.get("inspection_sk") or (item.get("inspection_date"), item.get("vehicule_sk"))
+        if key not in inspections_by_key:
+            inspections_by_key[key] = []
+            inspection_order.append(key)
+        inspections_by_key[key].append(item)
+
+    for key in inspection_order:
+        items = inspections_by_key[key]
+        first = items[0]
+        zones = sorted({it["defective_zone"] for it in items if it.get("defective_zone")})
         events.append({
             "event_type": "Inspection STAFFIM",
-            "event_date": item["inspection_date"],
+            "event_date": first["inspection_date"],
             "description": (
-                f"Inspection avant sinistre, delai de {item['days_inspection_to_claim']} jours, "
-                f"zone: {item['defective_zone']}."
+                f"Inspection avant sinistre, delai de {first['days_inspection_to_claim']} jours, "
+                f"zone(s): {', '.join(zones) if zones else 'non renseignee'}."
             ),
-            "business_explanation": item["business_explanation"],
+            "business_explanation": first["business_explanation"],
         })
 
     return sorted(
@@ -141,7 +200,13 @@ def get_claim_review(
                     f.missing_keys_count,
                     f.unknown_dimensions_count,
                     f.missing_vehicle_flag,
-                    f.vehicle_recurrence_ready_flag
+                    f.missing_driver_flag,
+                    f.missing_client_flag,
+                    f.weak_join_flag,
+                    f.vehicle_recurrence_ready_flag,
+                    f.conducteur_sk,
+                    f.tiers_sk,
+                    f.claim_geo_sk
                 FROM mart.fact_claim_attention_score s
                 LEFT JOIN mart.fact_claim_scoring_features f
                     ON f.claim_sk = s.claim_sk
@@ -273,6 +338,87 @@ def get_claim_review(
                 },
             ).first()
 
+        # DWH context queries
+        client_row = None
+        if claim_row and claim_row._mapping.get("client_sk"):
+            client_row = conn.execute(
+                text(
+                    """
+                    SELECT client_sk, idclt, nature_client, date_naissance, situation_familiale, sexe, localite, gouvernor
+                    FROM dwh.dim_client
+                    WHERE client_sk = :client_sk
+                    """
+                ),
+                {"client_sk": claim_row._mapping["client_sk"]},
+            ).first()
+
+        contract_row = None
+        if claim_row and claim_row._mapping.get("contrat_sk"):
+            contract_row = conn.execute(
+                text(
+                    """
+                    SELECT contrat_sk, numero_contrat, date_debut_contrat, statut_contrat
+                    FROM dwh.dim_contrat
+                    WHERE contrat_sk = :contrat_sk
+                    """
+                ),
+                {"contrat_sk": claim_row._mapping["contrat_sk"]},
+            ).first()
+
+        conducteur_row = None
+        if claim_row and claim_row._mapping.get("conducteur_sk"):
+            conducteur_row = conn.execute(
+                text(
+                    """
+                    SELECT conducteur_sk, nom_conducteur, numero_permis, age_conducteur, categorie_permis, date_permis
+                    FROM dwh.dim_conducteur
+                    WHERE conducteur_sk = :conducteur_sk
+                    """
+                ),
+                {"conducteur_sk": claim_row._mapping["conducteur_sk"]},
+            ).first()
+
+        tiers_row = None
+        if claim_row and claim_row._mapping.get("tiers_sk"):
+            tiers_row = conn.execute(
+                text(
+                    """
+                    SELECT tiers_sk, nom_tiers, immatriculation_vehicule_tiers, numero_contrat_tiers
+                    FROM dwh.dim_tiers
+                    WHERE tiers_sk = :tiers_sk
+                    """
+                ),
+                {"tiers_sk": claim_row._mapping["tiers_sk"]},
+            ).first()
+
+        geo_row = None
+        if claim_row and claim_row._mapping.get("claim_geo_sk"):
+            geo_row = conn.execute(
+                text(
+                    """
+                    SELECT geo_sk, region, gouvernorat, localite, pays
+                    FROM dwh.dim_geo
+                    WHERE geo_sk = :geo_sk
+                    """
+                ),
+                {"geo_sk": claim_row._mapping["claim_geo_sk"]},
+            ).first()
+
+        vhs_row = None
+        if claim_row and claim_row._mapping.get("vehicle_sk"):
+            vhs_row = conn.execute(
+                text(
+                    """
+                    SELECT vhs_final_score, safety_grade, decision, kilometrage, nb_anomalies_total, nb_anomalies_critiques
+                    FROM mart.fact_vhs_score
+                    WHERE vehicule_sk = :vehicle_sk
+                    ORDER BY date_inspection_sk DESC, calculated_at DESC
+                    LIMIT 1
+                    """
+                ),
+                {"vehicle_sk": claim_row._mapping["vehicle_sk"]},
+            ).first()
+
     claim_data = row_to_dict(claim_row)
     
     # 1. Parse and enrich signals
@@ -305,32 +451,14 @@ def get_claim_review(
                 sig["business_explanation"] = f"{sig.get('business_explanation', '')} (Détails : {', '.join(explanation_parts)})."
 
     # 2. Confidence Level explanation
-    conf_level = claim_data.get("confidence_level")
-    missing_keys = claim_data.get("missing_keys_count", 0)
-    unknown_dims = claim_data.get("unknown_dimensions_count", 0)
-    weak_join = claim_data.get("weak_join_flag", False)
-    
-    if conf_level == "HIGH" or conf_level == "Elevee":
-        confidence_explanation = "Qualité de données optimale : aucune clé manquante, jointures complètes, géolocalisation cohérente."
-    elif conf_level == "MEDIUM" or conf_level == "Moyenne":
-        reasons = []
-        if missing_keys > 0:
-            reasons.append(f"{missing_keys} clé(s) manquante(s)")
-        if unknown_dims > 0:
-            reasons.append(f"{unknown_dims} dimension(s) non mappée(s)")
-        if weak_join:
-            reasons.append("jointures faibles détectées")
-        confidence_explanation = f"Confiance modérée : {', '.join(reasons)}."
-    else:
-        reasons = []
-        if missing_keys > 0:
-            reasons.append(f"{missing_keys} clé(s) manquante(s)")
-        if unknown_dims > 0:
-            reasons.append(f"{unknown_dims} dimension(s) non mappée(s)")
-        if weak_join:
-            reasons.append("jointures défaillantes")
-        confidence_explanation = f"Confiance limitée : {', '.join(reasons)}."
-        
+    confidence_explanation = _confidence_explanation(
+        claim_data.get("confidence_level"),
+        claim_data.get("missing_keys_count", 0),
+        claim_data.get("unknown_dimensions_count", 0),
+        claim_data.get("weak_join_flag", False),
+        claim_data.get("missing_driver_flag", False),
+        claim_data.get("missing_client_flag", False),
+    )
     claim_data["confidence_explanation"] = confidence_explanation
 
     # 3. Dynamic Checklist
@@ -416,4 +544,10 @@ def get_claim_review(
         "ml_anomaly": row_to_dict(ml_row) if ml_row else None,
         "vehicle": vehicle_data,
         "checklist": checklist,
+        "client_context": row_to_dict(client_row) if client_row else None,
+        "contract_context": row_to_dict(contract_row) if contract_row else None,
+        "conducteur_context": row_to_dict(conducteur_row) if conducteur_row else None,
+        "tiers_context": row_to_dict(tiers_row) if tiers_row else None,
+        "geo_context": row_to_dict(geo_row) if geo_row else None,
+        "vhs_context": row_to_dict(vhs_row) if vhs_row else None,
     }

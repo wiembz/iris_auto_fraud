@@ -215,6 +215,69 @@ def test_enriched_recurrence_uses_prior_claims_only_and_ignores_zero_keys():
     assert by_claim.loc[12, "vehicle_claim_count_12m"] == 2
     assert by_claim.loc[12, "vehicle_days_since_previous_claim"] == 19
     assert by_claim.loc[13, "vehicle_claim_count_12m"] == 0
+    assert by_claim.loc[13, "driver_claim_count_12m"] == 0
+    assert pd.isna(by_claim.loc[13, "driver_days_since_previous_claim"])
+
+
+def test_unknown_driver_key_never_produces_a_driver_recurrence_signal():
+    # Trois sinistres non lies (vehicule/client/tiers/garantie tous distincts),
+    # rapproches dans le temps, mais sans conducteur identifie (conducteur_sk=0).
+    # Regression du bug ou un conducteur_sk fantome (numero_permis de repli
+    # partage par des milliers de lignes) agregeait ces sinistres comme s'ils
+    # provenaient du meme conducteur : ce cas ne doit jamais generer de signal
+    # "Recurrence conducteur" ni "Sinistre conducteur precedent recent".
+    base_fields = {
+        "feature_run_id": "FEATURE_RUN",
+        "confidence_level": "LOW",
+        "client_claim_count_12m": 0,
+        "days_since_previous_claim": pd.NA,
+        "amount_vs_guarantee_median_ratio": 1.0,
+        "amount_percentile_by_guarantee": 0.5,
+        "high_amount_flag": False,
+        "days_contract_start_to_claim": pd.NA,
+        "claim_before_contract_start_flag": False,
+        "days_claim_to_declaration": 1,
+    }
+    features = pd.DataFrame([
+        {
+            **base_fields,
+            "claim_sk": 40,
+            "claim_business_id": "S40|G1",
+            "claim_date": "2024-01-01",
+            "client_sk": 940,
+            "vehicle_sk": 240,
+            "conducteur_sk": 0,
+            "tiers_sk": 840,
+            "code_garantie": "G40",
+        },
+        {
+            **base_fields,
+            "claim_sk": 41,
+            "claim_business_id": "S41|G1",
+            "claim_date": "2024-01-10",
+            "client_sk": 941,
+            "vehicle_sk": 241,
+            "conducteur_sk": 0,
+            "tiers_sk": 841,
+            "code_garantie": "G41",
+        },
+        {
+            **base_fields,
+            "claim_sk": 42,
+            "claim_business_id": "S42|G1",
+            "claim_date": "2024-01-20",
+            "client_sk": 942,
+            "vehicle_sk": 242,
+            "conducteur_sk": 0,
+            "tiers_sk": 842,
+            "code_garantie": "G42",
+        },
+    ])
+
+    signals = compute_claim_business_rule_signals(features, signal_run_id="RULE_RUN")
+
+    assert "DRIVER_CLAIMS_12M_HIGH" not in set(signals["rule_code"])
+    assert "DRIVER_RECENT_PREVIOUS_CLAIM" not in set(signals["rule_code"])
 
 
 def test_vehicle_driver_third_party_and_guarantee_rules_are_candidate_signals():

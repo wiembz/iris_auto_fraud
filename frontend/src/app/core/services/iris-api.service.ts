@@ -78,6 +78,10 @@ export interface ValidationCoverage {
   suspicion_confirmed: number;
   conforme: number;
   a_completer: number;
+  // Dossiers non decides et ages de plus de 90 jours depuis la survenance
+  // (cf. backend/services/portfolio_insights_service.py) — jamais confondu
+  // avec l age brut d un dossier deja clos.
+  sla_breached: number;
 }
 
 export interface PortfolioInsightsResponse {
@@ -136,6 +140,9 @@ export interface ClaimReviewClaim {
   missing_keys_count?: number | null;
   unknown_dimensions_count?: number | null;
   missing_vehicle_flag?: boolean | number | null;
+  missing_driver_flag?: boolean | number | null;
+  missing_client_flag?: boolean | number | null;
+  weak_join_flag?: boolean | number | null;
   vehicle_recurrence_ready_flag?: boolean | number | null;
   score_version?: string;
   score_run_id?: string | null;
@@ -205,6 +212,51 @@ export interface ClaimReviewResponse {
   ml_anomaly: ClaimMlAnomaly | null;
   vehicle: ClaimVehicleContext | null;
   checklist?: string[];
+  client_context?: {
+    client_sk: number;
+    idclt: string;
+    nature_client: string;
+    date_naissance: string | null;
+    situation_familiale?: string | null;
+    sexe?: string | null;
+    localite?: string | null;
+    gouvernor?: string | null;
+  } | null;
+  contract_context?: {
+    contrat_sk: number;
+    numero_contrat: string;
+    date_debut_contrat: string | null;
+    statut_contrat?: string | null;
+  } | null;
+  conducteur_context?: {
+    conducteur_sk: number;
+    nom_conducteur?: string | null;
+    numero_permis?: string | null;
+    age_conducteur?: number | null;
+    categorie_permis?: string | null;
+    date_permis?: string | null;
+  } | null;
+  tiers_context?: {
+    tiers_sk: number;
+    nom_tiers?: string | null;
+    immatriculation_vehicule_tiers?: string | null;
+    numero_contrat_tiers?: string | null;
+  } | null;
+  geo_context?: {
+    geo_sk: number;
+    region?: string | null;
+    gouvernorat?: string | null;
+    localite?: string | null;
+    pays?: string | null;
+  } | null;
+  vhs_context?: {
+    vhs_final_score: number;
+    safety_grade?: string | null;
+    decision?: string | null;
+    kilometrage?: number | null;
+    nb_anomalies_total?: number | null;
+    nb_anomalies_critiques?: number | null;
+  } | null;
 }
 
 export type ClaimDecisionValue = 'SUSPICION_CONFIRMED' | 'CONFORME' | 'A_COMPLETER';
@@ -432,10 +484,11 @@ export class IrisApiService {
     return this.http.get<VhsOverviewResponse>(`${this.apiBaseUrl}/vhs/overview`);
   }
 
-  getVhsVehicles(decision?: string, search?: string): Observable<{ run_id: string | null; items: VhsVehicleItem[] }> {
+  getVhsVehicles(decision?: string, search?: string, limit = 60): Observable<{ run_id: string | null; items: VhsVehicleItem[] }> {
     let params = new HttpParams();
     params = this.setParam(params, 'decision', decision);
     params = this.setParam(params, 'search', search);
+    params = params.set('limit', String(limit));
     return this.http.get<{ run_id: string | null; items: VhsVehicleItem[] }>(`${this.apiBaseUrl}/vhs/vehicles`, { params });
   }
 

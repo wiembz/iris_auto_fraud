@@ -71,6 +71,10 @@ data/external/
 !data/quality_reports/**/*.md
 !data/quality_reports/**/*.txt
 
+# dim_conducteur impact report must be reproducible from git (distribution +
+# suspect-values CSVs referenced by the .md summary), unlike other quality_reports CSVs
+!data/quality_reports/dim_conducteur/*.csv
+
 # GEO audit generated outputs
 outputs/geo_audit/
 data/quality_reports/geo_audit/
@@ -96,6 +100,8 @@ models/
 !docs/vhs/governance/sql/*.sql
 !docs/geo/sql/*.sql
 !etl/powerbi/*.sql
+!docs/claim_attention/*.sql
+!data/quality_reports/powerbi_views/*.sql
 
 *.dump
 *.backup
