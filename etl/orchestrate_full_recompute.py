@@ -19,11 +19,19 @@ car les vues `powerbi_v.*` dependent de ces tables et bloquent leur DROP TABLE
      metier -> post-inspection -> ML -> hybride -> hybride ML -> index).
   6. Recree les vues via etl/powerbi/create_powerbi_views.py (CREATE OR
      REPLACE, smoke-test integre).
+  7. Controles metier finaux (lecture seule) : le recalcul peut "reussir"
+     techniquement (tous les scripts renvoient 0) tout en produisant un
+     resultat metier faux -- ces controles verifient le dossier de reference,
+     la stabilite du nombre de sinistres notes, et des bornes de sante sur la
+     population conducteur avant de declarer le run reellement valide.
 
 Fail-fast : a la premiere etape en echec, l'orchestrateur s'arrete
 immediatement, tente une restauration best-effort des vues (etape 6) pour ne
 jamais laisser la base sans couche de restitution Power BI, puis sort en
-erreur avec un rapport clair de l'etat atteint.
+erreur avec un rapport clair de l'etat atteint. Si les controles metier
+(etape 7) echouent, les vues restent en place (elles sont structurellement
+valides) mais le run est marque en echec : les donnees ne doivent pas etre
+considerees fiables sans revue manuelle.
 
 Usage :
   python etl/orchestrate_full_recompute.py --confirm-db iris_auto_fraud_test_20260724
@@ -60,6 +68,32 @@ MART_CHAIN: list[tuple[str, Path]] = [
 
 LOAD_ALL_DWH = BASE_DIR / "etl" / "dwh" / "load_all_dwh.py"
 CREATE_POWERBI_VIEWS = BASE_DIR / "etl" / "powerbi" / "create_powerbi_views.py"
+
+# Bornes de sante dérivées du rapport d'impact (data/quality_reports/dim_conducteur/) :
+# ~161 439 conducteurs reels attendus (perte de ~85 vs avant correctif) et
+# ~17% de conducteur_sk=0 dans fact_sinistre (contre 8.7% avant correctif).
+# Marges larges : ces controles doivent detecter un run qui a mal tourne
+# (mauvaise base, staging non rechargee, etc.), pas repeter le rapport d'impact.
+MIN_EXPECTED_REAL_DRIVERS = 100_000
+MAX_EXPECTED_UNKNOWN_DRIVER_SHARE_PCT = 30.0
+
+
+def _check_no_other_connections(engine, logger) -> list[dict]:
+    """Fenetre de maintenance : la base ne doit avoir aucune autre connexion
+    active (backend Flask, refresh Power BI, psql/pgAdmin ouvert...) pendant
+    le recalcul -- ces process verraient des tables disparaitre (DROP TABLE en
+    mode replace) ou liraient des resultats partiels pendant le rechargement."""
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                """
+                SELECT pid, usename, application_name, COALESCE(client_addr::text, 'local') AS client_addr, state
+                FROM pg_stat_activity
+                WHERE datname = current_database() AND pid <> pg_backend_pid()
+                """
+            )
+        ).fetchall()
+    return [dict(r._mapping) for r in rows]
 
 
 def _run_step(name: str, script: Path, logger) -> tuple[bool, float]:
@@ -117,6 +151,124 @@ def _restore_views_best_effort(logger) -> bool:
     return False
 
 
+def _run_final_business_checks(
+    engine, logger, reference_numero: str, reference_garantie: str
+) -> bool:
+    """Controles metier de sortie, en lecture seule. Un run peut techniquement
+    reussir (tous les scripts renvoient 0) tout en produisant un resultat
+    metier faux (staging non rechargee, mauvaise base, regression silencieuse) :
+    ces controles verifient le dossier de reference et des bornes de sante
+    avant de qualifier le run de fiable."""
+    ok = True
+    with engine.connect() as conn:
+        ref_row = conn.execute(
+            text(
+                """
+                SELECT fs.fact_sinistre_sk AS claim_sk, fs.conducteur_sk
+                FROM dwh.fact_sinistre fs
+                WHERE fs.numero_sinistre = :n AND fs.code_garantie = :g
+                """
+            ),
+            {"n": reference_numero, "g": reference_garantie},
+        ).first()
+
+        if ref_row is None:
+            logger.error(
+                f"[CHECK] dossier de reference {reference_numero}|{reference_garantie} introuvable dans fact_sinistre"
+            )
+            ok = False
+        else:
+            if ref_row.conducteur_sk != 0:
+                logger.error(
+                    f"[CHECK] dossier de reference : conducteur_sk={ref_row.conducteur_sk} (attendu 0)"
+                )
+                ok = False
+            else:
+                logger.info(f"[CHECK] dossier de reference (claim_sk={ref_row.claim_sk}) : conducteur_sk=0 OK")
+
+            latest_signal_run = conn.execute(
+                text(
+                    """
+                    SELECT signal_run_id FROM mart.fact_claim_business_rule_signal
+                    GROUP BY signal_run_id ORDER BY MAX(created_at) DESC LIMIT 1
+                    """
+                )
+            ).first()
+            if latest_signal_run:
+                driver_signals = conn.execute(
+                    text(
+                        """
+                        SELECT rule_code FROM mart.fact_claim_business_rule_signal
+                        WHERE claim_sk = :claim_sk AND signal_run_id = :run_id
+                          AND rule_code IN ('DRIVER_CLAIMS_12M_HIGH', 'DRIVER_RECENT_PREVIOUS_CLAIM')
+                        """
+                    ),
+                    {"claim_sk": ref_row.claim_sk, "run_id": latest_signal_run[0]},
+                ).fetchall()
+                if driver_signals:
+                    logger.error(
+                        f"[CHECK] signal(aux) conducteur encore present(s) pour le dossier de reference : "
+                        f"{[r[0] for r in driver_signals]}"
+                    )
+                    ok = False
+                else:
+                    logger.info("[CHECK] aucun signal DRIVER_* pour le dossier de reference OK")
+
+        n_fact_sinistre = conn.execute(text("SELECT COUNT(*) FROM dwh.fact_sinistre")).fetchone()[0]
+
+        # NB: mart.fact_claim_scoring_features ne couvre pas 100% de dwh.fact_sinistre
+        # (filtre metier en amont dans compute_claim_scoring_features_v1.py, ~367 464 sur
+        # 381 893 de facon stable historiquement) -- on compare donc au run precedent,
+        # pas a fact_sinistre, pour detecter une vraie perte de sinistres notes.
+        feature_runs = conn.execute(
+            text(
+                """
+                SELECT feature_run_id, COUNT(*) AS n, MAX(created_at) AS last_created
+                FROM mart.fact_claim_scoring_features
+                GROUP BY feature_run_id ORDER BY last_created DESC LIMIT 2
+                """
+            )
+        ).fetchall()
+        n_scored = feature_runs[0].n if feature_runs else 0
+        if len(feature_runs) >= 2:
+            n_previous = feature_runs[1].n
+            if n_scored < n_previous:
+                logger.error(
+                    f"[CHECK] nombre de sinistres notes en baisse : {n_scored} (run precedent : {n_previous})"
+                )
+                ok = False
+            else:
+                logger.info(f"[CHECK] stabilite du nombre de sinistres notes : {n_scored} (precedent {n_previous}) OK")
+        else:
+            logger.info(f"[CHECK] nombre de sinistres notes : {n_scored} (aucun run precedent pour comparaison)")
+
+        n_real_drivers = conn.execute(
+            text("SELECT COUNT(*) FROM dwh.dim_conducteur WHERE conducteur_sk <> 0")
+        ).fetchone()[0]
+        if n_real_drivers < MIN_EXPECTED_REAL_DRIVERS:
+            logger.error(
+                f"[CHECK] conducteurs reels anormalement bas : {n_real_drivers} (seuil {MIN_EXPECTED_REAL_DRIVERS})"
+            )
+            ok = False
+        else:
+            logger.info(f"[CHECK] conducteurs reels : {n_real_drivers} OK")
+
+        n_unknown_driver = conn.execute(
+            text("SELECT COUNT(*) FROM dwh.fact_sinistre WHERE conducteur_sk = 0")
+        ).fetchone()[0]
+        pct_unknown = 100.0 * n_unknown_driver / n_fact_sinistre if n_fact_sinistre else 100.0
+        if pct_unknown > MAX_EXPECTED_UNKNOWN_DRIVER_SHARE_PCT:
+            logger.error(
+                f"[CHECK] part de conducteur_sk=0 anormalement elevee : {pct_unknown:.1f}% "
+                f"(seuil {MAX_EXPECTED_UNKNOWN_DRIVER_SHARE_PCT}%)"
+            )
+            ok = False
+        else:
+            logger.info(f"[CHECK] part de conducteur_sk=0 : {pct_unknown:.1f}% OK")
+
+    return ok
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
@@ -127,6 +279,19 @@ def main() -> int:
     parser.add_argument(
         "--skip-dwh", action="store_true",
         help="Sauter load_all_dwh.py (DWH deja rejoue) et ne lancer que la chaine mart + vues.",
+    )
+    parser.add_argument(
+        "--reference-numero", default="G26511000017765",
+        help="numero_sinistre du dossier de reference pour les controles metier finaux.",
+    )
+    parser.add_argument(
+        "--reference-garantie", default="REM",
+        help="code_garantie du dossier de reference pour les controles metier finaux.",
+    )
+    parser.add_argument(
+        "--allow-active-connections", action="store_true",
+        help="Ne pas abandonner si d'autres connexions sont detectees sur la base (deconseille : "
+             "ces connexions verront des tables disparaitre pendant le rechargement).",
     )
     args = parser.parse_args()
 
@@ -147,6 +312,21 @@ def main() -> int:
     logger.info("=" * 70)
     logger.info(f"[RUN {run_id}] orchestrate_full_recompute sur '{actual_db}'")
     logger.info("=" * 70)
+
+    other_connections = _check_no_other_connections(engine, logger)
+    if other_connections:
+        logger.error(f"[ABORT] {len(other_connections)} autre(s) connexion(s) active(s) detectee(s) sur '{actual_db}' :")
+        for c in other_connections:
+            logger.error(f"    pid={c['pid']} user={c['usename']} app={c['application_name']!r} "
+                         f"client={c['client_addr']} state={c['state']}")
+        if not args.allow_active_connections:
+            logger.error(
+                "[ABORT] fenetre de maintenance non respectee -- fermer le backend Flask, "
+                "toute session psql/pgAdmin et desactiver le refresh Power BI avant de relancer. "
+                "Rien n'a ete execute. (--allow-active-connections pour forcer, deconseille.)"
+            )
+            return 3
+        logger.warning("[WARN] --allow-active-connections force le demarrage malgre des connexions actives.")
 
     durations: dict[str, float] = {}
 
@@ -176,6 +356,19 @@ def main() -> int:
     durations["create_powerbi_views"] = elapsed
     if not ok:
         logger.error("[FAIL] recreation des vues powerbi_v en echec apres un recalcul reussi.")
+        _print_summary(logger, durations, success=False, backup_path=backup_path)
+        return 1
+
+    logger.info("[STEP] controles metier finaux ...")
+    t0 = time.monotonic()
+    checks_ok = _run_final_business_checks(engine, logger, args.reference_numero, args.reference_garantie)
+    durations["controles_metier_finaux"] = time.monotonic() - t0
+    if not checks_ok:
+        logger.error(
+            "[FAIL] controles metier finaux non conformes -- tous les scripts ont reussi mais le "
+            "resultat ne doit PAS etre considere fiable sans revue manuelle. Vues conservees "
+            "(structurellement valides), donnees a examiner avant toute utilisation."
+        )
         _print_summary(logger, durations, success=False, backup_path=backup_path)
         return 1
 
