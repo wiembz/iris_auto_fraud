@@ -51,8 +51,10 @@ from pathlib import Path
 from sqlalchemy import text
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BASE_DIR))
 sys.path.insert(0, str(BASE_DIR / "etl" / "dwh"))
 import dwh_utils  # noqa: E402
+from backend.config import DEFAULT_SCORE_VERSION  # noqa: E402
 
 REPORT_DIR = BASE_DIR / "data" / "quality_reports" / "powerbi_views"
 
@@ -152,13 +154,26 @@ def _restore_views_best_effort(logger) -> bool:
 
 
 def _run_final_business_checks(
-    engine, logger, reference_numero: str, reference_garantie: str
+    engine,
+    logger,
+    reference_numero: str,
+    reference_garantie: str,
+    expected_score: int | None = None,
+    expected_attention_level: str | None = None,
+    expected_confidence_level: str | None = None,
+    expected_scored_claims: int | None = None,
+    expected_views_count: int | None = None,
 ) -> bool:
     """Controles metier de sortie, en lecture seule. Un run peut techniquement
     reussir (tous les scripts renvoient 0) tout en produisant un resultat
     metier faux (staging non rechargee, mauvaise base, regression silencieuse) :
     ces controles verifient le dossier de reference et des bornes de sante
-    avant de qualifier le run de fiable."""
+    avant de qualifier le run de fiable.
+
+    Les `expected_*` sont optionnels : quand fournis, ils comparent le resultat
+    EXACT du run (score, niveau, confiance, nombre de dossiers, vues) aux
+    valeurs validees par simulation (data/quality_reports/dim_conducteur/),
+    au lieu des seules bornes de sante generiques ci-dessus."""
     ok = True
     with engine.connect() as conn:
         ref_row = conn.execute(
@@ -214,6 +229,51 @@ def _run_final_business_checks(
                 else:
                     logger.info("[CHECK] aucun signal DRIVER_* pour le dossier de reference OK")
 
+            score_row = conn.execute(
+                text(
+                    """
+                    SELECT score_version, attention_score, attention_level, confidence_level
+                    FROM mart.fact_claim_attention_score
+                    WHERE claim_sk = :claim_sk AND score_version = :version
+                    ORDER BY created_at DESC LIMIT 1
+                    """
+                ),
+                {"claim_sk": ref_row.claim_sk, "version": DEFAULT_SCORE_VERSION},
+            ).first()
+            if score_row is None:
+                logger.error(
+                    f"[CHECK] aucun score trouve pour le dossier de reference sur la version live "
+                    f"'{DEFAULT_SCORE_VERSION}' (backend.config.DEFAULT_SCORE_VERSION)"
+                )
+                ok = False
+            else:
+                logger.info(
+                    f"[CHECK] version live utilisee par l'API : {score_row.score_version} OK"
+                )
+                if expected_score is not None and int(score_row.attention_score) != expected_score:
+                    logger.error(
+                        f"[CHECK] score du dossier de reference : {score_row.attention_score} (attendu {expected_score})"
+                    )
+                    ok = False
+                else:
+                    logger.info(f"[CHECK] score du dossier de reference : {score_row.attention_score} OK")
+
+                if expected_attention_level is not None and score_row.attention_level != expected_attention_level:
+                    logger.error(
+                        f"[CHECK] niveau d'attention : '{score_row.attention_level}' (attendu '{expected_attention_level}')"
+                    )
+                    ok = False
+                else:
+                    logger.info(f"[CHECK] niveau d'attention : '{score_row.attention_level}' OK")
+
+                if expected_confidence_level is not None and score_row.confidence_level != expected_confidence_level:
+                    logger.error(
+                        f"[CHECK] confiance : '{score_row.confidence_level}' (attendu '{expected_confidence_level}')"
+                    )
+                    ok = False
+                else:
+                    logger.info(f"[CHECK] confiance : '{score_row.confidence_level}' OK")
+
         n_fact_sinistre = conn.execute(text("SELECT COUNT(*) FROM dwh.fact_sinistre")).fetchone()[0]
 
         # NB: mart.fact_claim_scoring_features ne couvre pas 100% de dwh.fact_sinistre
@@ -242,6 +302,14 @@ def _run_final_business_checks(
         else:
             logger.info(f"[CHECK] nombre de sinistres notes : {n_scored} (aucun run precedent pour comparaison)")
 
+        if expected_scored_claims is not None and n_scored != expected_scored_claims:
+            logger.error(
+                f"[CHECK] nombre de sinistres notes : {n_scored} (attendu exactement {expected_scored_claims})"
+            )
+            ok = False
+        elif expected_scored_claims is not None:
+            logger.info(f"[CHECK] nombre de sinistres notes = {expected_scored_claims} (valeur exacte attendue) OK")
+
         n_real_drivers = conn.execute(
             text("SELECT COUNT(*) FROM dwh.dim_conducteur WHERE conducteur_sk <> 0")
         ).fetchone()[0]
@@ -266,6 +334,30 @@ def _run_final_business_checks(
         else:
             logger.info(f"[CHECK] part de conducteur_sk=0 : {pct_unknown:.1f}% OK")
 
+        if expected_views_count is not None:
+            view_names = [
+                r[0] for r in conn.execute(
+                    text("SELECT viewname FROM pg_views WHERE schemaname = 'powerbi_v' ORDER BY viewname")
+                ).fetchall()
+            ]
+            if len(view_names) != expected_views_count:
+                logger.error(
+                    f"[CHECK] nombre de vues powerbi_v : {len(view_names)} (attendu {expected_views_count})"
+                )
+                ok = False
+            else:
+                unreadable = []
+                for v in view_names:
+                    try:
+                        conn.execute(text(f"SELECT 1 FROM powerbi_v.{v} LIMIT 1"))
+                    except Exception as exc:  # noqa: BLE001 - report every broken view
+                        unreadable.append((v, str(exc)))
+                if unreadable:
+                    logger.error(f"[CHECK] vue(s) powerbi_v non interrogeable(s) : {[v for v, _ in unreadable]}")
+                    ok = False
+                else:
+                    logger.info(f"[CHECK] {len(view_names)} vues powerbi_v toutes interrogeables OK")
+
     return ok
 
 
@@ -287,6 +379,35 @@ def main() -> int:
     parser.add_argument(
         "--reference-garantie", default="REM",
         help="code_garantie du dossier de reference pour les controles metier finaux.",
+    )
+    parser.add_argument(
+        "--expected-score", type=int, default=65,
+        help="Score d'attention exact attendu pour le dossier de reference (valeur validee par "
+             "simulation, cf. data/quality_reports/dim_conducteur/). Voir --no-expected-checks "
+             "pour desactiver toutes les comparaisons a valeur exacte.",
+    )
+    parser.add_argument(
+        "--expected-attention-level", default="Examen renforce suggere",
+        help="Niveau d'attention exact attendu pour le dossier de reference.",
+    )
+    parser.add_argument(
+        "--expected-confidence-level", default="HIGH",
+        help="Niveau de confiance exact attendu pour le dossier de reference.",
+    )
+    parser.add_argument(
+        "--expected-scored-claims", type=int, default=367464,
+        help="Nombre exact de dossiers notes attendu dans le dernier run de features.",
+    )
+    parser.add_argument(
+        "--expected-views-count", type=int, default=13,
+        help="Nombre de vues powerbi_v attendu, toutes devant etre interrogeables.",
+    )
+    parser.add_argument(
+        "--no-expected-checks", action="store_true",
+        help="Desactive les comparaisons a des valeurs exactes ci-dessus (garde uniquement les "
+             "controles structurels : dossier trouve, conducteur_sk=0, bornes de sante). A utiliser "
+             "si les valeurs exactes validees par simulation ne s'appliquent plus (nouvelles donnees "
+             "sources arrivees entre temps, par exemple).",
     )
     parser.add_argument(
         "--allow-active-connections", action="store_true",
@@ -361,7 +482,17 @@ def main() -> int:
 
     logger.info("[STEP] controles metier finaux ...")
     t0 = time.monotonic()
-    checks_ok = _run_final_business_checks(engine, logger, args.reference_numero, args.reference_garantie)
+    checks_ok = _run_final_business_checks(
+        engine,
+        logger,
+        args.reference_numero,
+        args.reference_garantie,
+        expected_score=None if args.no_expected_checks else args.expected_score,
+        expected_attention_level=None if args.no_expected_checks else args.expected_attention_level,
+        expected_confidence_level=None if args.no_expected_checks else args.expected_confidence_level,
+        expected_scored_claims=None if args.no_expected_checks else args.expected_scored_claims,
+        expected_views_count=None if args.no_expected_checks else args.expected_views_count,
+    )
     durations["controles_metier_finaux"] = time.monotonic() - t0
     if not checks_ok:
         logger.error(
