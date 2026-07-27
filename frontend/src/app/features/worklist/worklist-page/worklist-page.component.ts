@@ -160,6 +160,8 @@ export class WorklistPageComponent implements OnInit, OnDestroy {
       confidence_tone: this.confidenceTone(item.confidence_level),
       assignee_label: item.assignee_label ?? null,
       workflow_status: this.validationStatusLabel(item.validation_status),
+      operational_status: item.operational_status ?? null,
+      operational_assignee_email: item.operational_assignee_email ?? null,
       age_days: this.toNumberOrNull(item.age_days),
       guarantee_label: item.guarantee_label ?? item.code_garantie ?? null,
       claim_type_label: item.claim_type_label ?? null,

@@ -14,7 +14,10 @@ import {
   IrisApiService,
   VhsCheckpointItem,
   VhsImageLink,
-  VhsInspectionDetail
+  VhsInspectionDetail,
+  WorkflowEvent,
+  WorkflowState,
+  WorkflowStatus
 } from '../../core/services/iris-api.service';
 import { AttentionBadgeComponent } from '../worklist/attention-badge/attention-badge.component';
 
@@ -23,6 +26,28 @@ const DECISION_LABELS: Record<ClaimDecisionValue, string> = {
   CONFORME: 'Dossier conforme',
   A_COMPLETER: 'A completer'
 };
+
+const WORKFLOW_STATUS_LABELS: Record<WorkflowStatus, string> = {
+  NOUVEAU: 'Nouveau',
+  AFFECTE: 'Affecte',
+  EN_COURS: 'En cours',
+  EN_ATTENTE_PIECES: 'En attente de pieces',
+  PRET_POUR_DECISION: 'Pret pour decision',
+  TRANSMIS_INVESTIGATION: 'Transmis a l investigation',
+  RETOUR_INVESTIGATION: 'Retour investigation',
+  CLOTURE: 'Cloture'
+};
+
+const WORKFLOW_STATUS_ORDER: WorkflowStatus[] = [
+  'NOUVEAU',
+  'AFFECTE',
+  'EN_COURS',
+  'EN_ATTENTE_PIECES',
+  'PRET_POUR_DECISION',
+  'TRANSMIS_INVESTIGATION',
+  'RETOUR_INVESTIGATION',
+  'CLOTURE'
+];
 
 interface SignalDetailRow {
   label: string;
@@ -150,6 +175,9 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
   private historySubscription?: Subscription;
   private decisionSubscription?: Subscription;
   private vhsDetailSubscription?: Subscription;
+  private workflowSubscription?: Subscription;
+  private workflowHistorySubscription?: Subscription;
+  private workflowActionSubscription?: Subscription;
   private activeClaimSk: number | null = null;
 
   readonly loading = signal(true);
@@ -177,6 +205,25 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
   // choisir une nouvelle option enregistre une correction qui la remplace.
   // On le rend explicite plutot que de laisser l utilisateur deviner l effet
   // d un nouveau clic (faute de frappe corrigee, reexamen apres nouvelle info...).
+  readonly workflowState = signal<WorkflowState | null>(null);
+  readonly workflowHistory = signal<WorkflowEvent[]>([]);
+  readonly workflowStatusOrder = WORKFLOW_STATUS_ORDER;
+  readonly selectedWorkflowStatus = signal<WorkflowStatus | ''>('');
+  readonly workflowStatusComment = signal('');
+  readonly submittingWorkflowStatus = signal(false);
+  readonly workflowStatusError = signal<string | null>(null);
+  readonly workflowStatusSuccess = signal(false);
+
+  readonly assigneeEmailInput = signal('');
+  readonly submittingWorkflowAssignment = signal(false);
+  readonly workflowAssignmentError = signal<string | null>(null);
+  readonly workflowAssignmentSuccess = signal(false);
+
+  readonly newTaskLabel = signal('');
+  readonly submittingWorkflowTask = signal(false);
+  readonly workflowTaskError = signal<string | null>(null);
+  readonly completingTaskId = signal<number | null>(null);
+
   readonly isCorrection = computed(() => !!this.latestDecision());
   readonly isRedundantSelection = computed(() => {
     const latest = this.latestDecision();
@@ -508,9 +555,23 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
     this.decisionSuccess.set(false);
     this.activeVhsDetail.set(null);
     this.selectedInspectionPhoto.set(null);
+    this.workflowState.set(null);
+    this.workflowHistory.set([]);
+    this.selectedWorkflowStatus.set('');
+    this.workflowStatusComment.set('');
+    this.workflowStatusError.set(null);
+    this.workflowStatusSuccess.set(false);
+    this.assigneeEmailInput.set('');
+    this.workflowAssignmentError.set(null);
+    this.workflowAssignmentSuccess.set(false);
+    this.newTaskLabel.set('');
+    this.workflowTaskError.set(null);
 
     this.historySubscription?.unsubscribe();
     this.vhsDetailSubscription?.unsubscribe();
+    this.workflowSubscription?.unsubscribe();
+    this.workflowHistorySubscription?.unsubscribe();
+    this.workflowActionSubscription?.unsubscribe();
 
     this.api.getClaimReview(claimSk).subscribe({
       next: (review) => {
@@ -533,6 +594,18 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
         // Non bloquant : l'absence d'historique ne doit pas empêcher la lecture du dossier.
       }
     });
+    this.workflowSubscription = this.api.getWorkflowState(claimSk).subscribe({
+      next: (state) => this.workflowState.set(state),
+      error: () => {
+        // Non bloquant : l'absence de suivi ne doit pas empêcher la lecture du dossier.
+      }
+    });
+    this.workflowHistorySubscription = this.api.getWorkflowHistory(claimSk).subscribe({
+      next: (res) => this.workflowHistory.set(res.items),
+      error: () => {
+        // Non bloquant.
+      }
+    });
   }
 
   ngOnDestroy(): void {
@@ -540,6 +613,9 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
     this.historySubscription?.unsubscribe();
     this.decisionSubscription?.unsubscribe();
     this.vhsDetailSubscription?.unsubscribe();
+    this.workflowSubscription?.unsubscribe();
+    this.workflowHistorySubscription?.unsubscribe();
+    this.workflowActionSubscription?.unsubscribe();
   }
 
   decisionLabel(value: ClaimDecisionValue | string): string {
@@ -603,6 +679,220 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
           );
         }
       });
+  }
+
+  workflowStatusLabel(status: WorkflowStatus | null | undefined): string {
+    return status ? WORKFLOW_STATUS_LABELS[status] ?? status : 'Non defini';
+  }
+
+  onWorkflowStatusSelect(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value as WorkflowStatus | '';
+    this.selectedWorkflowStatus.set(value);
+    this.workflowStatusSuccess.set(false);
+    this.workflowStatusError.set(null);
+  }
+
+  onWorkflowStatusCommentInput(event: Event): void {
+    this.workflowStatusComment.set((event.target as HTMLTextAreaElement).value);
+  }
+
+  submitWorkflowStatus(): void {
+    const status = this.selectedWorkflowStatus();
+    const user = this.currentUser();
+    const claimSk = this.claim()?.claim_sk;
+    if (!status || !claimSk) {
+      return;
+    }
+    if (!user?.email) {
+      this.workflowStatusError.set('Votre session ne porte pas d adresse e-mail valide. Reconnectez-vous.');
+      return;
+    }
+    const email = user.email;
+
+    this.submittingWorkflowStatus.set(true);
+    this.workflowStatusError.set(null);
+    this.workflowStatusSuccess.set(false);
+
+    this.workflowActionSubscription = this.api
+      .setWorkflowStatus(claimSk, status, email, this.workflowStatusComment().trim() || undefined)
+      .subscribe({
+        next: (event) => {
+          this.workflowHistory.update((items) => [event, ...items]);
+          this.workflowState.update((state) => ({
+            claim_sk: claimSk,
+            status,
+            status_changed_at: event.created_at,
+            status_changed_by: email,
+            assignee_email: state?.assignee_email ?? null,
+            assigned_at: state?.assigned_at ?? null,
+            assigned_by: state?.assigned_by ?? null,
+            open_tasks: state?.open_tasks ?? []
+          }));
+          this.selectedWorkflowStatus.set('');
+          this.workflowStatusComment.set('');
+          this.submittingWorkflowStatus.set(false);
+          this.workflowStatusSuccess.set(true);
+        },
+        error: (error) => {
+          this.submittingWorkflowStatus.set(false);
+          this.workflowStatusError.set(
+            error?.error?.message ?? 'Impossible d enregistrer le statut. Reessayez dans quelques instants.'
+          );
+        }
+      });
+  }
+
+  onAssigneeEmailInput(event: Event): void {
+    this.assigneeEmailInput.set((event.target as HTMLInputElement).value);
+    this.workflowAssignmentSuccess.set(false);
+    this.workflowAssignmentError.set(null);
+  }
+
+  submitWorkflowAssignment(): void {
+    const user = this.currentUser();
+    const claimSk = this.claim()?.claim_sk;
+    if (!claimSk) {
+      return;
+    }
+    if (!user?.email) {
+      this.workflowAssignmentError.set('Votre session ne porte pas d adresse e-mail valide. Reconnectez-vous.');
+      return;
+    }
+    const email = user.email;
+
+    const assignee = this.assigneeEmailInput().trim().toLowerCase() || null;
+    this.submittingWorkflowAssignment.set(true);
+    this.workflowAssignmentError.set(null);
+    this.workflowAssignmentSuccess.set(false);
+
+    this.workflowActionSubscription = this.api.setWorkflowAssignment(claimSk, assignee, email).subscribe({
+      next: (event) => {
+        this.workflowHistory.update((items) => [event, ...items]);
+        this.workflowState.update((state) => ({
+          claim_sk: claimSk,
+          status: state?.status ?? null,
+          status_changed_at: state?.status_changed_at ?? null,
+          status_changed_by: state?.status_changed_by ?? null,
+          assignee_email: assignee,
+          assigned_at: event.created_at,
+          assigned_by: email,
+          open_tasks: state?.open_tasks ?? []
+        }));
+        this.assigneeEmailInput.set('');
+        this.submittingWorkflowAssignment.set(false);
+        this.workflowAssignmentSuccess.set(true);
+      },
+      error: (error) => {
+        this.submittingWorkflowAssignment.set(false);
+        this.workflowAssignmentError.set(
+          error?.error?.message ?? 'Impossible d enregistrer l affectation. Reessayez dans quelques instants.'
+        );
+      }
+    });
+  }
+
+  onNewTaskLabelInput(event: Event): void {
+    this.newTaskLabel.set((event.target as HTMLInputElement).value);
+    this.workflowTaskError.set(null);
+  }
+
+  submitNewTask(): void {
+    const label = this.newTaskLabel().trim();
+    const user = this.currentUser();
+    const claimSk = this.claim()?.claim_sk;
+    if (!label || !claimSk) {
+      return;
+    }
+    if (!user?.email) {
+      this.workflowTaskError.set('Votre session ne porte pas d adresse e-mail valide. Reconnectez-vous.');
+      return;
+    }
+    const email = user.email;
+
+    this.submittingWorkflowTask.set(true);
+    this.workflowTaskError.set(null);
+
+    this.workflowActionSubscription = this.api.createWorkflowTask(claimSk, label, email).subscribe({
+      next: (event) => {
+        this.workflowHistory.update((items) => [event, ...items]);
+        this.workflowState.update((state) => ({
+          claim_sk: claimSk,
+          status: state?.status ?? null,
+          status_changed_at: state?.status_changed_at ?? null,
+          status_changed_by: state?.status_changed_by ?? null,
+          assignee_email: state?.assignee_email ?? null,
+          assigned_at: state?.assigned_at ?? null,
+          assigned_by: state?.assigned_by ?? null,
+          open_tasks: [
+            {
+              task_ref_id: event.event_id,
+              task_label: label,
+              created_by: email,
+              created_at: event.created_at
+            },
+            ...(state?.open_tasks ?? [])
+          ]
+        }));
+        this.newTaskLabel.set('');
+        this.submittingWorkflowTask.set(false);
+      },
+      error: (error) => {
+        this.submittingWorkflowTask.set(false);
+        this.workflowTaskError.set(
+          error?.error?.message ?? 'Impossible de creer la tache. Reessayez dans quelques instants.'
+        );
+      }
+    });
+  }
+
+  completeWorkflowTask(taskRefId: number): void {
+    const user = this.currentUser();
+    const claimSk = this.claim()?.claim_sk;
+    if (!claimSk) {
+      return;
+    }
+    if (!user?.email) {
+      this.workflowTaskError.set('Votre session ne porte pas d adresse e-mail valide. Reconnectez-vous.');
+      return;
+    }
+
+    this.completingTaskId.set(taskRefId);
+    this.workflowTaskError.set(null);
+
+    this.workflowActionSubscription = this.api.completeWorkflowTask(claimSk, taskRefId, user.email).subscribe({
+      next: (event) => {
+        this.workflowHistory.update((items) => [event, ...items]);
+        this.workflowState.update((state) =>
+          state ? { ...state, open_tasks: state.open_tasks.filter((task) => task.task_ref_id !== taskRefId) } : state
+        );
+        this.completingTaskId.set(null);
+      },
+      error: (error) => {
+        this.completingTaskId.set(null);
+        this.workflowTaskError.set(
+          error?.error?.message ?? 'Impossible de cloturer la tache. Reessayez dans quelques instants.'
+        );
+      }
+    });
+  }
+
+  workflowEventLabel(event: WorkflowEvent): string {
+    switch (event.event_type) {
+      case 'STATUS_CHANGE':
+        return `Statut -> ${this.workflowStatusLabel(event.status)}`;
+      case 'ASSIGNMENT':
+        return event.assignee_email ? `Affecte a ${event.assignee_email}` : 'Desaffecte';
+      case 'TASK_CREATED':
+        return `Tache creee : ${event.task_label}`;
+      case 'TASK_COMPLETED': {
+        const created = this.workflowHistory().find(
+          (item) => item.event_type === 'TASK_CREATED' && item.event_id === event.task_ref_id
+        );
+        return created ? `Tache cloturee : ${created.task_label}` : 'Tache cloturee';
+      }
+      default:
+        return event.event_type;
+    }
   }
 
   toggleSignal(key: string): void {

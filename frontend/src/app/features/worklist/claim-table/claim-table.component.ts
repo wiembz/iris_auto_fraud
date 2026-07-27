@@ -8,6 +8,17 @@ export interface WorklistSortChange {
   sortDirection: SortDirection;
 }
 
+const OPERATIONAL_STATUS_LABELS: Record<string, string> = {
+  NOUVEAU: 'Nouveau',
+  AFFECTE: 'Affecte',
+  EN_COURS: 'En cours',
+  EN_ATTENTE_PIECES: 'En attente de pieces',
+  PRET_POUR_DECISION: 'Pret pour decision',
+  TRANSMIS_INVESTIGATION: 'Transmis a l investigation',
+  RETOUR_INVESTIGATION: 'Retour investigation',
+  CLOTURE: 'Cloture'
+};
+
 @Component({
   selector: 'app-claim-table',
   standalone: true,
@@ -68,6 +79,12 @@ export class ClaimTableComponent {
 
   displayText(value: string | null | undefined): string {
     return value && value.trim() ? value : '—';
+  }
+
+  operationalStatusLabel(claim: ClaimSummary): string {
+    return claim.operational_status
+      ? OPERATIONAL_STATUS_LABELS[claim.operational_status] ?? claim.operational_status
+      : '—';
   }
 
   displayDate(value: string | null | undefined): string {

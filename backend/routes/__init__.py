@@ -7,6 +7,7 @@ from backend.routes.portfolio_routes import portfolio_bp
 from backend.routes.powerbi_routes import powerbi_bp
 from backend.routes.summary_routes import summary_bp
 from backend.routes.vhs_routes import vhs_bp
+from backend.routes.workflow_routes import workflow_bp
 
 
 def register_blueprints(app) -> None:
@@ -16,3 +17,4 @@ def register_blueprints(app) -> None:
     app.register_blueprint(portfolio_bp)
     app.register_blueprint(powerbi_bp)
     app.register_blueprint(vhs_bp)
+    app.register_blueprint(workflow_bp)

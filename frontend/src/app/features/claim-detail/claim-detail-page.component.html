@@ -545,6 +545,151 @@
       </div>
     </section>
 
+    <section class="iris-card claim-review__workflow" aria-label="Suivi du dossier">
+      <div class="workflow-head">
+        <div>
+          <h2>Suivi du dossier</h2>
+          <p class="claim-review__hint">
+            Statut operationnel, affectation et taches de ce dossier. Chaque changement est
+            trace (aucune notification automatique n est envoyee).
+          </p>
+        </div>
+        <div class="workflow-current">
+          <span>Statut actuel</span>
+          <strong [attr.data-status]="workflowState()?.status">
+            {{ workflowStatusLabel(workflowState()?.status) }}
+          </strong>
+          @if (workflowState()?.assignee_email; as assignee) {
+            <small>Affecte a {{ assignee }}</small>
+          } @else {
+            <small>Non affecte</small>
+          }
+        </div>
+      </div>
+
+      <div class="workflow-grid">
+        <div class="workflow-block">
+          <span class="workflow-block__label">Changer le statut</span>
+          <select class="workflow-select" [value]="selectedWorkflowStatus()" (change)="onWorkflowStatusSelect($event)">
+            <option value="" disabled>Choisir un statut...</option>
+            @for (status of workflowStatusOrder; track status) {
+              <option [value]="status">{{ workflowStatusLabel(status) }}</option>
+            }
+          </select>
+          <textarea
+            class="workflow-textarea"
+            rows="2"
+            [value]="workflowStatusComment()"
+            (input)="onWorkflowStatusCommentInput($event)"
+            placeholder="Commentaire (optionnel)..."
+          ></textarea>
+          @if (workflowStatusError(); as err) {
+            <p class="workflow-error">{{ err }}</p>
+          }
+          @if (workflowStatusSuccess()) {
+            <p class="workflow-success">Statut mis a jour.</p>
+          }
+          <button
+            type="button"
+            class="iris-button iris-button--primary"
+            [disabled]="!selectedWorkflowStatus() || submittingWorkflowStatus()"
+            (click)="submitWorkflowStatus()"
+          >
+            @if (submittingWorkflowStatus()) { Enregistrement... } @else { Mettre a jour le statut }
+          </button>
+        </div>
+
+        <div class="workflow-block">
+          <span class="workflow-block__label">Affecter a un gestionnaire</span>
+          <input
+            type="email"
+            class="workflow-input"
+            [value]="assigneeEmailInput()"
+            (input)="onAssigneeEmailInput($event)"
+            placeholder="gestionnaire@bna.tn (vide pour desaffecter)"
+          />
+          @if (workflowAssignmentError(); as err) {
+            <p class="workflow-error">{{ err }}</p>
+          }
+          @if (workflowAssignmentSuccess()) {
+            <p class="workflow-success">Affectation mise a jour.</p>
+          }
+          <button
+            type="button"
+            class="iris-button iris-button--primary"
+            [disabled]="submittingWorkflowAssignment()"
+            (click)="submitWorkflowAssignment()"
+          >
+            @if (submittingWorkflowAssignment()) { Enregistrement... } @else { Enregistrer l affectation }
+          </button>
+        </div>
+      </div>
+
+      <div class="workflow-tasks">
+        <span class="workflow-block__label">Taches / relances</span>
+        <div class="workflow-task-add">
+          <input
+            type="text"
+            class="workflow-input"
+            [value]="newTaskLabel()"
+            (input)="onNewTaskLabelInput($event)"
+            placeholder="Nouvelle tache (ex : relancer l assure pour le constat)..."
+          />
+          <button
+            type="button"
+            class="iris-button iris-button--soft"
+            [disabled]="!newTaskLabel().trim() || submittingWorkflowTask()"
+            (click)="submitNewTask()"
+          >
+            Ajouter
+          </button>
+        </div>
+        @if (workflowTaskError(); as err) {
+          <p class="workflow-error">{{ err }}</p>
+        }
+
+        @if (workflowState()?.open_tasks?.length) {
+          <ul class="workflow-task-list">
+            @for (task of workflowState()!.open_tasks; track task.task_ref_id) {
+              <li>
+                <span>{{ task.task_label }}</span>
+                <small>{{ task.created_by }} · {{ task.created_at | date: 'dd/MM/yyyy HH:mm' }}</small>
+                <button
+                  type="button"
+                  class="workflow-task-complete"
+                  [disabled]="completingTaskId() === task.task_ref_id"
+                  (click)="completeWorkflowTask(task.task_ref_id)"
+                >
+                  @if (completingTaskId() === task.task_ref_id) { ... } @else { Terminer }
+                </button>
+              </li>
+            }
+          </ul>
+        } @else {
+          <p class="workflow-tasks-empty">Aucune tache en cours.</p>
+        }
+      </div>
+
+      @if (workflowHistory().length > 0) {
+        <details class="workflow-history">
+          <summary>Historique du suivi ({{ workflowHistory().length }})</summary>
+          <ul>
+            @for (item of workflowHistory(); track item.event_id) {
+              <li>
+                <span class="workflow-history__badge" [attr.data-type]="item.event_type">
+                  {{ workflowEventLabel(item) }}
+                </span>
+                <span class="decision-history__meta">
+                  {{ item.actor_email }} · {{ item.created_at | date: 'dd/MM/yyyy HH:mm' }}
+                </span>
+                @if (item.comment) { <p>{{ item.comment }}</p> }
+              </li>
+            }
+          </ul>
+        </details>
+      }
+    </section>
+
     <section class="iris-card claim-review__decision" aria-label="Votre decision">
       <div class="decision-head">
         <div>

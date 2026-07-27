@@ -28,6 +28,7 @@
             <th>Motif principal</th>
             <th>Confiance</th>
             <th>Statut</th>
+            <th>Suivi</th>
             <th><button type="button" (click)="changeSort('age_days')">Anciennete {{ sortMarker('age_days') }}</button></th>
           </tr>
         </thead>
@@ -60,6 +61,14 @@
               </td>
               <td><app-attention-badge [label]="claim.confidence_level" variant="confidence" /></td>
               <td><app-attention-badge [label]="displayText(claim.workflow_status)" variant="status" /></td>
+              <td>
+                <div class="workflow-cell">
+                  <span [attr.data-status]="claim.operational_status">{{ operationalStatusLabel(claim) }}</span>
+                  @if (claim.operational_assignee_email) {
+                    <small>{{ claim.operational_assignee_email }}</small>
+                  }
+                </div>
+              </td>
               <td>{{ displayAge(claim.age_days, claim.claim_date) }}</td>
             </tr>
           }

@@ -301,6 +301,273 @@
   font-size: 12px;
 }
 
+// ---------------------------------------------------------------------------
+// Suivi du dossier — statut operationnel, affectation, taches
+// ---------------------------------------------------------------------------
+.claim-review__workflow {
+  padding: 16px 18px;
+  border: 1px solid var(--iris-border);
+}
+
+.workflow-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+
+  h2 {
+    margin: 0 0 4px;
+    font-family: var(--iris-font-sans);
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--iris-text);
+  }
+
+  @media (max-width: 640px) {
+    flex-direction: column;
+  }
+}
+
+.workflow-current {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: var(--iris-surface-2);
+  text-align: right;
+
+  span {
+    color: var(--iris-text-2);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  strong {
+    color: var(--iris-text);
+    font-size: 14px;
+
+    &[data-status='CLOTURE'] { color: var(--iris-positive); }
+    &[data-status='TRANSMIS_INVESTIGATION'] { color: var(--iris-high); }
+    &[data-status='EN_ATTENTE_PIECES'] { color: var(--iris-medium); }
+  }
+
+  small {
+    color: var(--iris-text-2);
+    font-size: 11.5px;
+  }
+
+  @media (max-width: 640px) {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
+
+.workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+
+  @media (max-width: 720px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.workflow-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.workflow-block__label {
+  color: var(--iris-text-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.workflow-select,
+.workflow-input,
+.workflow-textarea {
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--iris-border);
+  background: var(--iris-surface);
+  color: var(--iris-text);
+  font: inherit;
+  font-size: 13.5px;
+
+  &:focus {
+    outline: none;
+    border-color: var(--iris-primary);
+  }
+}
+
+.workflow-textarea {
+  resize: vertical;
+  min-height: 44px;
+}
+
+.workflow-error {
+  margin: 0;
+  color: var(--iris-high);
+  font-size: 13px;
+}
+
+.workflow-success {
+  margin: 0;
+  color: var(--iris-positive);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.workflow-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--iris-border);
+}
+
+.workflow-task-add {
+  display: flex;
+  gap: 8px;
+
+  input {
+    flex: 1;
+  }
+
+  @media (max-width: 640px) {
+    flex-direction: column;
+  }
+}
+
+.workflow-task-list {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: var(--iris-surface-2);
+
+    span {
+      flex: 1;
+      color: var(--iris-text);
+      font-size: 13.5px;
+    }
+
+    small {
+      color: var(--iris-text-2);
+      font-size: 11.5px;
+      white-space: nowrap;
+    }
+  }
+}
+
+.workflow-task-complete {
+  flex: none;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--iris-border);
+  background: var(--iris-surface);
+  color: var(--iris-text-2);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    border-color: var(--iris-positive);
+    color: var(--iris-positive);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+.workflow-tasks-empty {
+  margin: 0;
+  color: var(--iris-text-2);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.workflow-history {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--iris-border);
+
+  summary {
+    cursor: pointer;
+    color: var(--iris-text-2);
+    font-size: 13px;
+    font-weight: 600;
+
+    &:hover {
+      color: var(--iris-text);
+    }
+  }
+
+  ul {
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  li {
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--iris-surface-2);
+
+    p {
+      margin: 6px 0 0;
+      color: var(--iris-text-2);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+  }
+}
+
+.workflow-history__badge {
+  display: inline-flex;
+  padding: 2px 8px;
+  border: 1.5px solid currentColor;
+  border-radius: var(--iris-radius-sm);
+  background: var(--iris-neutral-bg);
+  color: var(--iris-neutral);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+
+  &[data-type='STATUS_CHANGE'] { background: var(--iris-medium-bg); color: var(--iris-medium); }
+  &[data-type='ASSIGNMENT'] { background: var(--iris-positive-bg); color: var(--iris-positive); }
+  &[data-type='TASK_CREATED'] { background: var(--iris-neutral-bg); color: var(--iris-neutral); }
+  &[data-type='TASK_COMPLETED'] { background: var(--iris-positive-bg); color: var(--iris-positive); }
+}
+
+@media print {
+  .claim-review__workflow {
+    display: none !important;
+  }
+}
+
 .claim-review__back {
   align-self: flex-start;
   color: var(--iris-text-2);

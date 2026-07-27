@@ -21,6 +21,8 @@ export interface ClaimSummary {
   confidence_tone: ConfidenceLevelTone;
   assignee_label: string | null;
   workflow_status: string | null;
+  operational_status: string | null;
+  operational_assignee_email: string | null;
   age_days: number | null;
   guarantee_label: string | null;
   claim_type_label: string | null;

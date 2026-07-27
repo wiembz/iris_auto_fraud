@@ -70,11 +70,11 @@ def test_serialization_converts_common_database_values():
 
 
 def test_backend_service_sql_stays_read_only():
-    # decision_service.py is the single deliberate write path introduced for
-    # human review decisions (schema `app`, append-only, DB trigger blocks
-    # UPDATE/DELETE). It is excluded here and checked precisely below instead
-    # of weakening this guarantee for every other service.
-    text = _service_text(exclude=("decision_service.py",))
+    # decision_service.py and workflow_service.py are the deliberate write
+    # paths (schema `app`, append-only, DB triggers block UPDATE/DELETE).
+    # They are excluded here and checked precisely below instead of
+    # weakening this guarantee for every other service.
+    text = _service_text(exclude=("decision_service.py", "workflow_service.py"))
 
     forbidden_patterns = [
         r"(?<!path\.)\binsert\b",
@@ -104,6 +104,21 @@ def test_decision_service_only_writes_to_app_schema():
     assert "insert into dwh." not in decision_text
     assert "insert into mart." not in decision_text
     assert "insert into staging." not in decision_text
+
+
+def test_workflow_service_only_writes_to_app_schema():
+    workflow_text = (BACKEND_DIR / "services" / "workflow_service.py").read_text(encoding="utf-8").lower()
+
+    assert "insert into app.claim_workflow_event" in workflow_text
+    assert "update " not in workflow_text
+    assert "delete " not in workflow_text
+    assert "drop " not in workflow_text
+    assert "truncate" not in workflow_text
+    assert "alter " not in workflow_text
+    # Meme garantie que decision_service : jamais d'ecriture dans dwh/mart/staging.
+    assert "insert into dwh." not in workflow_text
+    assert "insert into mart." not in workflow_text
+    assert "insert into staging." not in workflow_text
 
 
 def test_claim_list_query_uses_exists_instead_of_signal_joins():

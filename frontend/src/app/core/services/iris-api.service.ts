@@ -33,6 +33,8 @@ export interface ClaimListItem {
   main_reason_3?: string | null;
   assignee_label?: string | null;
   workflow_status?: string | null;
+  operational_status?: WorkflowStatus | null;
+  operational_assignee_email?: string | null;
   age_days?: number | null;
   guarantee_label?: string | null;
   claim_type_label?: string | null;
@@ -319,6 +321,49 @@ export interface ClaimDecisionRecord {
   corrected_decision_value?: ClaimDecisionValue | null;
 }
 
+export type WorkflowStatus =
+  | 'NOUVEAU'
+  | 'AFFECTE'
+  | 'EN_COURS'
+  | 'EN_ATTENTE_PIECES'
+  | 'PRET_POUR_DECISION'
+  | 'TRANSMIS_INVESTIGATION'
+  | 'RETOUR_INVESTIGATION'
+  | 'CLOTURE';
+
+export interface WorkflowTask {
+  task_ref_id: number;
+  task_label: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface WorkflowState {
+  claim_sk: number;
+  status: WorkflowStatus | null;
+  status_changed_at: string | null;
+  status_changed_by: string | null;
+  assignee_email: string | null;
+  assigned_at: string | null;
+  assigned_by: string | null;
+  open_tasks: WorkflowTask[];
+}
+
+export type WorkflowEventType = 'STATUS_CHANGE' | 'ASSIGNMENT' | 'TASK_CREATED' | 'TASK_COMPLETED';
+
+export interface WorkflowEvent {
+  event_id: number;
+  claim_sk: number;
+  event_type: WorkflowEventType;
+  status?: WorkflowStatus | null;
+  assignee_email?: string | null;
+  task_label?: string | null;
+  task_ref_id?: number | null;
+  comment?: string | null;
+  actor_email: string;
+  created_at: string;
+}
+
 export type VhsDecision = 'OK' | 'DEGRADE' | 'CRITIQUE' | 'IMMOBILISE';
 
 export interface VhsDecisionDistributionItem {
@@ -543,6 +588,69 @@ export class IrisApiService {
       params = params.set('reviewer_email', reviewerEmail);
     }
     return this.http.get<{ items: ClaimDecisionRecord[] }>(`${this.apiBaseUrl}/decisions`, { params });
+  }
+
+  getWorkflowState(claimSk: number): Observable<WorkflowState> {
+    return this.http.get<WorkflowState>(`${this.apiBaseUrl}/claims/${claimSk}/workflow`);
+  }
+
+  getWorkflowHistory(claimSk: number): Observable<{ claim_sk: number; items: WorkflowEvent[] }> {
+    return this.http.get<{ claim_sk: number; items: WorkflowEvent[] }>(
+      `${this.apiBaseUrl}/claims/${claimSk}/workflow/history`
+    );
+  }
+
+  setWorkflowStatus(
+    claimSk: number,
+    status: WorkflowStatus,
+    actorEmail: string,
+    comment?: string
+  ): Observable<WorkflowEvent> {
+    return this.http.post<WorkflowEvent>(`${this.apiBaseUrl}/claims/${claimSk}/workflow/status`, {
+      status,
+      actor_email: actorEmail,
+      comment
+    });
+  }
+
+  setWorkflowAssignment(
+    claimSk: number,
+    assigneeEmail: string | null,
+    actorEmail: string,
+    comment?: string
+  ): Observable<WorkflowEvent> {
+    return this.http.post<WorkflowEvent>(`${this.apiBaseUrl}/claims/${claimSk}/workflow/assignment`, {
+      assignee_email: assigneeEmail,
+      actor_email: actorEmail,
+      comment
+    });
+  }
+
+  createWorkflowTask(claimSk: number, taskLabel: string, actorEmail: string): Observable<WorkflowEvent> {
+    return this.http.post<WorkflowEvent>(`${this.apiBaseUrl}/claims/${claimSk}/workflow/tasks`, {
+      task_label: taskLabel,
+      actor_email: actorEmail
+    });
+  }
+
+  completeWorkflowTask(
+    claimSk: number,
+    taskRefId: number,
+    actorEmail: string,
+    comment?: string
+  ): Observable<WorkflowEvent> {
+    return this.http.post<WorkflowEvent>(
+      `${this.apiBaseUrl}/claims/${claimSk}/workflow/tasks/${taskRefId}/complete`,
+      { actor_email: actorEmail, comment }
+    );
+  }
+
+  getWorkflowTasksFeed(assigneeEmail?: string, limit = 50): Observable<{ items: WorkflowTask[] }> {
+    let params = new HttpParams().set('limit', String(limit));
+    if (assigneeEmail) {
+      params = params.set('assignee_email', assigneeEmail);
+    }
+    return this.http.get<{ items: WorkflowTask[] }>(`${this.apiBaseUrl}/workflow/tasks`, { params });
   }
 
   getPowerbiGovernance(): Observable<{ components: PowerbiGovernanceComponent[] }> {

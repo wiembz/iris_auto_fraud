@@ -195,12 +195,16 @@ def list_claims(engine, config: ApiConfig, filters: dict[str, Any]) -> dict[str,
                 {post_inspection_exists_sql} AS has_post_inspection_signal,
                 d.decision AS validation_status,
                 d.decided_at AS validation_decided_at,
-                d.reviewer_email AS validation_reviewer_email
+                d.reviewer_email AS validation_reviewer_email,
+                w.status AS operational_status,
+                a.assignee_email AS operational_assignee_email
             FROM mart.fact_claim_attention_score s
             LEFT JOIN mart.fact_claim_scoring_features f
                 ON f.claim_sk = s.claim_sk
                AND f.feature_run_id = s.feature_run_id
             LEFT JOIN app.claim_review_decision_latest d ON d.claim_sk = s.claim_sk
+            LEFT JOIN app.claim_workflow_status_latest w ON w.claim_sk = s.claim_sk
+            LEFT JOIN app.claim_workflow_assignment_latest a ON a.claim_sk = s.claim_sk
             WHERE {where_sql}
             ORDER BY {order_by_sql}
             LIMIT :page_size OFFSET :offset
