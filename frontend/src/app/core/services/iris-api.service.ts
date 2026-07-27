@@ -1,4 +1,4 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+﻿import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { SortDirection } from '../models/claim-summary.model';
@@ -79,7 +79,7 @@ export interface ValidationCoverage {
   conforme: number;
   a_completer: number;
   // Dossiers non decides et ages de plus de 90 jours depuis la survenance
-  // (cf. backend/services/portfolio_insights_service.py) — jamais confondu
+  // (cf. backend/services/portfolio_insights_service.py) â€” jamais confondu
   // avec l age brut d un dossier deja clos.
   sla_breached: number;
 }
@@ -133,6 +133,12 @@ export interface ClaimReviewClaim {
   declaration_date?: string | null;
   contract_start_date?: string | null;
   claim_amount?: number | string | null;
+  reserve_amount?: number | string | null;
+  paid_amount?: number | string | null;
+  recourse_amount?: number | string | null;
+  franchise_amount?: number | string | null;
+  guarantee_status?: string | null;
+  is_closed?: boolean | number | null;
   client_claim_count_12m?: number | null;
   client_claim_count_24m?: number | null;
   days_claim_to_declaration?: number | null;
@@ -165,6 +171,18 @@ export interface ClaimTimelineEvent {
   event_date: string | null;
   description?: string | null;
   business_explanation?: string | null;
+}
+
+export interface ClaimRelatedItem {
+  claim_sk: number;
+  claim_business_id?: string | null;
+  numero_sinistre?: string | null;
+  code_garantie?: string | null;
+  claim_date?: string | null;
+  claim_amount?: number | null;
+  attention_score?: number | null;
+  attention_level?: string | null;
+  days_claim_to_declaration?: number | null;
 }
 
 export interface ClaimPostInspectionItem {
@@ -211,6 +229,10 @@ export interface ClaimReviewResponse {
   post_inspection: { items: ClaimPostInspectionItem[] };
   ml_anomaly: ClaimMlAnomaly | null;
   vehicle: ClaimVehicleContext | null;
+  related_claims?: {
+    same_sinistre_guarantees: ClaimRelatedItem[];
+    client_history_24m: ClaimRelatedItem[];
+  };
   checklist?: string[];
   client_context?: {
     client_sk: number;
@@ -226,7 +248,17 @@ export interface ClaimReviewResponse {
     contrat_sk: number;
     numero_contrat: string;
     date_debut_contrat: string | null;
+    date_fin_contrat?: string | null;
+    date_debut_effet?: string | null;
+    date_fin_effet?: string | null;
     statut_contrat?: string | null;
+    type_resiliation?: string | null;
+    libelle_resiliation?: string | null;
+    validity_at_claim_date?: {
+      is_valid_at_claim_date: boolean | null;
+      reference: 'effet' | 'contrat' | null;
+      statut_contrat?: string | null;
+    } | null;
   } | null;
   conducteur_context?: {
     conducteur_sk: number;
@@ -373,9 +405,48 @@ export interface VhsPenaltyItem {
   penalty_capped_by_system?: boolean | null;
 }
 
+
+export interface VhsCheckpointItem {
+  checkpoint_code: string;
+  checkpoint_libelle: string;
+  zone_controle: string | null;
+  valeur_controle: string | null;
+  commentaire_zone?: string | null;
+  est_anomalie: boolean | null;
+  est_anomalie_critique: boolean | null;
+  est_controle_renseigne: boolean | null;
+  observed_status: string | null;
+  penalty_applied: number;
+  penalty_reason?: string | null;
+  tier?: string | null;
+  is_vital?: boolean | null;
+  is_immobilizing?: boolean | null;
+  is_hard_cap_trigger?: boolean | null;
+  systeme_fonctionnel?: string | null;
+  penalty_raw_checkpoint?: number | null;
+  penalty_capped_by_system?: boolean | null;
+}
+
+export interface VhsImageLink {
+  asset_id?: number | null;
+  inspection_key?: string | null;
+  slot: string;
+  original_url?: string | null;
+  asset_url?: string | null;
+  storage_status?: 'PENDING' | 'IMPORTED' | 'NOT_IMPORTED' | 'ERROR' | string;
+  is_imported?: boolean;
+  mime_type?: string | null;
+  display_mime_type?: string | null;
+  file_size_bytes?: number | null;
+  imported_at?: string | null;
+  import_error?: string | null;
+}
+
 export interface VhsInspectionDetail extends VhsVehicleItem {
   run_id: string;
   penalties: VhsPenaltyItem[];
+  checkpoints: VhsCheckpointItem[];
+  image_links: VhsImageLink[];
   nom_agent_inspection?: string | null;
   nom_personne_inspection?: string | null;
   telephone_personne_inspection?: string | null;
@@ -404,7 +475,7 @@ export interface ClaimFilters {
 @Injectable({ providedIn: 'root' })
 export class IrisApiService {
   private readonly http = inject(HttpClient);
-  private readonly apiBaseUrl = 'http://127.0.0.1:5000/api';
+  readonly apiBaseUrl = 'http://127.0.0.1:5000/api';
 
   getSummary(scoreVersion = 'IRIS_CLAIM_ATTENTION_HYBRID_ML_V1_CANDIDATE'): Observable<SummaryResponse> {
     const params = new HttpParams().set('score_version', scoreVersion);

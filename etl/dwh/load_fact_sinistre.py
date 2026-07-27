@@ -48,6 +48,7 @@ FINAL_COLS = [
     "conducteur_sk", "tiers_sk", "camtier_sk", "geo_sinistre_sk",
     "date_survenance_sk", "date_declaration_sk", "date_ouverture_sk", "date_cloture_sk",
     "montant_evaluation", "montant_reglement", "montant_reserve", "montant_recours",
+    "montant_franchise",
     "montant_charge_sinistre", "delai_survenance_declaration_jours",
     "delai_declaration_ouverture_jours", "delai_ouverture_cloture_jours",
     "est_cloture", "est_corporel", "est_materiel", "est_ida", "est_transaction",
@@ -61,7 +62,7 @@ SOURCE_COLUMNS = [
     "categperm", "datepermi", "nomtiers", "imvehtier", "numcnttie", "numsnttie",
     "natcamtie", "idcamtier", "regsini", "gouvsini", "citesini", "cpostsini",
     "dtsurv", "dtdecsnt", "dtouvsnt", "dtcltsnt", "eval_init", "mntpaigrn",
-    "mntprovis", "mntrecour", "mnttotal", "code_etat", "natsini", "cas_ida",
+    "mntprovis", "mntrecour", "mnttotal", "franchis", "code_etat", "natsini", "cas_ida",
     "ddetransa", "indforcag", "coassur", "reassur", "motifclot", "etatgrnt",
 ]
 
@@ -496,7 +497,7 @@ def _write_date_anomalies_report(df: pd.DataFrame) -> dict[str, int]:
 
 
 def _write_amount_anomalies_report(df: pd.DataFrame, invalid_casts: dict[str, pd.Series]) -> dict[str, int]:
-    amount_cols = ["montant_evaluation", "montant_reglement", "montant_reserve", "montant_recours", "montant_charge_sinistre"]
+    amount_cols = ["montant_evaluation", "montant_reglement", "montant_reserve", "montant_recours", "montant_franchise", "montant_charge_sinistre"]
     report = df[["sinistre_garantie_key", "numero_sinistre", "code_garantie", *amount_cols]].copy()
     metrics = {}
     flags = []
@@ -598,6 +599,7 @@ def transform_fact_sinistre(df_raw: pd.DataFrame, dims: dict, geo_mapping: pd.Da
         "montant_reglement": "mntpaigrn",
         "montant_reserve": "mntprovis",
         "montant_recours": "mntrecour",
+        "montant_franchise": "franchis",
         "montant_charge_sinistre": "mnttotal",
     }
     invalid_casts: dict[str, pd.Series] = {}

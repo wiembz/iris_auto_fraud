@@ -1,8 +1,10 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+﻿import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { Subject, Subscription, debounceTime } from 'rxjs';
 import {
   IrisApiService,
+  VhsCheckpointItem,
   VhsDecision,
+  VhsImageLink,
   VhsInspectionDetail,
   VhsOverviewResponse,
   VhsPenaltyItem,
@@ -10,6 +12,16 @@ import {
 } from '../../core/services/iris-api.service';
 
 type ScoreTone = 'ok' | 'low' | 'medium' | 'high';
+type InspectionCheckpointFilter = 'all' | 'anomalies' | 'critical';
+
+interface VhsCheckpointZoneGroup {
+  zone: string;
+  label: string;
+  total: number;
+  anomalies: number;
+  critical: number;
+  checkpoints: VhsCheckpointItem[];
+}
 
 interface DecisionChip {
   value: string;
@@ -99,6 +111,9 @@ export class VhsPageComponent implements OnInit, OnDestroy {
   readonly expandedSk = signal<number | null>(null);
   readonly detail = signal<VhsInspectionDetail | null>(null);
   readonly detailLoading = signal(false);
+  readonly inspectionFilters: InspectionCheckpointFilter[] = ['all', 'anomalies', 'critical'];
+  readonly inspectionCheckpointFilter = signal<InspectionCheckpointFilter>('all');
+  readonly selectedInspectionPhoto = signal<{ url: string; label: string } | null>(null);
 
   readonly decisionChips = computed<DecisionChip[]>(() => {
     const overview = this.overview();
@@ -188,6 +203,144 @@ export class VhsPageComponent implements OnInit, OnDestroy {
     return [...groups.values()].sort((a, b) => b.totalPenalty - a.totalPenalty);
   });
 
+  // Fiche complete des checkpoints (conforme/anomalie/critique/non renseigne),
+  // par opposition a detailZoneGroups ci-dessus qui ne montre que les points
+  // deja penalisants : ici le manager voit aussi ce qui est conforme.
+  readonly vhsCheckpointGroups = computed<VhsCheckpointZoneGroup[]>(() => {
+    const detail = this.detail();
+    const filter = this.inspectionCheckpointFilter();
+    const checkpoints = detail?.checkpoints ?? [];
+    const filtered = checkpoints.filter((checkpoint) => {
+      if (filter === 'critical') {
+        return checkpoint.est_anomalie_critique === true;
+      }
+      if (filter === 'anomalies') {
+        return checkpoint.est_anomalie === true || Number(checkpoint.penalty_applied || 0) > 0;
+      }
+      return true;
+    });
+    const allByCode = new Map(checkpoints.map((checkpoint) => [checkpoint.checkpoint_code, checkpoint]));
+    const groups = new Map<string, VhsCheckpointZoneGroup>();
+    for (const checkpoint of filtered) {
+      const zone = checkpoint.zone_controle ?? 'AUTRE';
+      const current = groups.get(zone) ?? {
+        zone,
+        label: this.zoneLabel(zone),
+        total: 0,
+        anomalies: 0,
+        critical: 0,
+        checkpoints: []
+      };
+      current.checkpoints.push(checkpoint);
+      groups.set(zone, current);
+    }
+    for (const checkpoint of allByCode.values()) {
+      const zone = checkpoint.zone_controle ?? 'AUTRE';
+      const current = groups.get(zone) ?? {
+        zone,
+        label: this.zoneLabel(zone),
+        total: 0,
+        anomalies: 0,
+        critical: 0,
+        checkpoints: []
+      };
+      current.total += 1;
+      if (checkpoint.est_anomalie === true || Number(checkpoint.penalty_applied || 0) > 0) {
+        current.anomalies += 1;
+      }
+      if (checkpoint.est_anomalie_critique === true) {
+        current.critical += 1;
+      }
+      groups.set(zone, current);
+    }
+    return [...groups.values()].filter((group) => group.checkpoints.length > 0);
+  });
+
+  setInspectionCheckpointFilter(filter: InspectionCheckpointFilter): void {
+    this.inspectionCheckpointFilter.set(filter);
+  }
+
+  inspectionCheckpointFilterLabel(filter: InspectionCheckpointFilter): string {
+    const labels: Record<InspectionCheckpointFilter, string> = {
+      all: 'Tous',
+      anomalies: 'Anomalies',
+      critical: 'Critiques'
+    };
+    return labels[filter];
+  }
+
+  checkpointTone(checkpoint: VhsCheckpointItem): 'ok' | 'medium' | 'high' | 'unknown' {
+    if (checkpoint.est_anomalie_critique === true || checkpoint.is_vital === true || checkpoint.is_immobilizing === true) {
+      return 'high';
+    }
+    if (checkpoint.est_anomalie === true || Number(checkpoint.penalty_applied || 0) > 0) {
+      return 'medium';
+    }
+    if (checkpoint.est_controle_renseigne === true) {
+      return 'ok';
+    }
+    return 'unknown';
+  }
+
+  inspectionImageUrl(image: VhsImageLink): string | null {
+    if (!image.asset_url) {
+      return null;
+    }
+    if (/^https?:\/\//i.test(image.asset_url)) {
+      return image.asset_url;
+    }
+    const apiRoot = this.api.apiBaseUrl.replace(/\/api$/, '');
+    return `${apiRoot}${image.asset_url}`;
+  }
+
+  inspectionImageLabel(image: VhsImageLink): string {
+    return image.slot.replace('image', 'Photo ');
+  }
+
+  imageSizeKo(bytes: number): number {
+    return Math.round(bytes / 1024);
+  }
+
+
+  openInspectionPhoto(image: VhsImageLink): void {
+    if (this.inspectionAssetKind(image) !== 'image') {
+      return;
+    }
+    const url = this.inspectionImageUrl(image);
+    if (!url) {
+      return;
+    }
+    this.selectedInspectionPhoto.set({ url, label: this.inspectionImageLabel(image) });
+  }
+
+  closeInspectionPhoto(): void {
+    this.selectedInspectionPhoto.set(null);
+  }
+  inspectionImageStatusLabel(image: VhsImageLink): string {
+    const mime = (image.display_mime_type ?? image.mime_type ?? '').toLowerCase();
+    if (image.is_imported && ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'].includes(mime)) {
+      return 'Affichee dans IRIS';
+    }
+    if (image.is_imported) {
+      return 'Apercu a generer';
+    }
+    if (image.storage_status === 'ERROR') {
+      return 'Erreur import';
+    }
+    return 'Non integree';
+  }
+
+  inspectionAssetKind(image: VhsImageLink): 'image' | 'pending' | 'missing' {
+    if (!image.is_imported || !image.asset_url) {
+      return 'missing';
+    }
+    const mime = (image.display_mime_type ?? image.mime_type ?? '').toLowerCase();
+    if (['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'].includes(mime)) {
+      return 'image';
+    }
+    return 'pending';
+  }
+
   ngOnInit(): void {
     this.overviewSubscription = this.api.getVhsOverview().subscribe({
       next: (overview) => {
@@ -249,6 +402,7 @@ export class VhsPageComponent implements OnInit, OnDestroy {
     }
     this.expandedSk.set(vehicle.vhs_score_sk);
     this.detail.set(null);
+    this.inspectionCheckpointFilter.set('all');
     this.detailLoading.set(true);
     this.detailSubscription?.unsubscribe();
     this.detailSubscription = this.api.getVhsInspectionDetail(vehicle.vhs_score_sk).subscribe({
@@ -323,3 +477,9 @@ export class VhsPageComponent implements OnInit, OnDestroy {
     return Math.round(Number(score ?? 0));
   }
 }
+
+
+
+
+
+

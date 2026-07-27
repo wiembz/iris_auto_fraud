@@ -1,22 +1,25 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+﻿import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { Subscription } from 'rxjs';
+import { Subscription, combineLatest } from 'rxjs';
 import { AuthService } from '../../core/auth/auth.service';
 import {
   ClaimDecisionRecord,
   ClaimDecisionValue,
   ClaimPostInspectionItem,
   ClaimReviewResponse,
+  ClaimRelatedItem,
   ClaimReviewSignal,
   ClaimTimelineEvent,
   IrisApiService,
+  VhsCheckpointItem,
+  VhsImageLink,
   VhsInspectionDetail
 } from '../../core/services/iris-api.service';
 import { AttentionBadgeComponent } from '../worklist/attention-badge/attention-badge.component';
 
 const DECISION_LABELS: Record<ClaimDecisionValue, string> = {
-  SUSPICION_CONFIRMED: 'Suspicion confirmee',
+  SUSPICION_CONFIRMED: 'Transmis a l investigation',
   CONFORME: 'Dossier conforme',
   A_COMPLETER: 'A completer'
 };
@@ -53,6 +56,24 @@ interface TimelineGap {
   days: number;
   label: string;
   tone: 'alert' | 'neutral';
+}
+
+type InspectionCheckpointFilter = 'all' | 'anomalies' | 'critical';
+
+interface VhsCheckpointZoneGroup {
+  zone: string;
+  label: string;
+  total: number;
+  anomalies: number;
+  critical: number;
+  checkpoints: VhsCheckpointItem[];
+}
+
+interface GroupedPostInspectionItem extends ClaimPostInspectionItem {
+  defective_zones: string[];
+  checkpoint_labels: string[];
+  signal_count: number;
+  max_critical_checkpoint_count: number;
 }
 
 const ML_FACTOR_LABELS: Record<string, string> = {
@@ -99,6 +120,14 @@ const SIGNAL_VALUE_LABELS: Record<string, string> = {
   zones: 'Zone(s) du vehicule concernee(s)'
 };
 
+const ZONE_LABELS: Record<string, string> = {
+  TOUR_DU_VEHICULE: 'Tour du vehicule',
+  INTERIEUR: 'Interieur',
+  SOUS_CAPOT: 'Sous le capot',
+  SOUS_VEHICULE: 'Sous le vehicule',
+  ENTRETIEN: 'Entretien'
+};
+
 const DELAY_BUCKET_LABELS: Record<string, string> = {
   DAYS_0_7: 'moins de 7 jours',
   DAYS_8_30: 'entre 8 et 30 jours',
@@ -121,6 +150,7 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
   private historySubscription?: Subscription;
   private decisionSubscription?: Subscription;
   private vhsDetailSubscription?: Subscription;
+  private activeClaimSk: number | null = null;
 
   readonly loading = signal(true);
   readonly errorMessage = signal<string | null>(null);
@@ -129,6 +159,10 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
 
   readonly activeVhsDetail = signal<VhsInspectionDetail | null>(null);
   readonly vhsModalLoading = signal(false);
+  readonly inspectionFilters: InspectionCheckpointFilter[] = ['all', 'anomalies', 'critical'];
+  readonly inspectionCheckpointFilter = signal<InspectionCheckpointFilter>('all');
+  readonly selectedInspectionPhoto = signal<{ url: string; label: string } | null>(null);
+  readonly returnToClaimSk = signal<number | null>(null);
 
   readonly currentUser = this.auth.currentUser;
   readonly decisionHistory = signal<ClaimDecisionRecord[]>([]);
@@ -153,56 +187,164 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
   readonly claim = computed(() => this.review()?.claim ?? null);
   readonly vehicle = computed(() => this.review()?.vehicle ?? null);
   readonly mlAnomaly = computed(() => this.review()?.ml_anomaly ?? null);
-  readonly postInspections = computed(() => this.review()?.post_inspection.items ?? []);
+  readonly postInspectionRows = computed(() => this.review()?.post_inspection.items ?? []);
+  readonly postInspections = computed<GroupedPostInspectionItem[]>(() => this.groupPostInspections(this.postInspectionRows()));
+  readonly sameSinistreGuarantees = computed(() => this.review()?.related_claims?.same_sinistre_guarantees ?? []);
+  readonly clientHistory24m = computed(() => this.review()?.related_claims?.client_history_24m ?? []);
+  readonly showReturnToWorkClaim = computed(() => {
+    const returnTo = this.returnToClaimSk();
+    const current = this.claim()?.claim_sk;
+    return !!returnTo && !!current && returnTo !== current;
+  });
+  readonly clientHistory12m = computed(() => {
+    const claimDate = this.claim()?.claim_date ? new Date(this.claim()!.claim_date as string) : null;
+    if (!claimDate) {
+      return [];
+    }
+    const minDate = new Date(claimDate);
+    minDate.setMonth(minDate.getMonth() - 12);
+    return this.clientHistory24m().filter((item) => {
+      if (!item.claim_date) {
+        return false;
+      }
+      const itemDate = new Date(item.claim_date);
+      return itemDate >= minDate && itemDate < claimDate;
+    });
+  });
 
-  // --- MOCK DATA FOR 360 VIEW ---
-  readonly mockClient360 = computed(() => ({
-    anciennete: '9 ans',
-    contratsActifs: 3,
-    sinistres24m: this.claim()?.client_claim_count_24m ?? 10,
-    dernierSinistre: '42 jours'
-  }));
 
-  readonly mockVehicule360 = computed(() => {
-    const v = this.vehicle();
+  readonly vhsCheckpointGroups = computed<VhsCheckpointZoneGroup[]>(() => {
+    const detail = this.activeVhsDetail();
+    const filter = this.inspectionCheckpointFilter();
+    const checkpoints = detail?.checkpoints ?? [];
+    const filtered = checkpoints.filter((checkpoint) => {
+      if (filter === 'critical') {
+        return checkpoint.est_anomalie_critique === true;
+      }
+      if (filter === 'anomalies') {
+        return checkpoint.est_anomalie === true || Number(checkpoint.penalty_applied || 0) > 0;
+      }
+      return true;
+    });
+    const allByCode = new Map(checkpoints.map((checkpoint) => [checkpoint.checkpoint_code, checkpoint]));
+    const groups = new Map<string, VhsCheckpointZoneGroup>();
+    for (const checkpoint of filtered) {
+      const zone = checkpoint.zone_controle ?? 'AUTRE';
+      const current = groups.get(zone) ?? {
+        zone,
+        label: this.zoneLabel(zone),
+        total: 0,
+        anomalies: 0,
+        critical: 0,
+        checkpoints: []
+      };
+      current.checkpoints.push(checkpoint);
+      groups.set(zone, current);
+    }
+    for (const checkpoint of allByCode.values()) {
+      const zone = checkpoint.zone_controle ?? 'AUTRE';
+      const current = groups.get(zone) ?? {
+        zone,
+        label: this.zoneLabel(zone),
+        total: 0,
+        anomalies: 0,
+        critical: 0,
+        checkpoints: []
+      };
+      current.total += 1;
+      if (checkpoint.est_anomalie === true || Number(checkpoint.penalty_applied || 0) > 0) {
+        current.anomalies += 1;
+      }
+      if (checkpoint.est_anomalie_critique === true) {
+        current.critical += 1;
+      }
+      groups.set(zone, current);
+    }
+    return [...groups.values()].filter((group) => group.checkpoints.length > 0);
+  });
+
+  // --- REAL DATA MAPPED FOR 360 VIEW ---
+  readonly client360 = computed(() => {
+    const c = this.review()?.client_context;
+    const birthDate = c?.date_naissance ? new Date(c.date_naissance) : null;
+    const age = birthDate ? new Date().getFullYear() - birthDate.getFullYear() : null;
+    const ageStr = age ? `, ${age} ans` : '';
     return {
-      marqueModele: 'Peugeot 208',
-      annee: 2019,
-      kilometrage: '145 000 km',
-      vhs: '58/100',
+      anciennete: c ? `${c.nature_client ? c.nature_client.replace(/_/g, ' ').toLowerCase() : 'personne physique'}${ageStr}` : 'Client BNA',
+      contratsActifs: c?.idclt ?? 'Non renseigné',
+      sinistres24m: this.claim()?.client_claim_count_24m ?? 0,
+      dernierSinistre: c?.sexe ?? 'Non renseigné'
+    };
+  });
+
+  readonly vehicule360 = computed(() => {
+    const v = this.vehicle();
+    const vhs = this.review()?.vhs_context;
+    return {
+      marqueModele: v?.immatriculation ?? 'Non renseignée',
+      annee: vhs?.safety_grade ?? 'Non disponible',
+      kilometrage: vhs?.kilometrage ? `${Math.round(vhs.kilometrage).toLocaleString('fr-FR')} km` : 'Kilométrage inconnu',
+      vhs: vhs?.vhs_final_score !== undefined ? `${Math.round(vhs.vhs_final_score)}/100 (${vhs.decision ?? '—'})` : 'Aucun score VHS',
       inspection: this.postInspections().length > 0 ? 'Oui' : 'Non',
       immatriculation: v?.immatriculation ?? 'Inconnue'
     };
   });
 
-  readonly mockConducteur360 = computed(() => ({
-    sinistres: 2,
-    retraitPermis: 'Aucun retrait de permis'
-  }));
+  readonly conducteur360 = computed(() => {
+    const cond = this.review()?.conducteur_context;
+    const name = cond?.nom_conducteur ? cond.nom_conducteur.trim() : 'Conducteur principal';
+    return {
+      sinistres: name,
+      retraitPermis: cond?.numero_permis ? `Permis: ${cond.numero_permis} (Cat. ${cond.categorie_permis ?? 'B'})` : 'Aucun permis saisi'
+    };
+  });
 
-  readonly mockContrat360 = computed(() => ({
-    type: 'Tous risques',
-    depuis: this.claim()?.contract_start_date ? new Date(this.claim()!.contract_start_date!).getFullYear() : 2024,
-    prime: 'Annuelle'
-  }));
+  readonly contrat360 = computed(() => {
+    const con = this.review()?.contract_context;
+    const dateDebut = con?.date_debut_contrat ? new Date(con.date_debut_contrat).getFullYear() : null;
+    const validity = con?.validity_at_claim_date;
+    let validiteLabel = 'Non déterminable (dates de contrat manquantes)';
+    if (validity && validity.is_valid_at_claim_date !== null) {
+      validiteLabel = validity.is_valid_at_claim_date
+        ? 'Couvert à la date du sinistre'
+        : 'Non couvert à la date du sinistre';
+    }
+    return {
+      type: con?.statut_contrat ?? 'Non renseigné',
+      depuis: dateDebut,
+      prime: con?.numero_contrat ?? 'Non renseigné',
+      dateFin: con?.date_fin_contrat ?? null,
+      dateDebutEffet: con?.date_debut_effet ?? null,
+      dateFinEffet: con?.date_fin_effet ?? null,
+      validiteLabel,
+      isValidAtClaimDate: validity?.is_valid_at_claim_date ?? null
+    };
+  });
 
-  readonly mockTiers360 = computed(() => ({
-    compagnie: 'Assurance XYZ',
-    garage: 'Garage Central',
-    expert: 'Cabinet Dupont'
-  }));
+  readonly tiers360 = computed(() => {
+    const t = this.review()?.tiers_context;
+    return {
+      compagnie: t?.nom_tiers ?? 'Aucun tiers identifié',
+      garage: t?.immatriculation_vehicule_tiers ?? 'Non renseignée',
+      expert: t?.numero_contrat_tiers ?? 'Non renseigné'
+    };
+  });
 
-  readonly mockDocuments360 = computed(() => [
-    { type: 'Constat', label: 'constat_amiable.pdf', status: 'present' },
-    { type: 'Photos', label: '3 photos jointes', status: 'present' },
-    { type: 'Rapport expert', label: 'En attente', status: 'missing' }
-  ]);
+  readonly documents360 = computed(() => {
+    const hasInspection = this.postInspections().length > 0;
+    return hasInspection
+      ? [{ type: 'Inspection STAFIM', label: 'Donnée confirmée par la source inspection', status: 'present' }]
+      : [{ type: 'Pièces justificatives', label: 'Aucune pièce confirmée par les données disponibles', status: 'unknown' }];
+  });
 
-  readonly mockGeographie360 = computed(() => ({
-    lieu: 'Tunis, Centre-ville',
-    distanceDomicile: '12 km',
-    zoneSinistralite: 'Forte'
-  }));
+  readonly geographie360 = computed(() => {
+    const g = this.review()?.geo_context;
+    return {
+      lieu: g?.localite ? `${g.localite}, ${g.gouvernorat ?? ''}` : 'Géographie inconnue',
+      distanceDomicile: g?.region ?? 'Non renseignée',
+      zoneSinistralite: g?.pays ?? 'Non renseigné'
+    };
+  });
 
   // --- CHECKLIST / ACTIONS RECOMMANDEES ---
   readonly recommendedActions = computed(() => {
@@ -224,9 +366,6 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
   });
 
   toggleChecklistItem(id: string): void {
-    // In a real app, we might persist this state. Here we can just mutate the array if we make it a state signal,
-    // but since it's computed, we'll need a proper state signal.
-    // To keep it simple without deep state management for this POC, let's create a local signal for checked items.
     const current = new Set(this.checkedActions());
     if (current.has(id)) {
       current.delete(id);
@@ -234,9 +373,38 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
       current.add(id);
     }
     this.checkedActions.set(current);
+    this.persistChecklist();
   }
 
   readonly checkedActions = signal<ReadonlySet<string>>(new Set());
+
+  private checklistStorageKey(): string | null {
+    const email = this.currentUser()?.email;
+    return this.activeClaimSk && email
+      ? `iris.claim-checklist.v1.${email.toLowerCase()}.${this.activeClaimSk}`
+      : null;
+  }
+
+  private restoreChecklist(): void {
+    const key = this.checklistStorageKey();
+    if (!key) {
+      return;
+    }
+    try {
+      const saved = JSON.parse(localStorage.getItem(key) ?? '[]');
+      const validIds = new Set(this.recommendedActions().map((item) => item.id));
+      this.checkedActions.set(new Set((Array.isArray(saved) ? saved : []).filter((id) => validIds.has(id))));
+    } catch {
+      this.checkedActions.set(new Set());
+    }
+  }
+
+  private persistChecklist(): void {
+    const key = this.checklistStorageKey();
+    if (key) {
+      localStorage.setItem(key, JSON.stringify([...this.checkedActions()]));
+    }
+  }
 
 
   readonly scoreTone = computed<'high' | 'medium' | 'low' | 'ok'>(() => {
@@ -315,22 +483,46 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
-    const claimSk = Number(this.route.snapshot.paramMap.get('claimSk'));
-    if (!Number.isInteger(claimSk) || claimSk <= 0) {
-      this.errorMessage.set('Ce dossier est introuvable.');
-      this.loading.set(false);
-      return;
-    }
-    this.subscription = this.api.getClaimReview(claimSk).subscribe({
+    this.subscription = combineLatest([this.route.paramMap, this.route.queryParamMap]).subscribe(([params, queryParams]) => {
+      const claimSk = Number(params.get('claimSk'));
+      if (!Number.isInteger(claimSk) || claimSk <= 0) {
+        this.errorMessage.set('Ce dossier est introuvable.');
+        this.loading.set(false);
+        return;
+      }
+      const returnTo = Number(queryParams.get('returnTo'));
+      this.returnToClaimSk.set(Number.isInteger(returnTo) && returnTo > 0 ? returnTo : null);
+      this.loadClaim(claimSk);
+    });
+  }
+
+  private loadClaim(claimSk: number): void {
+    this.activeClaimSk = claimSk;
+    this.loading.set(true);
+    this.errorMessage.set(null);
+    this.review.set(null);
+    this.decisionHistory.set([]);
+    this.selectedDecision.set(null);
+    this.commentText.set('');
+    this.decisionError.set(null);
+    this.decisionSuccess.set(false);
+    this.activeVhsDetail.set(null);
+    this.selectedInspectionPhoto.set(null);
+
+    this.historySubscription?.unsubscribe();
+    this.vhsDetailSubscription?.unsubscribe();
+
+    this.api.getClaimReview(claimSk).subscribe({
       next: (review) => {
         this.review.set(review);
+        this.restoreChecklist();
         this.loading.set(false);
       },
       error: (error) => {
         this.errorMessage.set(
           error?.status === 404
-            ? 'Ce dossier est introuvable dans la derniere analyse.'
-            : 'La revue de ce dossier est momentanement indisponible. Reessayez dans quelques instants.'
+            ? 'Ce dossier est introuvable dans la dernière analyse.'
+            : 'La revue de ce dossier est momentanément indisponible. Réessayez dans quelques instants.'
         );
         this.loading.set(false);
       }
@@ -338,7 +530,7 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
     this.historySubscription = this.api.getClaimDecisionHistory(claimSk).subscribe({
       next: (res) => this.decisionHistory.set(res.items),
       error: () => {
-        // Non bloquant : l'absence d'historique ne doit pas empecher la lecture du dossier.
+        // Non bloquant : l'absence d'historique ne doit pas empêcher la lecture du dossier.
       }
     });
   }
@@ -434,6 +626,22 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
     return String(value);
   }
 
+  printDossier(): void {
+    window.print();
+  }
+
+  // Code source brut (etatgrnt) : seuls C/O sont documentes et confirmes par
+  // la logique metier existante (etl/dwh/load_fact_sinistre.py::_bool_cloture).
+  // Les autres codes observes (E/G/M, <0.01% des dossiers) restent affiches
+  // en brut plutot que de deviner leur sens.
+  guaranteeStatusLabel(code: string | null | undefined): string {
+    if (!code) {
+      return '—';
+    }
+    const known: Record<string, string> = { C: 'Clos', O: 'Ouvert' };
+    return known[code.toUpperCase()] ?? `Code source : ${code}`;
+  }
+
   amountOf(value: number | string | null | undefined): number | null {
     if (value === null || value === undefined || value === '') {
       return null;
@@ -456,6 +664,68 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
     return level ?? '—';
   }
 
+  private groupPostInspections(items: ClaimPostInspectionItem[]): GroupedPostInspectionItem[] {
+    const groups = new Map<string, GroupedPostInspectionItem>();
+    for (const item of items) {
+      const key = [
+        item.inspection_sk ?? 'no-sk',
+        item.immatriculation ?? '',
+        item.inspection_date ?? '',
+        item.days_inspection_to_claim ?? ''
+      ].join('|');
+      const current = groups.get(key) ?? {
+        ...item,
+        defective_zones: [],
+        checkpoint_labels: [],
+        signal_count: 0,
+        max_critical_checkpoint_count: 0
+      };
+
+      current.signal_count += 1;
+      current.defective_checkpoint_count = Math.max(
+        Number(current.defective_checkpoint_count ?? 0),
+        Number(item.defective_checkpoint_count ?? 0)
+      );
+      current.critical_checkpoint_count = Math.max(
+        Number(current.critical_checkpoint_count ?? 0),
+        Number(item.critical_checkpoint_count ?? 0)
+      );
+      current.max_critical_checkpoint_count = Math.max(
+        current.max_critical_checkpoint_count,
+        Number(item.critical_checkpoint_count ?? 0)
+      );
+      if (item.defective_zone && !current.defective_zones.includes(item.defective_zone)) {
+        current.defective_zones.push(item.defective_zone);
+      }
+      for (const label of this.checkpointLabels(item)) {
+        if (!current.checkpoint_labels.includes(label)) {
+          current.checkpoint_labels.push(label);
+        }
+      }
+      if (!current.business_explanation && item.business_explanation) {
+        current.business_explanation = item.business_explanation;
+      }
+      groups.set(key, current);
+    }
+    return [...groups.values()].sort((a, b) => Number(a.days_inspection_to_claim ?? 99999) - Number(b.days_inspection_to_claim ?? 99999));
+  }
+
+  relatedClaimQueryParams(): { returnTo?: number } | null {
+    const current = this.claim()?.claim_sk;
+    return current ? { returnTo: current } : null;
+  }
+  relatedClaimLabel(item: ClaimRelatedItem): string {
+    const root = item.numero_sinistre ?? item.claim_business_id ?? `#${item.claim_sk}`;
+    const garantie = item.code_garantie ? ` | ${item.code_garantie}` : '';
+    return `${root}${garantie}`;
+  }
+
+  relatedClaimAmount(item: ClaimRelatedItem): string {
+    if (item.claim_amount === null || item.claim_amount === undefined) {
+      return 'Montant non renseigné';
+    }
+    return `${Math.round(Number(item.claim_amount)).toLocaleString('fr-FR')} TND`;
+  }
   delayBucketLabel(bucket: string | null | undefined): string {
     if (!bucket) {
       return '';
@@ -500,7 +770,7 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
     const normalized = level
       .toLowerCase()
       .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '');
+      .replace(/[\u0300-\u036f]/g, '');
     if (normalized.includes('priorit')) {
       return 'high';
     }
@@ -662,7 +932,7 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
     const normalized = family
       .toUpperCase()
       .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '');
+      .replace(/[\u0300-\u036f]/g, '');
     for (const [key, label] of Object.entries(FAMILY_LABELS)) {
       if (normalized.includes(key)) {
         return label;
@@ -674,6 +944,100 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
       .replace(/^\w/, (char) => char.toUpperCase());
   }
 
+  setInspectionCheckpointFilter(filter: InspectionCheckpointFilter): void {
+    this.inspectionCheckpointFilter.set(filter);
+  }
+
+  inspectionCheckpointFilterLabel(filter: InspectionCheckpointFilter): string {
+    const labels: Record<InspectionCheckpointFilter, string> = {
+      all: 'Tous',
+      anomalies: 'Anomalies',
+      critical: 'Critiques'
+    };
+    return labels[filter];
+  }
+
+  zoneLabel(zone: string | null | undefined): string {
+    if (!zone) {
+      return 'Autre';
+    }
+    return ZONE_LABELS[zone] ?? zone.toLowerCase().replace(/_/g, ' ');
+  }
+
+  checkpointTone(checkpoint: VhsCheckpointItem): 'ok' | 'medium' | 'high' | 'unknown' {
+    if (checkpoint.est_anomalie_critique === true || checkpoint.is_vital === true || checkpoint.is_immobilizing === true) {
+      return 'high';
+    }
+    if (checkpoint.est_anomalie === true || Number(checkpoint.penalty_applied || 0) > 0) {
+      return 'medium';
+    }
+    if (checkpoint.est_controle_renseigne === true) {
+      return 'ok';
+    }
+    return 'unknown';
+  }
+
+  inspectionImageUrl(image: VhsImageLink): string | null {
+    if (!image.asset_url) {
+      return null;
+    }
+    if (/^https?:\/\//i.test(image.asset_url)) {
+      return image.asset_url;
+    }
+    const apiRoot = this.api.apiBaseUrl.replace(/\/api$/, '');
+    return `${apiRoot}${image.asset_url}`;
+  }
+
+  inspectionImageLabel(image: VhsImageLink): string {
+    return image.slot.replace('image', 'Photo ');
+  }
+
+
+  openInspectionPhoto(image: VhsImageLink): void {
+    if (this.inspectionAssetKind(image) !== 'image') {
+      return;
+    }
+    const url = this.inspectionImageUrl(image);
+    if (!url) {
+      return;
+    }
+    this.selectedInspectionPhoto.set({ url, label: this.inspectionImageLabel(image) });
+  }
+
+  closeInspectionPhoto(): void {
+    this.selectedInspectionPhoto.set(null);
+  }
+  inspectionImageStatusLabel(image: VhsImageLink): string {
+    const mime = (image.display_mime_type ?? image.mime_type ?? '').toLowerCase();
+    if (image.is_imported && ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'].includes(mime)) {
+      return 'Affichee dans IRIS';
+    }
+    if (image.is_imported) {
+      return 'Apercu a generer';
+    }
+    if (image.storage_status === 'ERROR') {
+      return 'Erreur import';
+    }
+    return 'Non integree';
+  }
+
+  inspectionAssetKind(image: VhsImageLink): 'image' | 'heic' | 'pdf' | 'document' | 'missing' {
+    if (!image.is_imported || !image.asset_url) {
+      return 'missing';
+    }
+    const mime = (image.display_mime_type ?? image.mime_type ?? '').toLowerCase();
+    if (mime === 'image/heic' || mime === 'image/heif') {
+      return 'heic';
+    }
+    if (['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'].includes(mime)) {
+      return 'image';
+    }
+    if (mime === 'application/pdf') {
+      return 'pdf';
+    }
+    return 'document';
+  }
+
   openVhsModal(item: { inspection_sk?: number | null; immatriculation?: string | null; inspection_date?: string | null }): void {
     const immatriculation = item.immatriculation;
     const inspectionDate = item.inspection_date;
@@ -682,6 +1046,7 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
       return;
     }
     this.vhsModalLoading.set(true);
+    this.inspectionCheckpointFilter.set('all');
     this.vhsDetailSubscription?.unsubscribe();
     this.vhsDetailSubscription = this.api.getVhsInspectionDetailByKey(immatriculation, inspectionDate).subscribe({
       next: (detail) => {
@@ -745,3 +1110,14 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
     return labels[status.toUpperCase()] ?? status;
   }
 }
+
+
+
+
+
+
+
+
+
+
+

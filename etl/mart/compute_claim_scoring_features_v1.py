@@ -44,6 +44,21 @@ PROFILE_NAME = "CLAIM_ATTENTION_FEATURES_V1_CANDIDATE"
 
 DDL_CREATE_SCHEMA = "CREATE SCHEMA IF NOT EXISTS mart;"
 
+# mart.fact_claim_scoring_features is append-only across runs (history is kept
+# for audit), so it is never dropped/recreated like DWH tables -- CREATE TABLE
+# IF NOT EXISTS is a no-op once the table already exists. New columns added to
+# the DDL above must also be migrated in explicitly here, or INSERT fails with
+# UndefinedColumn against a table created by an older version of this script.
+DDL_MIGRATE_FINANCIAL_COLUMNS = """
+ALTER TABLE mart.fact_claim_scoring_features
+    ADD COLUMN IF NOT EXISTS reserve_amount   NUMERIC(18,2),
+    ADD COLUMN IF NOT EXISTS paid_amount      NUMERIC(18,2),
+    ADD COLUMN IF NOT EXISTS recourse_amount  NUMERIC(18,2),
+    ADD COLUMN IF NOT EXISTS franchise_amount NUMERIC(18,2),
+    ADD COLUMN IF NOT EXISTS guarantee_status TEXT,
+    ADD COLUMN IF NOT EXISTS is_closed        BOOLEAN;
+"""
+
 DDL_FACT_CLAIM_SCORING_FEATURES = """
 CREATE TABLE IF NOT EXISTS mart.fact_claim_scoring_features (
     claim_feature_sk                 BIGSERIAL PRIMARY KEY,
@@ -66,6 +81,12 @@ CREATE TABLE IF NOT EXISTS mart.fact_claim_scoring_features (
     declaration_date                 DATE,
     contract_start_date              DATE,
     claim_amount                     NUMERIC(18,2),
+    reserve_amount                   NUMERIC(18,2),
+    paid_amount                      NUMERIC(18,2),
+    recourse_amount                  NUMERIC(18,2),
+    franchise_amount                 NUMERIC(18,2),
+    guarantee_status                 TEXT,
+    is_closed                        BOOLEAN,
     client_claim_count_total         INTEGER,
     client_claim_count_12m           INTEGER,
     client_claim_count_24m           INTEGER,
@@ -127,6 +148,12 @@ SOURCE_COLUMNS = [
     "date_survenance_sk",
     "date_declaration_sk",
     "montant_evaluation",
+    "montant_reserve",
+    "montant_reglement",
+    "montant_recours",
+    "montant_franchise",
+    "etat_garantie_sinistre",
+    "est_cloture",
 ]
 
 FEATURE_COLUMNS = [
@@ -149,6 +176,12 @@ FEATURE_COLUMNS = [
     "declaration_date",
     "contract_start_date",
     "claim_amount",
+    "reserve_amount",
+    "paid_amount",
+    "recourse_amount",
+    "franchise_amount",
+    "guarantee_status",
+    "is_closed",
     "client_claim_count_total",
     "client_claim_count_12m",
     "client_claim_count_24m",
@@ -260,6 +293,12 @@ def normalize_claim_source(df_claims: pd.DataFrame) -> pd.DataFrame:
         "date_survenance_sk": "claim_date_sk",
         "date_declaration_sk": "declaration_date_sk",
         "montant_evaluation": "claim_amount",
+        "montant_reserve": "reserve_amount",
+        "montant_reglement": "paid_amount",
+        "montant_recours": "recourse_amount",
+        "montant_franchise": "franchise_amount",
+        "etat_garantie_sinistre": "guarantee_status",
+        "est_cloture": "is_closed",
     })
     for col in [
         "claim_sk",
@@ -276,6 +315,12 @@ def normalize_claim_source(df_claims: pd.DataFrame) -> pd.DataFrame:
     ]:
         df[col] = _safe_int_series(df[col])
     df["claim_amount"] = _safe_numeric_series(df["claim_amount"])
+    for col in ["reserve_amount", "paid_amount", "recourse_amount", "franchise_amount"]:
+        df[col] = _safe_numeric_series(df[col])
+    df["guarantee_status"] = df["guarantee_status"].map(
+        lambda v: str(v).strip().upper() if pd.notna(v) and str(v).strip() else pd.NA
+    )
+    df["is_closed"] = df["is_closed"].astype("boolean")
     df["claim_date"] = date_key_series_to_timestamp(df["claim_date_sk"])
     df["declaration_date"] = date_key_series_to_timestamp(df["declaration_date_sk"])
     return df
@@ -702,6 +747,7 @@ def compute_claim_scoring_features_v1():
     with engine.begin() as conn:
         conn.execute(text(DDL_CREATE_SCHEMA))
         conn.execute(text(DDL_FACT_CLAIM_SCORING_FEATURES))
+        conn.execute(text(DDL_MIGRATE_FINANCIAL_COLUMNS))
     logger.info("DDL ensured for mart.fact_claim_scoring_features")
 
     df_claims = _read_claim_source(engine)

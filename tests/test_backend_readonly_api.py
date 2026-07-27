@@ -261,6 +261,124 @@ def test_timeline_groups_same_stafim_inspection_into_one_event():
     assert "SOUS_VEHICULE" in stafim_events[0]["description"]
 
 
+def test_contract_validity_uses_effet_dates_when_present():
+    from datetime import date
+    from backend.services.claim_review_service import _contract_validity_at_claim_date
+
+    contract = _FakeRow({
+        "date_debut_effet": date(2024, 1, 1),
+        "date_fin_effet": date(2025, 1, 1),
+        "date_debut_contrat": date(2020, 1, 1),
+        "date_fin_contrat": date(2030, 1, 1),
+        "statut_contrat": "EN COURS",
+    })
+
+    result = _contract_validity_at_claim_date(contract, date(2024, 6, 1))
+    assert result == {"is_valid_at_claim_date": True, "reference": "effet", "statut_contrat": "EN COURS"}
+
+
+def test_contract_validity_false_when_claim_before_or_after_coverage():
+    from datetime import date
+    from backend.services.claim_review_service import _contract_validity_at_claim_date
+
+    contract = _FakeRow({
+        "date_debut_effet": date(2024, 1, 1),
+        "date_fin_effet": date(2025, 1, 1),
+        "date_debut_contrat": None,
+        "date_fin_contrat": None,
+        "statut_contrat": "EXPIRE",
+    })
+
+    before = _contract_validity_at_claim_date(contract, date(2023, 12, 31))
+    after = _contract_validity_at_claim_date(contract, date(2025, 1, 2))
+    assert before["is_valid_at_claim_date"] is False
+    assert after["is_valid_at_claim_date"] is False
+
+
+def test_contract_validity_falls_back_to_contract_dates_without_effet():
+    from datetime import date
+    from backend.services.claim_review_service import _contract_validity_at_claim_date
+
+    contract = _FakeRow({
+        "date_debut_effet": None,
+        "date_fin_effet": None,
+        "date_debut_contrat": date(2020, 1, 1),
+        "date_fin_contrat": date(2030, 1, 1),
+        "statut_contrat": "EN COURS",
+    })
+
+    result = _contract_validity_at_claim_date(contract, date(2024, 6, 1))
+    assert result["is_valid_at_claim_date"] is True
+    assert result["reference"] == "contrat"
+
+
+def test_contract_validity_true_when_no_end_date_yet():
+    from datetime import date
+    from backend.services.claim_review_service import _contract_validity_at_claim_date
+
+    contract = _FakeRow({
+        "date_debut_effet": date(2024, 1, 1),
+        "date_fin_effet": None,
+        "date_debut_contrat": None,
+        "date_fin_contrat": None,
+        "statut_contrat": "EN COURS",
+    })
+
+    result = _contract_validity_at_claim_date(contract, date(2030, 6, 1))
+    assert result["is_valid_at_claim_date"] is True
+
+
+def test_contract_validity_none_without_contract_or_claim_date():
+    from datetime import date
+    from backend.services.claim_review_service import _contract_validity_at_claim_date
+
+    contract = _FakeRow({
+        "date_debut_effet": date(2024, 1, 1),
+        "date_fin_effet": None,
+        "date_debut_contrat": None,
+        "date_fin_contrat": None,
+        "statut_contrat": "EN COURS",
+    })
+
+    assert _contract_validity_at_claim_date(None, date(2024, 6, 1)) is None
+    assert _contract_validity_at_claim_date(contract, None) is None
+
+
+def test_contract_validity_handles_mixed_date_and_datetime_types():
+    # dwh.fact_sinistre.claim_date is DATE but dwh.dim_contrat's dates are
+    # TIMESTAMP: this mirrors the real column types (regression test for a
+    # TypeError: can't compare datetime.datetime to datetime.date).
+    from datetime import date, datetime
+    from backend.services.claim_review_service import _contract_validity_at_claim_date
+
+    contract = _FakeRow({
+        "date_debut_effet": datetime(2024, 1, 1, 0, 0, 0),
+        "date_fin_effet": datetime(2025, 1, 1, 0, 0, 0),
+        "date_debut_contrat": None,
+        "date_fin_contrat": None,
+        "statut_contrat": "EN COURS",
+    })
+
+    result = _contract_validity_at_claim_date(contract, date(2024, 6, 1))
+    assert result["is_valid_at_claim_date"] is True
+
+
+def test_contract_validity_unknown_when_no_start_date_at_all():
+    from datetime import date
+    from backend.services.claim_review_service import _contract_validity_at_claim_date
+
+    contract = _FakeRow({
+        "date_debut_effet": None,
+        "date_fin_effet": None,
+        "date_debut_contrat": None,
+        "date_fin_contrat": None,
+        "statut_contrat": "INCONNU",
+    })
+
+    result = _contract_validity_at_claim_date(contract, date(2024, 6, 1))
+    assert result == {"is_valid_at_claim_date": None, "reference": None, "statut_contrat": "INCONNU"}
+
+
 def test_timeline_keeps_distinct_inspections_separate():
     from backend.services.claim_review_service import _timeline_from_feature_and_inspections
 

@@ -1,4 +1,4 @@
-"""Aggregated read-only claim review service for the IRIS frontend API."""
+﻿"""Aggregated read-only claim review service for the IRIS frontend API."""
 from __future__ import annotations
 
 import ast
@@ -83,6 +83,41 @@ def _confidence_explanation(
     if weak_join:
         reasons.append("jointures défaillantes")
     return f"Confiance limitée : {', '.join(reasons)}."
+
+
+def _contract_validity_at_claim_date(contract_row, claim_date) -> dict | None:
+    """Was the contract in effect on the day the claim occurred?
+
+    Prefers date_debut_effet/date_fin_effet (the actual coverage window, which
+    can differ from the nominal contract term after avenants) and falls back
+    to date_debut_contrat/date_fin_contrat when effet dates are missing. Both
+    the computed answer and the raw statut_contrat are returned so a manager
+    can spot a discrepancy (e.g. dates say valid but statut says resilie)
+    instead of trusting a single ambiguous label.
+    """
+    if not contract_row or not claim_date:
+        return None
+    data = contract_row._mapping
+    debut = data.get("date_debut_effet") or data.get("date_debut_contrat")
+    fin = data.get("date_fin_effet") or data.get("date_fin_contrat")
+    if not debut:
+        return {
+            "is_valid_at_claim_date": None,
+            "reference": None,
+            "statut_contrat": data.get("statut_contrat"),
+        }
+    reference = "effet" if data.get("date_debut_effet") else "contrat"
+    # dwh.fact_sinistre.claim_date is a DATE column but dwh.dim_contrat's dates
+    # are TIMESTAMP -- comparing date to datetime raises TypeError, so normalize
+    # everything to date() before comparing.
+    _as_date = lambda v: v.date() if hasattr(v, "date") else v
+    claim_date, debut, fin = _as_date(claim_date), _as_date(debut), _as_date(fin)
+    is_valid = debut <= claim_date and (fin is None or claim_date <= fin)
+    return {
+        "is_valid_at_claim_date": is_valid,
+        "reference": reference,
+        "statut_contrat": data.get("statut_contrat"),
+    }
 
 
 def _timeline_from_feature_and_inspections(feature_row, inspection_rows) -> list[dict]:
@@ -226,6 +261,27 @@ def get_claim_review(
         if not claim_row:
             return None
 
+        # Financial/guarantee fields are descriptive, not scoring inputs: they
+        # are read from the LATEST feature row for this claim, independently
+        # of the score's pinned feature_run_id. Pinning them the same way as
+        # the scoring fields would leave them NULL for every already-scored
+        # claim whenever these columns are added or refreshed without a full
+        # rescore (ALTER TABLE backfills existing rows with NULL, and a new
+        # feature run gets a feature_run_id the score row doesn't reference).
+        financial_row = conn.execute(
+            text(
+                """
+                SELECT reserve_amount, paid_amount, recourse_amount, franchise_amount,
+                       guarantee_status, is_closed
+                FROM mart.fact_claim_scoring_features
+                WHERE claim_sk = :claim_sk
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            ),
+            {"claim_sk": claim_sk},
+        ).first()
+
         signal_rows = conn.execute(
             text(
                 """
@@ -357,7 +413,9 @@ def get_claim_review(
             contract_row = conn.execute(
                 text(
                     """
-                    SELECT contrat_sk, numero_contrat, date_debut_contrat, statut_contrat
+                    SELECT contrat_sk, numero_contrat, date_debut_contrat, date_fin_contrat,
+                           date_debut_effet, date_fin_effet, statut_contrat,
+                           type_resiliation, libelle_resiliation
                     FROM dwh.dim_contrat
                     WHERE contrat_sk = :contrat_sk
                     """
@@ -404,6 +462,71 @@ def get_claim_review(
                 {"geo_sk": claim_row._mapping["claim_geo_sk"]},
             ).first()
 
+        same_sinistre_rows = []
+        client_history_rows = []
+        claim_map = claim_row._mapping if claim_row else {}
+        if claim_map.get("numero_sinistre"):
+            
+            same_sinistre_rows = conn.execute(
+                text(
+                    """
+                    SELECT
+                        f.claim_sk,
+                        f.claim_business_id,
+                        f.numero_sinistre,
+                        f.code_garantie,
+                        f.claim_date,
+                        f.claim_amount,
+                        s.attention_score,
+                        s.attention_level
+                    FROM mart.fact_claim_scoring_features f
+                    LEFT JOIN mart.fact_claim_attention_score s
+                      ON s.claim_sk = f.claim_sk
+                     AND s.feature_run_id = f.feature_run_id
+                     AND s.score_version = :score_version
+                     AND s.score_run_id = :score_run_id
+                    WHERE f.feature_run_id = :feature_run_id
+                      AND f.numero_sinistre = :numero_sinistre
+                    ORDER BY f.code_garantie NULLS LAST, f.claim_sk
+                    """
+                ),
+                {
+                    "feature_run_id": claim_map.get("feature_run_id"),
+                    "numero_sinistre": claim_map.get("numero_sinistre"),
+                    "score_version": selected_version,
+                    "score_run_id": selected_score_run_id,
+                },
+            ).fetchall()
+
+        if claim_map.get("client_sk") and claim_map.get("claim_date"):
+            
+            client_history_rows = conn.execute(
+                text(
+                    """
+                    SELECT
+                        f.claim_sk,
+                        f.claim_business_id,
+                        f.numero_sinistre,
+                        f.code_garantie,
+                        f.claim_date,
+                        f.claim_amount,
+                        f.days_claim_to_declaration
+                    FROM mart.fact_claim_scoring_features f
+                    WHERE f.feature_run_id = :feature_run_id
+                      AND f.client_sk = :client_sk
+                      AND f.claim_date < :claim_date
+                      AND f.claim_date >= (CAST(:claim_date AS date) - INTERVAL '24 months')
+                    ORDER BY f.claim_date DESC, f.numero_sinistre, f.code_garantie
+                    LIMIT 50
+                    """
+                ),
+                {
+                    "feature_run_id": claim_map.get("feature_run_id"),
+                    "client_sk": claim_map.get("client_sk"),
+                    "claim_date": claim_map.get("claim_date"),
+                },
+            ).fetchall()
+
         vhs_row = None
         if claim_row and claim_row._mapping.get("vehicle_sk"):
             vhs_row = conn.execute(
@@ -420,7 +543,9 @@ def get_claim_review(
             ).first()
 
     claim_data = row_to_dict(claim_row)
-    
+    if financial_row:
+        claim_data.update(row_to_dict(financial_row))
+
     # 1. Parse and enrich signals
     signal_items = rows_to_dicts(signal_rows)
     for sig in signal_items:
@@ -543,11 +668,22 @@ def get_claim_review(
         },
         "ml_anomaly": row_to_dict(ml_row) if ml_row else None,
         "vehicle": vehicle_data,
+        "related_claims": {
+            "same_sinistre_guarantees": rows_to_dicts(same_sinistre_rows),
+            "client_history_24m": rows_to_dicts(client_history_rows),
+        },
         "checklist": checklist,
         "client_context": row_to_dict(client_row) if client_row else None,
-        "contract_context": row_to_dict(contract_row) if contract_row else None,
+        "contract_context": {
+            **(row_to_dict(contract_row) if contract_row else {}),
+            "validity_at_claim_date": _contract_validity_at_claim_date(
+                contract_row, claim_row._mapping.get("claim_date") if claim_row else None
+            ),
+        } if contract_row else None,
         "conducteur_context": row_to_dict(conducteur_row) if conducteur_row else None,
         "tiers_context": row_to_dict(tiers_row) if tiers_row else None,
         "geo_context": row_to_dict(geo_row) if geo_row else None,
         "vhs_context": row_to_dict(vhs_row) if vhs_row else None,
     }
+
+

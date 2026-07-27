@@ -1,5 +1,24 @@
-<div class="claim-review">
-  <a class="claim-review__back" routerLink="/app/claims">&#8592; Retour a la file de travail</a>
+﻿<div class="claim-review">
+  <div class="claim-review__topbar">
+    <a class="claim-review__back" routerLink="/app/claims">&#8592; Retour a la file de travail</a>
+    @if (claim()) {
+      <button type="button" class="iris-button iris-button--ghost claim-review__print" (click)="printDossier()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 6 2 18 2 18 9" />
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+          <rect x="6" y="14" width="12" height="8" />
+        </svg>
+        Imprimer / PDF
+      </button>
+    }
+  </div>
+
+  @if (showReturnToWorkClaim()) {
+    <aside class="claim-review__return-context" aria-label="Retour au dossier en cours">
+      <span>Consultation d'un dossier lié</span>
+      <a [routerLink]="['/app/claims', returnToClaimSk()]">Revenir au dossier en cours de traitement</a>
+    </aside>
+  }
 
   @if (loading()) {
     <section class="claim-review__loading" aria-label="Chargement du dossier">
@@ -14,7 +33,7 @@
   } @else if (claim(); as c) {
     <header class="claim-review__hero iris-card" [attr.data-tone]="scoreTone()">
       <div class="claim-review__gauge" role="img" [attr.aria-label]="'Score attention ' + c.attention_score + ' sur 100'">
-        <svg viewBox="0 0 120 120" width="112" height="112">
+        <svg viewBox="0 0 120 120" width="76" height="76">
           <circle class="gauge-track" cx="60" cy="60" r="54" />
           <circle
             class="gauge-value"
@@ -121,10 +140,10 @@
                 <h3>Client</h3>
               </header>
               <ul>
-                <li><span>Ancienneté</span> <strong>{{ mockClient360().anciennete }}</strong></li>
-                <li><span>Contrats actifs</span> <strong>{{ mockClient360().contratsActifs }}</strong></li>
-                <li><span>Sinistres (24m)</span> <strong>{{ mockClient360().sinistres24m }}</strong></li>
-                <li><span>Dernier sinistre</span> <strong>{{ mockClient360().dernierSinistre }}</strong></li>
+                <li><span>Nature / âge</span> <strong>{{ client360().anciennete }}</strong></li>
+                <li><span>Identifiant client</span> <strong>{{ client360().contratsActifs }}</strong></li>
+                <li><span>Sinistres (24m)</span> <strong>{{ client360().sinistres24m }}</strong></li>
+                <li><span>Profil déclaré</span> <strong>{{ client360().dernierSinistre }}</strong></li>
               </ul>
             </article>
 
@@ -135,10 +154,10 @@
                 <h3>Véhicule</h3>
               </header>
               <ul>
-                <li><span>Modèle</span> <strong>{{ mockVehicule360().marqueModele }}</strong></li>
-                <li><span>Année</span> <strong>{{ mockVehicule360().annee }}</strong></li>
-                <li><span>Kilométrage</span> <strong>{{ mockVehicule360().kilometrage }}</strong></li>
-                <li><span>VHS</span> <strong>{{ mockVehicule360().vhs }}</strong></li>
+                <li><span>Immatriculation</span> <strong>{{ vehicule360().marqueModele }}</strong></li>
+                <li><span>Grade sécurité VHS</span> <strong>{{ vehicule360().annee }}</strong></li>
+                <li><span>Kilométrage</span> <strong>{{ vehicule360().kilometrage }}</strong></li>
+                <li><span>VHS</span> <strong>{{ vehicule360().vhs }}</strong></li>
               </ul>
             </article>
 
@@ -149,8 +168,8 @@
                 <h3>Conducteur</h3>
               </header>
               <ul>
-                <li><span>Sinistres (passé)</span> <strong>{{ mockConducteur360().sinistres }}</strong></li>
-                <li><span>Permis</span> <strong>{{ mockConducteur360().retraitPermis }}</strong></li>
+                <li><span>Identité</span> <strong>{{ conducteur360().sinistres }}</strong></li>
+                <li><span>Permis</span> <strong>{{ conducteur360().retraitPermis }}</strong></li>
               </ul>
             </article>
 
@@ -161,9 +180,19 @@
                 <h3>Contrat</h3>
               </header>
               <ul>
-                <li><span>Type</span> <strong>{{ mockContrat360().type }}</strong></li>
-                <li><span>Depuis</span> <strong>{{ mockContrat360().depuis }}</strong></li>
-                <li><span>Prime</span> <strong>{{ mockContrat360().prime }}</strong></li>
+                <li><span>Statut</span> <strong>{{ contrat360().type }}</strong></li>
+                <li>
+                  <span>Début du contrat</span>
+                  <strong>{{ (contrat360().dateDebutEffet ?? null) ? (contrat360().dateDebutEffet | date: 'dd/MM/yyyy') : (contrat360().depuis ?? '—') }}</strong>
+                </li>
+                <li>
+                  <span>Fin du contrat</span>
+                  <strong>{{ (contrat360().dateFinEffet ?? contrat360().dateFin) ? ((contrat360().dateFinEffet ?? contrat360().dateFin) | date: 'dd/MM/yyyy') : 'Non renseignée' }}</strong>
+                </li>
+                <li><span>Numéro de contrat</span> <strong>{{ contrat360().prime }}</strong></li>
+                <li [attr.data-tone]="contrat360().isValidAtClaimDate === false ? 'high' : contrat360().isValidAtClaimDate === true ? 'ok' : 'unknown'">
+                  <span>Validité à la date du sinistre</span> <strong>{{ contrat360().validiteLabel }}</strong>
+                </li>
               </ul>
             </article>
 
@@ -174,9 +203,9 @@
                 <h3>Tiers</h3>
               </header>
               <ul>
-                <li><span>Compagnie</span> <strong>{{ mockTiers360().compagnie }}</strong></li>
-                <li><span>Garage</span> <strong>{{ mockTiers360().garage }}</strong></li>
-                <li><span>Expert</span> <strong>{{ mockTiers360().expert }}</strong></li>
+                <li><span>Identité</span> <strong>{{ tiers360().compagnie }}</strong></li>
+                <li><span>Immatriculation</span> <strong>{{ tiers360().garage }}</strong></li>
+                <li><span>Contrat tiers</span> <strong>{{ tiers360().expert }}</strong></li>
               </ul>
             </article>
 
@@ -187,7 +216,7 @@
                 <h3>Documents</h3>
               </header>
               <ul>
-                @for (doc of mockDocuments360(); track doc.type) {
+                @for (doc of documents360(); track doc.type) {
                   <li [attr.data-status]="doc.status">
                     <span>{{ doc.type }}</span>
                     <small>{{ doc.label }}</small>
@@ -203,18 +232,81 @@
                 <h3>Géographie</h3>
               </header>
               <ul>
-                <li><span>Lieu</span> <strong>{{ mockGeographie360().lieu }}</strong></li>
-                <li><span>Distance</span> <strong>{{ mockGeographie360().distanceDomicile }}</strong></li>
-                <li><span>Sinistralité</span> <strong>{{ mockGeographie360().zoneSinistralite }}</strong></li>
+                <li><span>Lieu</span> <strong>{{ geographie360().lieu }}</strong></li>
+                <li><span>Région</span> <strong>{{ geographie360().distanceDomicile }}</strong></li>
+                <li><span>Pays</span> <strong>{{ geographie360().zoneSinistralite }}</strong></li>
               </ul>
             </article>
           </div>
         </section>
 
+        @if (sameSinistreGuarantees().length > 1 || clientHistory24m().length > 0) {
+          <section class="iris-card claim-review__section claim-review__evidence" aria-label="Preuves et dossiers lies">
+            <h2>Preuves et dossiers liés</h2>
+            <p class="claim-review__hint">
+              Les compteurs affichés sont rattachés aux lignes sources disponibles dans le mart. Le gestionnaire peut vérifier les garanties du même sinistre et l'historique client utilisé par IRIS.
+            </p>
+
+            <div class="evidence-grid">
+              @if (sameSinistreGuarantees().length > 1) {
+                <article class="evidence-card">
+                  <header>
+                    <h3>Même sinistre, garanties liées</h3>
+                    <span>{{ sameSinistreGuarantees().length }} garantie(s)</span>
+                  </header>
+                  <ul>
+                    @for (item of sameSinistreGuarantees(); track item.claim_sk) {
+                      <li [class.is-current]="item.claim_sk === claim()?.claim_sk">
+                        <a [routerLink]="['/app/claims', item.claim_sk]" [queryParams]="relatedClaimQueryParams()">
+                          <strong>{{ relatedClaimLabel(item) }}</strong>
+                          <small>
+                            {{ item.claim_date ? (item.claim_date | date:'dd/MM/yyyy') : 'Date inconnue' }} ·
+                            {{ relatedClaimAmount(item) }}
+                            @if (item.attention_score !== null && item.attention_score !== undefined) {
+                              · score {{ item.attention_score }}/100
+                            }
+                          </small>
+                        </a>
+                      </li>
+                    }
+                  </ul>
+                </article>
+              }
+
+              <article class="evidence-card">
+                <header>
+                  <h3>Preuve historique client</h3>
+                  <span>{{ clientHistory12m().length }} / {{ clientHistory24m().length }}</span>
+                </header>
+                <p class="evidence-card__summary">
+                  Compteur dossier : {{ claim()?.client_claim_count_12m ?? 0 }} sinistre(s) sur 12 mois,
+                  {{ claim()?.client_claim_count_24m ?? 0 }} sur 24 mois.
+                </p>
+                @if (clientHistory24m().length > 0) {
+                  <ul>
+                    @for (item of clientHistory24m(); track item.claim_sk) {
+                      <li>
+                        <a [routerLink]="['/app/claims', item.claim_sk]" [queryParams]="relatedClaimQueryParams()">
+                          <strong>{{ relatedClaimLabel(item) }}</strong>
+                          <small>
+                            {{ item.claim_date ? (item.claim_date | date:'dd/MM/yyyy') : 'Date inconnue' }} ·
+                            {{ relatedClaimAmount(item) }}
+                          </small>
+                        </a>
+                      </li>
+                    }
+                  </ul>
+                } @else {
+                  <p class="claim-review__empty">Aucune ligne historique détaillée disponible pour ce client dans la fenêtre 24 mois.</p>
+                }
+              </article>
+            </div>
+          </section>
+        }
         <section class="iris-card claim-review__section" aria-label="Chronologie">
           <h2>Chronologie du dossier</h2>
           <p class="claim-review__hint">
-            Les delais entre etapes peuvent reveler un contexte utile a la decision.
+            Les délais entre étapes peuvent révéler un contexte utile a la decision.
           </p>
           @if (timelineNodes().length === 0) {
             <p class="claim-review__empty">Aucun evenement date n est disponible pour ce dossier.</p>
@@ -288,6 +380,60 @@
           </dl>
         </section>
 
+        <section class="iris-card claim-review__section" aria-label="Situation financiere">
+          <h2>Situation financière</h2>
+          <dl class="fact-list">
+            <div>
+              <dt>Montant déclaré</dt>
+              <dd>
+                @if (amountOf(c.claim_amount); as amount) {
+                  {{ amount | number: '1.0-0' }} TND
+                } @else { — }
+              </dd>
+            </div>
+            <div>
+              <dt>Réserve</dt>
+              <dd>
+                @if (amountOf(c.reserve_amount) !== null) {
+                  {{ amountOf(c.reserve_amount) | number: '1.0-0' }} TND
+                } @else { — }
+              </dd>
+            </div>
+            <div>
+              <dt>Montant payé</dt>
+              <dd>
+                @if (amountOf(c.paid_amount) !== null) {
+                  {{ amountOf(c.paid_amount) | number: '1.0-0' }} TND
+                } @else { — }
+              </dd>
+            </div>
+            <div>
+              <dt>Franchise</dt>
+              <dd>
+                @if (amountOf(c.franchise_amount) !== null) {
+                  {{ amountOf(c.franchise_amount) | number: '1.0-0' }} TND
+                } @else { Non renseignée dans la source }
+              </dd>
+            </div>
+            <div>
+              <dt>Recours</dt>
+              <dd>
+                @if (amountOf(c.recourse_amount) !== null) {
+                  {{ amountOf(c.recourse_amount) | number: '1.0-0' }} TND
+                } @else { — }
+              </dd>
+            </div>
+            <div>
+              <dt>Statut de la garantie</dt>
+              <dd>{{ guaranteeStatusLabel(c.guarantee_status) }}</dd>
+            </div>
+            <div>
+              <dt>État du dossier</dt>
+              <dd>{{ c.is_closed === true ? 'Clôturé' : c.is_closed === false ? 'Ouvert' : '—' }}</dd>
+            </div>
+          </dl>
+        </section>
+
         <section class="iris-card claim-review__section" aria-label="Vehicule et inspection">
           <h2>Vehicule</h2>
           @if (hasVehicleIdentified()) {
@@ -299,7 +445,7 @@
             </dl>
 
             @if (postInspections().length > 0) {
-              @for (item of postInspections(); track $index) {
+              @for (item of postInspections(); track item.inspection_sk ?? item.inspection_date) {
                 <article class="inspection-card inspection-card--clickable" [attr.data-tone]="inspectionDelayTone(item)" (click)="openVhsModal(item)" title="Cliquer pour voir la fiche d'inspection complète STAFIM">
                   <header>
                     <strong>Inspection avant sinistre</strong>
@@ -311,17 +457,27 @@
                     {{ item.inspection_date | date: 'dd/MM/yyyy' }}
                     @if (item.delay_bucket) { · {{ delayBucketLabel(item.delay_bucket) }} }
                   </p>
-                  @if (item.defective_zone) {
-                    <p class="inspection-card__zone">
-                      Zone relevee lors de l inspection : <strong>{{ item.defective_zone }}</strong>
-                    </p>
+                  @if (item.defective_zones.length > 0) {
+                    <div class="inspection-card__zones">
+                      <span>Zones relevees lors de l inspection</span>
+                      <ul>
+                        @for (zone of item.defective_zones; track zone) {
+                          <li>{{ zone }}</li>
+                        }
+                      </ul>
+                    </div>
                   }
-                  @if (checkpointLabels(item).length > 0) {
+                  @if (item.checkpoint_labels.length > 0) {
                     <ul class="inspection-card__checkpoints">
-                      @for (label of checkpointLabels(item); track label) {
+                      @for (label of item.checkpoint_labels; track label) {
                         <li>{{ label }}</li>
                       }
                     </ul>
+                  }
+                  @if (item.signal_count > 1) {
+                    <p class="inspection-card__merge-note">
+                      {{ item.signal_count }} signaux techniques regroupes dans une seule inspection STAFIM.
+                    </p>
                   }
                   @if (item.business_explanation) {
                     <p class="claim-review__hint">{{ item.business_explanation }}</p>
@@ -329,11 +485,11 @@
                 </article>
               }
             } @else {
-              <p class="claim-review__empty">Aucune inspection recente n est rattachee a ce vehicule.</p>
+              <p class="claim-review__empty">Aucune inspection récente n est rattachee a ce vehicule.</p>
             }
           } @else {
             <p class="claim-review__empty">
-              Le vehicule n a pas pu etre identifie dans ce dossier. C est une information
+              Le véhicule n a pas pu etre identifié dans ce dossier. C est une information
               en soi : un dossier sans vehicule identifiable merite une lecture attentive.
             </p>
           }
@@ -372,7 +528,7 @@
     <section class="iris-card claim-review__checklist" aria-label="Actions recommandées">
       <h2>Ce qu'il faut vérifier</h2>
       <p class="claim-review__hint">
-        Pour vous aider dans votre investigation, voici une liste de vérifications clés suggérées.
+        Cochez les vérifications réalisées. Votre progression est conservée pour ce dossier et ce profil sur cet appareil.
       </p>
       <div class="checklist">
         @for (action of recommendedActions(); track action.id) {
@@ -421,8 +577,8 @@
           [class.is-selected]="selectedDecision() === 'SUSPICION_CONFIRMED'"
           (click)="selectDecision('SUSPICION_CONFIRMED')"
         >
-          <strong>Suspicion confirmee</strong>
-          <span>Le dossier merite une investigation ou un refus documente.</span>
+          <strong>Transmis a l investigation</strong>
+          <span>Le dossier doit etre transmis a l equipe fraude pour investigation.</span>
         </button>
         <button
           type="button"
@@ -580,6 +736,43 @@
           </div>
         </div>
 
+        @if (vhs.image_links && vhs.image_links.length > 0) {
+          <section class="vhs-modal-photos" aria-label="Photos inspection">
+            <header>
+              <div>
+                <h3>Photos d'inspection</h3>
+                <p>Photos STAFIM affichees depuis IRIS apres import et generation d'apercu.</p>
+              </div>
+              <span>{{ vhs.image_links.length }} photo(s)</span>
+            </header>
+            <div class="vhs-modal-photo-grid">
+              @for (image of vhs.image_links; track image.slot) {
+                <article class="vhs-modal-photo-card" [attr.data-imported]="image.is_imported === true">
+                  @if (inspectionImageUrl(image); as photoUrl) {
+                    @if (inspectionAssetKind(image) === 'image') {
+                      <button type="button" class="vhs-modal-photo-preview" (click)="openInspectionPhoto(image)">
+                        <img [src]="photoUrl" [alt]="inspectionImageLabel(image)" loading="lazy" />
+                      </button>
+                    } @else {
+                      <div class="vhs-modal-photo-missing" aria-hidden="true">Apercu a generer</div>
+                    }
+                  } @else {
+                    <div class="vhs-modal-photo-missing" aria-hidden="true">Photo non integree</div>
+                  }
+                  <div class="vhs-modal-photo-meta">
+                    <strong>{{ inspectionImageLabel(image) }}</strong>
+                    <span>{{ inspectionImageStatusLabel(image) }}</span>
+                    @if (image.file_size_bytes) {
+                      <small>{{ (image.file_size_bytes / 1024) | number:'1.0-0' }} Ko</small>
+                    }
+                  </div>
+                </article>
+              }
+            </div>
+          </section>
+        }
+
+
         <div class="vhs-modal-details-grid">
           <!-- Sous-scores -->
           <div class="vhs-modal-card-sub">
@@ -598,6 +791,67 @@
                 <strong>{{ vhs.cosmetic_score ?? '—' }}%</strong>
               </li>
             </ul>
+          </div>
+
+
+
+          <!-- Fiche complete -->
+          <div class="vhs-modal-card-checkpoints">
+            <header class="vhs-checkpoint-head">
+              <div>
+                <h3>Fiche checkpoints complete</h3>
+                <p>Lecture zone par zone des points controles : conforme, anomalie ou point critique.</p>
+              </div>
+              <div class="vhs-checkpoint-filters" role="group" aria-label="Filtrer les checkpoints">
+                @for (filter of inspectionFilters; track filter) {
+                  <button
+                    type="button"
+                    [class.is-active]="inspectionCheckpointFilter() === filter"
+                    (click)="setInspectionCheckpointFilter(filter)"
+                  >
+                    {{ inspectionCheckpointFilterLabel(filter) }}
+                  </button>
+                }
+              </div>
+            </header>
+
+            @if (vhsCheckpointGroups().length > 0) {
+              <div class="vhs-checkpoint-groups">
+                @for (group of vhsCheckpointGroups(); track group.zone) {
+                  <details class="vhs-checkpoint-zone" open>
+                    <summary>
+                      <strong>{{ group.label }}</strong>
+                      <span>{{ group.anomalies }}/{{ group.total }} anomalie(s)</span>
+                      @if (group.critical > 0) { <b>{{ group.critical }} critique(s)</b> }
+                    </summary>
+                    <ul>
+                      @for (checkpoint of group.checkpoints; track checkpoint.checkpoint_code) {
+                        <li [attr.data-tone]="checkpointTone(checkpoint)">
+                          <span class="vhs-checkpoint-status">{{ statusLabel(checkpoint.observed_status) }}</span>
+                          <span class="vhs-checkpoint-label">
+                            {{ checkpoint.checkpoint_libelle }}
+                            @if (checkpoint.systeme_fonctionnel && checkpoint.systeme_fonctionnel !== 'SYS_INDEPENDANT') {
+                              <small class="vhs-modal-system-tag">[{{ checkpoint.systeme_fonctionnel.replace('SYS_', '') }}]</small>
+                            }
+                          </span>
+                          <span class="vhs-checkpoint-value">{{ displayText(checkpoint.valeur_controle) }}</span>
+                          @if (checkpoint.penalty_applied > 0) {
+                            <span class="vhs-checkpoint-penalty">-{{ checkpoint.penalty_applied }} pts</span>
+                          }
+                          @if (checkpoint.is_vital) { <span class="vhs-checkpoint-flag">Vital</span> }
+                          @if (checkpoint.is_immobilizing) { <span class="vhs-checkpoint-flag">Immobilisant</span> }
+                          @if (checkpoint.commentaire_zone) {
+                            <p>{{ checkpoint.commentaire_zone }}</p>
+                          }
+                        </li>
+                      }
+                    </ul>
+                  </details>
+                }
+              </div>
+            } @else {
+              <p class="vhs-modal-empty">Aucun checkpoint ne correspond a ce filtre.</p>
+            }
           </div>
 
           <!-- Anomalies -->
@@ -637,3 +891,20 @@
     </div>
   </div>
 }
+@if (selectedInspectionPhoto(); as photo) {
+  <div class="inspection-photo-lightbox" role="dialog" aria-modal="true" [attr.aria-label]="photo.label" (click)="closeInspectionPhoto()">
+    <button type="button" class="inspection-photo-lightbox__close" aria-label="Fermer la photo" (click)="closeInspectionPhoto(); $event.stopPropagation()">×</button>
+    <figure class="inspection-photo-lightbox__frame" (click)="$event.stopPropagation()">
+      <img [src]="photo.url" [alt]="photo.label" />
+      <figcaption>{{ photo.label }}</figcaption>
+    </figure>
+  </div>
+}
+
+
+
+
+
+
+
+
