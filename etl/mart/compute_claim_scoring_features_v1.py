@@ -59,6 +59,22 @@ ALTER TABLE mart.fact_claim_scoring_features
     ADD COLUMN IF NOT EXISTS is_closed        BOOLEAN;
 """
 
+DDL_MIGRATE_AVENANT_COLUMN = """
+ALTER TABLE mart.fact_claim_scoring_features
+    ADD COLUMN IF NOT EXISTS days_since_last_avenant INTEGER;
+"""
+
+DDL_MIGRATE_RAPID_DECLARATION_COLUMNS = """
+ALTER TABLE mart.fact_claim_scoring_features
+    ADD COLUMN IF NOT EXISTS days_contract_start_to_declaration    INTEGER,
+    ADD COLUMN IF NOT EXISTS rapid_declaration_after_subscription_flag BOOLEAN;
+"""
+
+DDL_MIGRATE_TIERS_IDENTITY_COLUMN = """
+ALTER TABLE mart.fact_claim_scoring_features
+    ADD COLUMN IF NOT EXISTS tiers_identity_incomplete_flag BOOLEAN;
+"""
+
 DDL_FACT_CLAIM_SCORING_FEATURES = """
 CREATE TABLE IF NOT EXISTS mart.fact_claim_scoring_features (
     claim_feature_sk                 BIGSERIAL PRIMARY KEY,
@@ -99,7 +115,11 @@ CREATE TABLE IF NOT EXISTS mart.fact_claim_scoring_features (
     days_contract_start_to_claim     INTEGER,
     claim_before_contract_start_flag BOOLEAN,
     contract_start_ready_flag        BOOLEAN,
+    days_since_last_avenant          INTEGER,
     recent_contract_change_flag      BOOLEAN,
+    days_contract_start_to_declaration       INTEGER,
+    rapid_declaration_after_subscription_flag BOOLEAN,
+    tiers_identity_incomplete_flag   BOOLEAN,
     recent_guarantee_change_flag     BOOLEAN,
     claim_after_recent_update_flag   BOOLEAN,
     chronology_ready_flag            BOOLEAN,
@@ -194,7 +214,11 @@ FEATURE_COLUMNS = [
     "days_contract_start_to_claim",
     "claim_before_contract_start_flag",
     "contract_start_ready_flag",
+    "days_since_last_avenant",
     "recent_contract_change_flag",
+    "days_contract_start_to_declaration",
+    "rapid_declaration_after_subscription_flag",
+    "tiers_identity_incomplete_flag",
     "recent_guarantee_change_flag",
     "claim_after_recent_update_flag",
     "chronology_ready_flag",
@@ -359,6 +383,107 @@ def add_contract_start(df: pd.DataFrame, df_contracts: pd.DataFrame | None) -> p
     return out
 
 
+def build_recent_avenant_lookup(df_contracts: pd.DataFrame | None) -> pd.DataFrame:
+    """One row per (contrat_sk, avenant_date) for genuine contract amendments.
+
+    Only movements flagged est_avenant=True count -- the original
+    subscription movement (numero_avenant=0) is not itself a "recent change".
+    """
+    if df_contracts is None or df_contracts.empty:
+        return pd.DataFrame(columns=["contrat_sk", "avenant_date"])
+
+    contracts = _ensure_columns(df_contracts, ["contrat_sk", "est_avenant", "date_derniere_operation_sk"]).copy()
+    contracts["contrat_sk"] = _safe_int_series(contracts["contrat_sk"])
+    contracts["date_derniere_operation_sk"] = _safe_int_series(contracts["date_derniere_operation_sk"])
+    contracts = contracts[
+        ~contracts["contrat_sk"].map(is_missing_key)
+        & contracts["est_avenant"].fillna(False).astype(bool)
+        & ~contracts["date_derniere_operation_sk"].map(is_missing_key)
+    ].copy()
+    if contracts.empty:
+        return pd.DataFrame(columns=["contrat_sk", "avenant_date"])
+
+    contracts["avenant_date"] = date_key_series_to_timestamp(contracts["date_derniere_operation_sk"])
+    contracts = contracts.dropna(subset=["avenant_date"])
+    return contracts[["contrat_sk", "avenant_date"]]
+
+
+def compute_recent_avenant_features(
+    df: pd.DataFrame,
+    df_contracts: pd.DataFrame | None,
+    window_days: int = 90,
+) -> pd.DataFrame:
+    """Days since the most recent genuine avenant strictly before the claim,
+    and a flag for an avenant shortly before the claim (0-90 days). This is a
+    coverage-timing signal, distinct from claim_before_contract_start_flag
+    (which looks at original subscription, not later amendments)."""
+    out = df.copy()
+    out["days_since_last_avenant"] = pd.Series(pd.NA, index=out.index, dtype="Int64")
+    out["recent_contract_change_flag"] = pd.Series(False, index=out.index, dtype="boolean")
+
+    avenants = build_recent_avenant_lookup(df_contracts)
+    if avenants.empty or out.empty:
+        return out
+
+    valid_mask = ~out["contrat_sk"].map(is_missing_key) & out["claim_date"].notna()
+    if not valid_mask.any():
+        return out
+
+    candidates = (
+        out.loc[valid_mask, ["contrat_sk", "claim_date"]]
+        .reset_index()
+        .rename(columns={"index": "_row_index"})
+    )
+    merged = candidates.merge(avenants, on="contrat_sk", how="inner")
+    if merged.empty:
+        return out
+    merged = merged[merged["avenant_date"] <= merged["claim_date"].dt.normalize()]
+    if merged.empty:
+        return out
+
+    last_avenant = merged.groupby("_row_index")["avenant_date"].max()
+    claim_dates = out.loc[last_avenant.index, "claim_date"].dt.normalize()
+    days_since = (claim_dates - last_avenant).dt.days
+
+    out.loc[days_since.index, "days_since_last_avenant"] = days_since.astype("Int64")
+    out.loc[days_since.index, "recent_contract_change_flag"] = (
+        (days_since >= 0) & (days_since <= window_days)
+    )
+    return out
+
+
+def compute_tiers_identity_features(df: pd.DataFrame, df_tiers: pd.DataFrame | None) -> pd.DataFrame:
+    """Flag claims where a third party (tiers) is linked to the claim but its
+    identity is incomplete (missing nom_tiers). dim_tiers only carries a name
+    and a vehicle registration for the adverse party -- there is no CIN,
+    phone or address -- so this is the only identity-completeness check
+    currently possible with this data."""
+    out = df.copy()
+    out["tiers_identity_incomplete_flag"] = pd.Series(False, index=out.index, dtype="boolean")
+
+    if df_tiers is None or df_tiers.empty or out.empty:
+        return out
+
+    tiers = _ensure_columns(df_tiers, ["tiers_sk", "nom_tiers"]).copy()
+    tiers["tiers_sk"] = _safe_int_series(tiers["tiers_sk"])
+    tiers = tiers[~tiers["tiers_sk"].map(is_missing_key)][["tiers_sk", "nom_tiers"]].drop_duplicates("tiers_sk")
+    if tiers.empty:
+        return out
+
+    name_missing = (
+        tiers["nom_tiers"].isna()
+        | tiers["nom_tiers"].astype(str).str.strip().eq("")
+        | tiers["nom_tiers"].astype(str).str.strip().str.upper().eq("UNKNOWN")
+    )
+    incomplete_tiers_sks = set(tiers.loc[name_missing, "tiers_sk"])
+    if not incomplete_tiers_sks:
+        return out
+
+    has_tiers = ~out["tiers_sk"].map(is_missing_key)
+    out.loc[has_tiers, "tiers_identity_incomplete_flag"] = out.loc[has_tiers, "tiers_sk"].isin(incomplete_tiers_sks)
+    return out
+
+
 def compute_client_recurrence(df: pd.DataFrame) -> pd.DataFrame:
     """Compute prior client claims using only claim_date < current claim_date."""
     out = df.copy()
@@ -446,7 +571,22 @@ def compute_chronology_features(df: pd.DataFrame) -> pd.DataFrame:
 
     out["claim_before_contract_start_flag"] = out["days_contract_start_to_claim"].lt(0).fillna(False)
     out["contract_start_ready_flag"] = out["contract_start_date"].notna()
-    out["recent_contract_change_flag"] = pd.NA
+
+    # Delai souscription -> declaration (et non souscription -> sinistre) :
+    # la date de declaration est enregistree par l'assureur, moins sujette a
+    # une date de sinistre auto-declaree ; ce delai complete
+    # CLAIM_SOON_AFTER_CONTRACT_START avec un ancrage plus robuste.
+    out["days_contract_start_to_declaration"] = (
+        out["declaration_date"].dt.normalize() - out["contract_start_date"].dt.normalize()
+    ).dt.days.astype("Int64")
+    out.loc[
+        out["declaration_date"].isna() | out["contract_start_date"].isna(),
+        "days_contract_start_to_declaration",
+    ] = pd.NA
+    out["rapid_declaration_after_subscription_flag"] = (
+        out["days_contract_start_to_declaration"].ge(0) & out["days_contract_start_to_declaration"].le(30)
+    ).fillna(False)
+
     out["recent_guarantee_change_flag"] = pd.NA
     out["claim_after_recent_update_flag"] = pd.NA
     out["chronology_ready_flag"] = out["claim_date"].notna() & out["declaration_date"].notna()
@@ -519,6 +659,7 @@ def compute_claim_scoring_features(
     df_contracts: pd.DataFrame | None = None,
     run_id: str | None = None,
     as_of_date: date | datetime | None = None,
+    df_tiers: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Return one V1 feature row per claim."""
     run_id = run_id or f"{FEATURE_VERSION}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
@@ -529,6 +670,8 @@ def compute_claim_scoring_features(
     features = compute_client_recurrence(features)
     features = compute_amount_features(features)
     features = compute_chronology_features(features)
+    features = compute_recent_avenant_features(features, df_contracts)
+    features = compute_tiers_identity_features(features, df_tiers)
     features = compute_confidence_features(features, as_of_date=as_of_date)
 
     features["scoring_feature_version"] = FEATURE_VERSION
@@ -722,8 +865,17 @@ def _read_claim_source(engine) -> pd.DataFrame:
 
 def _read_contract_source(engine) -> pd.DataFrame:
     query = text("""
-        SELECT contrat_sk, date_debut_contrat_sk
+        SELECT contrat_sk, date_debut_contrat_sk, est_avenant, date_derniere_operation_sk
         FROM dwh.fact_contrat
+    """)
+    with engine.connect() as conn:
+        return pd.read_sql(query, conn)
+
+
+def _read_tiers_source(engine) -> pd.DataFrame:
+    query = text("""
+        SELECT tiers_sk, nom_tiers
+        FROM dwh.dim_tiers
     """)
     with engine.connect() as conn:
         return pd.read_sql(query, conn)
@@ -748,14 +900,21 @@ def compute_claim_scoring_features_v1():
         conn.execute(text(DDL_CREATE_SCHEMA))
         conn.execute(text(DDL_FACT_CLAIM_SCORING_FEATURES))
         conn.execute(text(DDL_MIGRATE_FINANCIAL_COLUMNS))
+        conn.execute(text(DDL_MIGRATE_AVENANT_COLUMN))
+        conn.execute(text(DDL_MIGRATE_RAPID_DECLARATION_COLUMNS))
+        conn.execute(text(DDL_MIGRATE_TIERS_IDENTITY_COLUMN))
     logger.info("DDL ensured for mart.fact_claim_scoring_features")
 
     df_claims = _read_claim_source(engine)
     df_contracts = _read_contract_source(engine)
+    df_tiers = _read_tiers_source(engine)
     logger.info(f"fact_sinistre rows loaded: {len(df_claims)}")
     logger.info(f"fact_contrat rows loaded : {len(df_contracts)}")
+    logger.info(f"dim_tiers rows loaded    : {len(df_tiers)}")
 
-    features = compute_claim_scoring_features(df_claims, df_contracts, run_id=run_id, as_of_date=today.date())
+    features = compute_claim_scoring_features(
+        df_claims, df_contracts, run_id=run_id, as_of_date=today.date(), df_tiers=df_tiers
+    )
     logger.info(f"feature rows computed    : {len(features)}")
     logger.info(f"duplicate claim_sk rows  : {int(features['claim_sk'].duplicated().sum())}")
 

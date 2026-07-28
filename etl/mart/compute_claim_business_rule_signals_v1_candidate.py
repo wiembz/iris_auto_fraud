@@ -207,11 +207,12 @@ def _add_prior_recurrence_features(
     key_columns: list[str],
     prefix: str,
     window_days: int = 365,
+    window_label: str = "12m",
 ) -> pd.DataFrame:
     """Add prior-only recurrence features without using the current claim."""
     out = features.copy()
     count_total_col = f"{prefix}_claim_count_total"
-    count_12m_col = f"{prefix}_claim_count_12m"
+    count_12m_col = f"{prefix}_claim_count_{window_label}"
     days_previous_col = f"{prefix}_days_since_previous_claim"
     out[count_total_col] = 0
     out[count_12m_col] = 0
@@ -260,7 +261,7 @@ def _add_prior_recurrence_features(
 def enrich_features_for_business_rules(features: pd.DataFrame) -> pd.DataFrame:
     """Compute additional candidate-only recurrence context from existing feature keys."""
     enriched = features.copy()
-    for column in ["claim_date", "vehicle_sk", "conducteur_sk", "tiers_sk", "client_sk", "code_garantie"]:
+    for column in ["claim_date", "vehicle_sk", "conducteur_sk", "tiers_sk", "client_sk", "code_garantie", "claim_geo_sk"]:
         if column not in enriched.columns:
             enriched[column] = pd.NA
 
@@ -269,9 +270,18 @@ def enrich_features_for_business_rules(features: pd.DataFrame) -> pd.DataFrame:
         (["conducteur_sk"], "driver"),
         (["tiers_sk"], "third_party"),
         (["client_sk", "code_garantie"], "client_guarantee"),
+        (["claim_geo_sk"], "geo"),
     ]
     for key_columns, prefix in recurrence_specs:
         enriched = _add_prior_recurrence_features(enriched, key_columns, prefix)
+
+    # Fenetre courte dediee (30 jours) pour detecter une accumulation tres
+    # rapide de sinistres client, distincte du compteur 12 mois deja utilise
+    # par CLIENT_CLAIMS_12M_*. Prefixe distinct pour ne pas ecraser les
+    # colonnes client_claim_count_* deja posees par la couche features.
+    enriched = _add_prior_recurrence_features(
+        enriched, ["client_sk"], "client_short_window", window_days=30, window_label="30d",
+    )
     return enriched
 
 def attention_label(severity_rank: int, confidence_level: str, is_data_quality_signal: bool = False) -> str:
@@ -389,6 +399,24 @@ def _client_recurrence_rules(row: pd.Series) -> list[dict[str, Any]]:
     return rules
 
 
+def _client_rapid_accumulation_rules(row: pd.Series) -> list[dict[str, Any]]:
+    count_30d = _int(row.get("client_short_window_claim_count_30d"))
+    if count_30d < 2:
+        return []
+    return [_rule(
+        row=row,
+        rule_family="Historique",
+        rule_code="CLIENT_CLAIMS_RAPID_ACCUMULATION",
+        rule_label="Plusieurs sinistres client sur une courte periode",
+        rule_severity_rank=2,
+        rule_threshold_value="client_short_window_claim_count_30d >= 2",
+        rule_observed_value=count_30d,
+        candidate_points=15,
+        business_explanation="Plusieurs sinistres precedents du meme client sont observes sur une periode tres courte (30 jours); ce contexte peut renforcer la priorisation.",
+        payload={"client_claim_count_30d": count_30d},
+    )]
+
+
 def _amount_rules(row: pd.Series) -> list[dict[str, Any]]:
     ratio = _num(row.get("amount_vs_guarantee_median_ratio"))
     percentile = _num(row.get("amount_percentile_by_guarantee"))
@@ -448,17 +476,24 @@ def _chronology_rules(row: pd.Series) -> list[dict[str, Any]]:
     days_declaration = _num(row.get("days_claim_to_declaration"))
 
     if claim_before_contract:
+        # Une date de sinistre anterieure au debut de contrat est presque
+        # toujours une incoherence de saisie contractuelle (contrat
+        # retroactif, date mal saisie) et non un indice de fraude : ce
+        # signal ne doit jamais augmenter l'attention metier. Il sert
+        # uniquement a isoler les cas ou les donnees contractuelles ne sont
+        # pas suffisamment coherentes pour une lecture automatique fiable.
         rules.append(_rule(
             row=row,
-            rule_family="Chronologie",
+            rule_family="Qualite donnees",
             rule_code="CLAIM_BEFORE_CONTRACT_START",
-            rule_label="Sinistre avant debut contrat",
-            rule_severity_rank=3,
+            rule_label="Coherence contractuelle a verifier",
+            rule_severity_rank=0,
             rule_threshold_value="claim_date < contract_start_date",
             rule_observed_value=days_contract if not np.isnan(days_contract) else None,
-            candidate_points=15,
-            business_explanation="La date de sinistre apparait anterieure au debut de contrat rattache; ce point doit etre verifie avant interpretation.",
+            candidate_points=0,
+            business_explanation="La date de sinistre apparait anterieure au debut de contrat rattache; les donnees contractuelles ne sont pas suffisamment coherentes pour une lecture automatique fiable. Ce signal documente une limite de confiance et n'augmente jamais l'attention metier.",
             payload={"days_contract_start_to_claim": None if np.isnan(days_contract) else int(days_contract)},
+            is_data_quality_signal=True,
         ))
     elif not np.isnan(days_contract) and 0 <= days_contract <= 30:
         rules.append(_rule(
@@ -485,6 +520,40 @@ def _chronology_rules(row: pd.Series) -> list[dict[str, Any]]:
             candidate_points=5,
             business_explanation="Le sinistre survient dans une fenetre proche du debut contrat; ce contexte peut etre utile a l'analyse.",
             payload={"days_contract_start_to_claim": int(days_contract)},
+        ))
+
+    recent_avenant = _is_true(row.get("recent_contract_change_flag"))
+    days_since_avenant = _num(row.get("days_since_last_avenant"))
+    if recent_avenant:
+        rules.append(_rule(
+            row=row,
+            rule_family="Chronologie",
+            rule_code="RECENT_CONTRACT_AMENDMENT",
+            rule_label="Avenant contractuel recent",
+            rule_severity_rank=1,
+            rule_threshold_value="0 <= days_since_last_avenant <= 90",
+            rule_observed_value=int(days_since_avenant) if not np.isnan(days_since_avenant) else None,
+            candidate_points=10,
+            business_explanation="Le contrat a fait l'objet d'un avenant peu de temps avant le sinistre; ce contexte peut enrichir la verification du dossier.",
+            payload={"days_since_last_avenant": None if np.isnan(days_since_avenant) else int(days_since_avenant)},
+        ))
+
+    rapid_declaration = _is_true(row.get("rapid_declaration_after_subscription_flag"))
+    days_start_to_declaration = _num(row.get("days_contract_start_to_declaration"))
+    if rapid_declaration:
+        rules.append(_rule(
+            row=row,
+            rule_family="Chronologie",
+            rule_code="RAPID_DECLARATION_AFTER_SUBSCRIPTION",
+            rule_label="Declaration rapide apres souscription",
+            rule_severity_rank=1,
+            rule_threshold_value="0 <= days_contract_start_to_declaration <= 30",
+            rule_observed_value=int(days_start_to_declaration) if not np.isnan(days_start_to_declaration) else None,
+            candidate_points=10,
+            business_explanation="La declaration du sinistre intervient tres peu de temps apres la souscription du contrat; ce contexte peut enrichir la verification du dossier.",
+            payload={
+                "days_contract_start_to_declaration": None if np.isnan(days_start_to_declaration) else int(days_start_to_declaration),
+            },
         ))
 
     if not np.isnan(days_declaration) and days_declaration < 0:
@@ -598,6 +667,36 @@ def _entity_recurrence_rules(
     return rules
 
 
+def _geo_recurrence_rules(row: pd.Series) -> list[dict[str, Any]]:
+    # Non appelee depuis claim_business_rules_for_row (voir plus bas) : sur
+    # donnees reelles, le seuil absolu de 3 sinistres/12 mois dans la meme
+    # zone geo (dwh.dim_geo, grain gouvernorat/region/localite) se declenche
+    # sur 98% des dossiers (mediane de 6 sinistres/zone sur l'historique
+    # complet, une zone dense en cumule >37 000). Ce n'est pas un signal de
+    # concentration suspecte, seulement la densite urbaine normale. Fonction
+    # conservee pour un futur recalibrage par percentile (comme
+    # AMOUNT_HIGH_BY_GUARANTEE) plutot qu'un compte absolu.
+    return _entity_recurrence_rules(
+        row,
+        prefix="geo",
+        family="Geographie",
+        high_code="GEO_CLAIMS_12M_HIGH",
+        medium_code=None,
+        recent_code="GEO_RECENT_PREVIOUS_CLAIM",
+        high_label="Concentration de sinistres dans la meme zone",
+        medium_label=None,
+        recent_label="Sinistre precedent recent dans la meme zone",
+        high_threshold=3,
+        medium_threshold=None,
+        high_points=10,
+        medium_points=0,
+        recent_points=5,
+        high_explanation="Plusieurs sinistres precedents sont observes dans la meme zone geographique dans les 12 derniers mois; ce contexte peut enrichir la verification du dossier.",
+        medium_explanation=None,
+        recent_explanation="Le dossier suit de pres un sinistre precedent survenu dans la meme zone geographique; ce contexte peut etre documente.",
+    )
+
+
 def _vehicle_recurrence_rules(row: pd.Series) -> list[dict[str, Any]]:
     return _entity_recurrence_rules(
         row,
@@ -662,6 +761,23 @@ def _third_party_recurrence_rules(row: pd.Series) -> list[dict[str, Any]]:
         medium_explanation=None,
         recent_explanation="Le dossier suit de pres un sinistre precedent impliquant le meme tiers; ce contexte peut etre documente.",
     )
+
+
+def _tiers_identity_rules(row: pd.Series) -> list[dict[str, Any]]:
+    if not _is_true(row.get("tiers_identity_incomplete_flag")):
+        return []
+    return [_rule(
+        row=row,
+        rule_family="Tiers",
+        rule_code="TIERS_IDENTITY_INCOMPLETE",
+        rule_label="Identite du tiers incomplete",
+        rule_severity_rank=1,
+        rule_threshold_value="tiers linked but nom_tiers missing/blank",
+        rule_observed_value="nom_tiers manquant",
+        candidate_points=6,
+        business_explanation="Un tiers est rattache au dossier mais son identite n'est pas renseignee; ce point peut etre verifie aupres du constat.",
+        payload={"tiers_sk": None if pd.isna(row.get("tiers_sk")) else int(row.get("tiers_sk"))},
+    )]
 
 
 def _client_guarantee_recurrence_rules(row: pd.Series) -> list[dict[str, Any]]:
@@ -736,9 +852,13 @@ def _data_quality_rules(row: pd.Series) -> list[dict[str, Any]]:
 def claim_business_rules_for_row(row: pd.Series) -> list[dict[str, Any]]:
     rules: list[dict[str, Any]] = []
     rules.extend(_client_recurrence_rules(row))
+    rules.extend(_client_rapid_accumulation_rules(row))
     rules.extend(_vehicle_recurrence_rules(row))
     rules.extend(_driver_recurrence_rules(row))
     rules.extend(_third_party_recurrence_rules(row))
+    rules.extend(_tiers_identity_rules(row))
+    # _geo_recurrence_rules desactivee : seuil non calibre sur donnees reelles
+    # (voir docstring de la fonction). A reactiver apres recalibrage percentile.
     rules.extend(_client_guarantee_recurrence_rules(row))
     rules.extend(_amount_rules(row))
     rules.extend(_chronology_rules(row))

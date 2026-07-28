@@ -129,6 +129,286 @@ def test_claim_before_contract_and_negative_declaration_are_coherence_rules():
     assert validate_business_rule_signals(signals)["negative_candidate_point_rows"] == 0
 
 
+def test_claim_before_contract_start_is_a_data_quality_signal_not_suspicion():
+    # Un sinistre anterieur au debut de contrat est presque toujours une
+    # incoherence de saisie contractuelle (contrat retroactif, date mal
+    # saisie), pas un indice de fraude : ce signal ne doit jamais ajouter de
+    # points d'attention, seulement documenter une limite de confiance.
+    features = pd.DataFrame([{
+        "claim_sk": 99,
+        "claim_business_id": "S99|G1",
+        "feature_run_id": "FEATURE_RUN",
+        "client_sk": 10,
+        "contrat_sk": 20,
+        "vehicle_sk": 30,
+        "client_claim_count_12m": 0,
+        "days_since_previous_claim": pd.NA,
+        "amount_vs_guarantee_median_ratio": 1.0,
+        "amount_percentile_by_guarantee": 0.50,
+        "high_amount_flag": False,
+        "days_contract_start_to_claim": -30,
+        "claim_before_contract_start_flag": True,
+        "days_claim_to_declaration": 1,
+        "confidence_level": "MEDIUM",
+    }])
+
+    signals = compute_claim_business_rule_signals(features, signal_run_id="RULE_RUN")
+    row = signals[signals["rule_code"] == "CLAIM_BEFORE_CONTRACT_START"].iloc[0]
+
+    assert row["rule_family"] == "Qualite donnees"
+    assert row["candidate_points"] == 0
+    assert row["rule_severity_rank"] == 0
+    assert bool(row["is_data_quality_signal"]) is True
+    assert row["attention_level"] == "Limite de confiance a documenter"
+    assert not contains_accusatory_wording(row["business_explanation"])
+
+
+def test_recent_contract_amendment_is_a_chronology_suspicion_rule():
+    features = pd.DataFrame([{
+        "claim_sk": 100,
+        "claim_business_id": "S100|G1",
+        "feature_run_id": "FEATURE_RUN",
+        "client_sk": 10,
+        "contrat_sk": 20,
+        "vehicle_sk": 30,
+        "client_claim_count_12m": 0,
+        "days_since_previous_claim": pd.NA,
+        "amount_vs_guarantee_median_ratio": 1.0,
+        "amount_percentile_by_guarantee": 0.50,
+        "high_amount_flag": False,
+        "days_contract_start_to_claim": 400,
+        "claim_before_contract_start_flag": False,
+        "days_claim_to_declaration": 1,
+        "days_since_last_avenant": 30,
+        "recent_contract_change_flag": True,
+        "confidence_level": "HIGH",
+    }])
+
+    signals = compute_claim_business_rule_signals(features, signal_run_id="RULE_RUN")
+    row = signals[signals["rule_code"] == "RECENT_CONTRACT_AMENDMENT"].iloc[0]
+
+    assert row["rule_family"] == "Chronologie"
+    assert row["candidate_points"] == 10
+    assert bool(row["is_data_quality_signal"]) is False
+    assert row["rule_observed_value"] == "30"
+
+
+def test_recent_contract_amendment_does_not_fire_when_flag_is_false():
+    features = pd.DataFrame([{
+        "claim_sk": 101,
+        "claim_business_id": "S101|G1",
+        "feature_run_id": "FEATURE_RUN",
+        "client_sk": 10,
+        "contrat_sk": 20,
+        "vehicle_sk": 30,
+        "client_claim_count_12m": 0,
+        "days_since_previous_claim": pd.NA,
+        "amount_vs_guarantee_median_ratio": 1.0,
+        "amount_percentile_by_guarantee": 0.50,
+        "high_amount_flag": False,
+        "days_contract_start_to_claim": 400,
+        "claim_before_contract_start_flag": False,
+        "days_claim_to_declaration": 1,
+        "days_since_last_avenant": 200,
+        "recent_contract_change_flag": False,
+        "confidence_level": "HIGH",
+    }])
+
+    signals = compute_claim_business_rule_signals(features, signal_run_id="RULE_RUN")
+
+    assert "RECENT_CONTRACT_AMENDMENT" not in set(signals["rule_code"])
+
+
+def test_rapid_declaration_after_subscription_is_a_chronology_suspicion_rule():
+    features = pd.DataFrame([{
+        "claim_sk": 102,
+        "claim_business_id": "S102|G1",
+        "feature_run_id": "FEATURE_RUN",
+        "client_sk": 10,
+        "contrat_sk": 20,
+        "vehicle_sk": 30,
+        "client_claim_count_12m": 0,
+        "days_since_previous_claim": pd.NA,
+        "amount_vs_guarantee_median_ratio": 1.0,
+        "amount_percentile_by_guarantee": 0.50,
+        "high_amount_flag": False,
+        "days_contract_start_to_claim": 400,
+        "claim_before_contract_start_flag": False,
+        "days_claim_to_declaration": 1,
+        "days_contract_start_to_declaration": 15,
+        "rapid_declaration_after_subscription_flag": True,
+        "confidence_level": "HIGH",
+    }])
+
+    signals = compute_claim_business_rule_signals(features, signal_run_id="RULE_RUN")
+    row = signals[signals["rule_code"] == "RAPID_DECLARATION_AFTER_SUBSCRIPTION"].iloc[0]
+
+    assert row["rule_family"] == "Chronologie"
+    assert row["candidate_points"] == 10
+    assert bool(row["is_data_quality_signal"]) is False
+    assert row["rule_observed_value"] == "15"
+
+
+def test_tiers_identity_incomplete_is_a_tiers_family_rule():
+    features = pd.DataFrame([{
+        "claim_sk": 103,
+        "claim_business_id": "S103|G1",
+        "feature_run_id": "FEATURE_RUN",
+        "client_sk": 10,
+        "contrat_sk": 20,
+        "vehicle_sk": 30,
+        "tiers_sk": 501,
+        "client_claim_count_12m": 0,
+        "days_since_previous_claim": pd.NA,
+        "amount_vs_guarantee_median_ratio": 1.0,
+        "amount_percentile_by_guarantee": 0.50,
+        "high_amount_flag": False,
+        "days_contract_start_to_claim": 400,
+        "claim_before_contract_start_flag": False,
+        "days_claim_to_declaration": 1,
+        "tiers_identity_incomplete_flag": True,
+        "confidence_level": "HIGH",
+    }])
+
+    signals = compute_claim_business_rule_signals(features, signal_run_id="RULE_RUN")
+    row = signals[signals["rule_code"] == "TIERS_IDENTITY_INCOMPLETE"].iloc[0]
+
+    assert row["rule_family"] == "Tiers"
+    assert row["candidate_points"] == 6
+    assert bool(row["is_data_quality_signal"]) is False
+
+
+def test_tiers_identity_incomplete_does_not_fire_when_flag_is_false():
+    features = pd.DataFrame([{
+        "claim_sk": 104,
+        "claim_business_id": "S104|G1",
+        "feature_run_id": "FEATURE_RUN",
+        "client_sk": 10,
+        "contrat_sk": 20,
+        "vehicle_sk": 30,
+        "tiers_sk": 502,
+        "client_claim_count_12m": 0,
+        "days_since_previous_claim": pd.NA,
+        "amount_vs_guarantee_median_ratio": 1.0,
+        "amount_percentile_by_guarantee": 0.50,
+        "high_amount_flag": False,
+        "days_contract_start_to_claim": 400,
+        "claim_before_contract_start_flag": False,
+        "days_claim_to_declaration": 1,
+        "tiers_identity_incomplete_flag": False,
+        "confidence_level": "HIGH",
+    }])
+
+    signals = compute_claim_business_rule_signals(features, signal_run_id="RULE_RUN")
+
+    assert "TIERS_IDENTITY_INCOMPLETE" not in set(signals["rule_code"])
+
+
+def test_geo_recurrence_uses_prior_claims_only_in_same_zone():
+    features = pd.DataFrame([
+        {
+            "claim_sk": 1, "claim_business_id": "S1|G1", "feature_run_id": "FEATURE_RUN",
+            "claim_date": pd.Timestamp("2024-01-01"), "claim_geo_sk": 500,
+            "client_claim_count_12m": 0, "days_since_previous_claim": pd.NA,
+            "amount_vs_guarantee_median_ratio": 1.0, "amount_percentile_by_guarantee": 0.5,
+            "high_amount_flag": False, "days_contract_start_to_claim": 400,
+            "claim_before_contract_start_flag": False, "days_claim_to_declaration": 1,
+            "confidence_level": "HIGH",
+        },
+        {
+            "claim_sk": 2, "claim_business_id": "S2|G1", "feature_run_id": "FEATURE_RUN",
+            "claim_date": pd.Timestamp("2024-02-01"), "claim_geo_sk": 500,
+            "client_claim_count_12m": 0, "days_since_previous_claim": pd.NA,
+            "amount_vs_guarantee_median_ratio": 1.0, "amount_percentile_by_guarantee": 0.5,
+            "high_amount_flag": False, "days_contract_start_to_claim": 400,
+            "claim_before_contract_start_flag": False, "days_claim_to_declaration": 1,
+            "confidence_level": "HIGH",
+        },
+        {
+            "claim_sk": 3, "claim_business_id": "S3|G1", "feature_run_id": "FEATURE_RUN",
+            "claim_date": pd.Timestamp("2024-03-01"), "claim_geo_sk": 500,
+            "client_claim_count_12m": 0, "days_since_previous_claim": pd.NA,
+            "amount_vs_guarantee_median_ratio": 1.0, "amount_percentile_by_guarantee": 0.5,
+            "high_amount_flag": False, "days_contract_start_to_claim": 400,
+            "claim_before_contract_start_flag": False, "days_claim_to_declaration": 1,
+            "confidence_level": "HIGH",
+        },
+        {
+            "claim_sk": 4, "claim_business_id": "S4|G1", "feature_run_id": "FEATURE_RUN",
+            "claim_date": pd.Timestamp("2024-04-01"), "claim_geo_sk": 500,
+            "client_claim_count_12m": 0, "days_since_previous_claim": pd.NA,
+            "amount_vs_guarantee_median_ratio": 1.0, "amount_percentile_by_guarantee": 0.5,
+            "high_amount_flag": False, "days_contract_start_to_claim": 400,
+            "claim_before_contract_start_flag": False, "days_claim_to_declaration": 1,
+            "confidence_level": "HIGH",
+        },
+    ])
+
+    signals = compute_claim_business_rule_signals(features, signal_run_id="RULE_RUN")
+
+    # _geo_recurrence_rules is not wired into claim_business_rules_for_row:
+    # on real data its fixed threshold of 3 fired on 98% of dossiers (median
+    # 6 claims/zone over the full history, one dense zone alone >37000) --
+    # not a concentration signal, just normal urban density. It stays
+    # disabled pending a percentile-based recalibration (see its docstring).
+    assert signals[signals["rule_family"] == "Geographie"].empty
+
+
+def test_geo_recurrence_rules_function_still_works_if_called_directly():
+    # The function itself is preserved (unused) for a future percentile-based
+    # recalibration; this locks in that its internal logic still behaves,
+    # even though nothing in the active pipeline calls it today.
+    from etl.mart.compute_claim_business_rule_signals_v1_candidate import _geo_recurrence_rules
+
+    row = pd.Series({
+        "claim_sk": 4, "geo_claim_count_12m": 3, "geo_days_since_previous_claim": pd.NA,
+        "confidence_level": "HIGH",
+    })
+    rules = _geo_recurrence_rules(row)
+    assert {r["rule_code"] for r in rules} == {"GEO_CLAIMS_12M_HIGH"}
+    assert rules[0]["candidate_points"] == 10
+
+
+def test_client_rapid_accumulation_fires_on_third_claim_within_30_days():
+    features = pd.DataFrame([
+        {
+            "claim_sk": 10, "claim_business_id": "S10|G1", "feature_run_id": "FEATURE_RUN",
+            "claim_date": pd.Timestamp("2024-01-01"), "client_sk": 900,
+            "client_claim_count_12m": 0, "days_since_previous_claim": pd.NA,
+            "amount_vs_guarantee_median_ratio": 1.0, "amount_percentile_by_guarantee": 0.5,
+            "high_amount_flag": False, "days_contract_start_to_claim": 400,
+            "claim_before_contract_start_flag": False, "days_claim_to_declaration": 1,
+            "confidence_level": "HIGH",
+        },
+        {
+            "claim_sk": 11, "claim_business_id": "S11|G1", "feature_run_id": "FEATURE_RUN",
+            "claim_date": pd.Timestamp("2024-01-10"), "client_sk": 900,
+            "client_claim_count_12m": 0, "days_since_previous_claim": pd.NA,
+            "amount_vs_guarantee_median_ratio": 1.0, "amount_percentile_by_guarantee": 0.5,
+            "high_amount_flag": False, "days_contract_start_to_claim": 400,
+            "claim_before_contract_start_flag": False, "days_claim_to_declaration": 1,
+            "confidence_level": "HIGH",
+        },
+        {
+            # Third claim for the same client within 30 days -> 2 priors in window.
+            "claim_sk": 12, "claim_business_id": "S12|G1", "feature_run_id": "FEATURE_RUN",
+            "claim_date": pd.Timestamp("2024-01-20"), "client_sk": 900,
+            "client_claim_count_12m": 0, "days_since_previous_claim": pd.NA,
+            "amount_vs_guarantee_median_ratio": 1.0, "amount_percentile_by_guarantee": 0.5,
+            "high_amount_flag": False, "days_contract_start_to_claim": 400,
+            "claim_before_contract_start_flag": False, "days_claim_to_declaration": 1,
+            "confidence_level": "HIGH",
+        },
+    ])
+
+    signals = compute_claim_business_rule_signals(features, signal_run_id="RULE_RUN")
+    rows = signals[signals["rule_code"] == "CLIENT_CLAIMS_RAPID_ACCUMULATION"]
+
+    assert set(rows["claim_sk"]) == {12}
+    assert (rows["candidate_points"] == 15).all()
+    assert (rows["rule_family"] == "Historique").all()
+
+
 def test_validation_detects_duplicate_grain_and_accusatory_wording():
     features = pd.DataFrame([{
         "claim_sk": 4,
