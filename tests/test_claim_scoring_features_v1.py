@@ -7,6 +7,7 @@ from etl.mart.compute_claim_scoring_features_v1 import (
     compute_claim_scoring_features,
     compute_client_recurrence,
     compute_recent_avenant_features,
+    compute_tiers_repeat_features,
     date_key_to_timestamp,
     is_missing_key,
 )
@@ -249,3 +250,44 @@ def test_tiers_identity_incomplete_flag_only_fires_when_a_tiers_is_linked():
     assert by_claim.loc[1, "tiers_identity_incomplete_flag"]
     assert not by_claim.loc[2, "tiers_identity_incomplete_flag"]
     assert not by_claim.loc[3, "tiers_identity_incomplete_flag"]
+
+
+def test_tiers_repeat_features_count_distinct_clients_and_pair_reuse():
+    df = pd.DataFrame({
+        "claim_sk": [1, 2, 3, 4, 5, 6],
+        # Tiers 501 ("Dupont") is named by clients 10 and 11 -> 2 distinct
+        # clients. Client 10 names it in TWO DIFFERENT accidents (claims 1
+        # and 2, distinct numero_sinistre) -> pair genuinely reused.
+        # Claim 6 shares claim 1's numero_sinistre (same accident split
+        # across two garantie lines) -> must NOT count as a second
+        # occurrence of the pair.
+        # Tiers 502 ("Martin") is only ever named by client 12 once.
+        "client_sk": [10, 10, 11, 12, 0, 10],
+        "tiers_sk": [501, 501, 501, 502, 501, 501],
+        "numero_sinistre": ["S1", "S2", "S3", "S4", "S5", "S1"],
+    })
+    tiers = pd.DataFrame({
+        "tiers_sk": [501, 502],
+        "nom_tiers": ["Dupont", "Martin"],
+    })
+
+    result = compute_tiers_repeat_features(df, tiers)
+    by_claim = result.set_index("claim_sk")
+
+    assert by_claim.loc[1, "tiers_repeat_client_count"] == 2
+    assert by_claim.loc[1, "client_tiers_pair_repeat_count"] == 2
+    assert by_claim.loc[2, "client_tiers_pair_repeat_count"] == 2
+    assert by_claim.loc[3, "tiers_repeat_client_count"] == 2
+    assert by_claim.loc[3, "client_tiers_pair_repeat_count"] == 1
+
+    assert by_claim.loc[4, "tiers_repeat_client_count"] == 1
+    assert by_claim.loc[4, "client_tiers_pair_repeat_count"] == 1
+
+    # Claim 5 has no client_sk (missing key) -> not counted at all.
+    assert by_claim.loc[5, "tiers_repeat_client_count"] == 0
+    assert by_claim.loc[5, "client_tiers_pair_repeat_count"] == 0
+
+    # Claim 6 is the SAME accident as claim 1 (numero_sinistre="S1") split
+    # across a second garantie line -> still only 2 distinct occurrences,
+    # not 3.
+    assert by_claim.loc[6, "client_tiers_pair_repeat_count"] == 2

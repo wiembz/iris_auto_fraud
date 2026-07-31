@@ -1,6 +1,7 @@
 """Read-only claim query service for the IRIS frontend API."""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from sqlalchemy import text
@@ -14,6 +15,13 @@ from backend.services.query_helpers import (
     scalar_or_none,
 )
 from backend.services.serialization import row_to_dict, rows_to_dicts
+
+
+def _compact_plate(value: str) -> str:
+    """Mirror etl.utils.vehicle_normalization's compacting (uppercase, strip
+    non-alphanumeric) so a user-typed plate like "182 TU 4521" matches the
+    normalized value stored on dwh.dim_vehicule.immatriculation."""
+    return re.sub(r"[^A-Z0-9]", "", value.upper())
 
 
 def _latest_score_run(conn, score_version: str) -> str | None:
@@ -118,8 +126,19 @@ def list_claims(engine, config: ApiConfig, filters: dict[str, Any]) -> dict[str,
         where.append("s.attention_score <= :max_score")
         params["max_score"] = _safe_int(filters["max_score"], 100, 0, 100)
     if filters.get("search"):
-        where.append("s.claim_business_id ILIKE :search")
-        params["search"] = f"%{filters['search']}%"
+        search_term = filters["search"]
+        where.append(
+            "(s.claim_business_id ILIKE :search"
+            " OR f.numero_sinistre ILIKE :search"
+            " OR f.code_garantie ILIKE :search"
+            " OR c.idclt ILIKE :search"
+            " OR v.immatriculation ILIKE :plate_search)"
+        )
+        params["search"] = f"%{search_term}%"
+        # L'immatriculation stockee est normalisee (majuscules, sans separateurs) ;
+        # on applique la meme normalisation au terme tape pour que "182 TU 4521"
+        # retrouve bien "182TU4521".
+        params["plate_search"] = f"%{_compact_plate(search_term)}%"
 
     validation_status = filters.get("validation_status")
     if validation_status == "NONE":
@@ -167,6 +186,11 @@ def list_claims(engine, config: ApiConfig, filters: dict[str, Any]) -> dict[str,
             count_sql = f"""
                 SELECT COUNT(*) AS total
                 FROM mart.fact_claim_attention_score s
+                LEFT JOIN mart.fact_claim_scoring_features f
+                    ON f.claim_sk = s.claim_sk
+                   AND f.feature_run_id = s.feature_run_id
+                LEFT JOIN dwh.dim_client c ON c.client_sk = f.client_sk
+                LEFT JOIN dwh.dim_vehicule v ON v.vehicule_sk = f.vehicle_sk
                 LEFT JOIN app.claim_review_decision_latest d ON d.claim_sk = s.claim_sk
                 WHERE {where_sql}
             """
@@ -202,6 +226,8 @@ def list_claims(engine, config: ApiConfig, filters: dict[str, Any]) -> dict[str,
             LEFT JOIN mart.fact_claim_scoring_features f
                 ON f.claim_sk = s.claim_sk
                AND f.feature_run_id = s.feature_run_id
+            LEFT JOIN dwh.dim_client c ON c.client_sk = f.client_sk
+            LEFT JOIN dwh.dim_vehicule v ON v.vehicule_sk = f.vehicle_sk
             LEFT JOIN app.claim_review_decision_latest d ON d.claim_sk = s.claim_sk
             LEFT JOIN app.claim_workflow_status_latest w ON w.claim_sk = s.claim_sk
             LEFT JOIN app.claim_workflow_assignment_latest a ON a.claim_sk = s.claim_sk

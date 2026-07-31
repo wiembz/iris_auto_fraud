@@ -780,6 +780,43 @@ def _tiers_identity_rules(row: pd.Series) -> list[dict[str, Any]]:
     )]
 
 
+def _tiers_repeat_rules(row: pd.Series) -> list[dict[str, Any]]:
+    # Matching par nom_tiers uniquement (dim_tiers n'a ni CIN ni telephone) :
+    # une homonymie peut produire un faux rapprochement. Signal a verifier
+    # aupres du constat, pas une preuve.
+    #
+    # TIERS_REPEATED_ACROSS_CLIENTS desactivee : verifiee sur donnees reelles,
+    # elle se declenchait sur ~19% des dossiers -- pas parce que le
+    # rapprochement nom-seul est bruite (attendu et assume), mais parce que
+    # nom_tiers contient massivement des valeurs qui ne sont PAS des noms de
+    # tiers : des causes de sinistre ("DERAPAGE" 182x, "BRIS DE GLACE" 135x,
+    # "INCENDIE", "VOL", "TOUS RISQUES") et des codes/placeholders ("TR", "PI",
+    # "*"), en plus d'entreprises legitimement partagees par de nombreux
+    # clients (loueurs, assureurs, STEG/SONEDE/Tunisie Telecom). Aucun filtre
+    # par mots-cles ne peut nettoyer cela de maniere fiable sans un chantier
+    # dedie de qualite de donnees sur dim_tiers. La feature
+    # tiers_repeat_client_count reste calculee (donnee brute utile pour ce
+    # futur chantier) mais n'alimente plus de regle active.
+    rules: list[dict[str, Any]] = []
+    pair_count = _int(row.get("client_tiers_pair_repeat_count"))
+
+    if pair_count >= 2:
+        rules.append(_rule(
+            row=row,
+            rule_family="Tiers",
+            rule_code="CLIENT_TIERS_PAIR_REPEATED",
+            rule_label="Meme couple client-tiers repete",
+            rule_severity_rank=2,
+            rule_threshold_value="client_tiers_pair_repeat_count >= 2",
+            rule_observed_value=pair_count,
+            candidate_points=18,
+            business_explanation="Ce client et ce tiers (nom) reapparaissent ensemble dans plusieurs dossiers; ce rapprochement, base sur le nom seul, merite une verification aupres du constat.",
+            payload={"client_tiers_pair_repeat_count": pair_count},
+        ))
+
+    return rules
+
+
 def _client_guarantee_recurrence_rules(row: pd.Series) -> list[dict[str, Any]]:
     return _entity_recurrence_rules(
         row,
@@ -857,6 +894,7 @@ def claim_business_rules_for_row(row: pd.Series) -> list[dict[str, Any]]:
     rules.extend(_driver_recurrence_rules(row))
     rules.extend(_third_party_recurrence_rules(row))
     rules.extend(_tiers_identity_rules(row))
+    rules.extend(_tiers_repeat_rules(row))
     # _geo_recurrence_rules desactivee : seuil non calibre sur donnees reelles
     # (voir docstring de la fonction). A reactiver apres recalibrage percentile.
     rules.extend(_client_guarantee_recurrence_rules(row))

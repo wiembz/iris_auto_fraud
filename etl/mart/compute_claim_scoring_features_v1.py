@@ -75,6 +75,12 @@ ALTER TABLE mart.fact_claim_scoring_features
     ADD COLUMN IF NOT EXISTS tiers_identity_incomplete_flag BOOLEAN;
 """
 
+DDL_MIGRATE_TIERS_REPEAT_COLUMNS = """
+ALTER TABLE mart.fact_claim_scoring_features
+    ADD COLUMN IF NOT EXISTS tiers_repeat_client_count      INTEGER,
+    ADD COLUMN IF NOT EXISTS client_tiers_pair_repeat_count INTEGER;
+"""
+
 DDL_FACT_CLAIM_SCORING_FEATURES = """
 CREATE TABLE IF NOT EXISTS mart.fact_claim_scoring_features (
     claim_feature_sk                 BIGSERIAL PRIMARY KEY,
@@ -120,6 +126,8 @@ CREATE TABLE IF NOT EXISTS mart.fact_claim_scoring_features (
     days_contract_start_to_declaration       INTEGER,
     rapid_declaration_after_subscription_flag BOOLEAN,
     tiers_identity_incomplete_flag   BOOLEAN,
+    tiers_repeat_client_count        INTEGER,
+    client_tiers_pair_repeat_count   INTEGER,
     recent_guarantee_change_flag     BOOLEAN,
     claim_after_recent_update_flag   BOOLEAN,
     chronology_ready_flag            BOOLEAN,
@@ -219,6 +227,8 @@ FEATURE_COLUMNS = [
     "days_contract_start_to_declaration",
     "rapid_declaration_after_subscription_flag",
     "tiers_identity_incomplete_flag",
+    "tiers_repeat_client_count",
+    "client_tiers_pair_repeat_count",
     "recent_guarantee_change_flag",
     "claim_after_recent_update_flag",
     "chronology_ready_flag",
@@ -484,6 +494,74 @@ def compute_tiers_identity_features(df: pd.DataFrame, df_tiers: pd.DataFrame | N
     return out
 
 
+def compute_tiers_repeat_features(df: pd.DataFrame, df_tiers: pd.DataFrame | None) -> pd.DataFrame:
+    """Cross-claim reuse of the same tiers (adverse party) name.
+
+    dim_tiers only carries a name and a vehicle plate for the adverse party
+    (no CIN/phone) -- matching is therefore by normalized nom_tiers only, a
+    real limitation to keep in mind (homonyms can collide, and a genuinely
+    unlucky repeat driver cannot be told apart from organized fraud with this
+    data alone). Two distinct patterns are computed, both across the FULL
+    claim history (not a recency window, since "the same tiers keeps coming
+    back" is a static identity signal, not a time-decayed one):
+      - tiers_repeat_client_count: how many DIFFERENT clients have a claim
+        naming this same tiers (>=2 means it is not tied to just one client).
+      - client_tiers_pair_repeat_count: how many claims share this exact
+        (client_sk, nom_tiers) pair (the same client repeatedly involved with
+        the same named tiers).
+    """
+    out = df.copy()
+    out["tiers_repeat_client_count"] = pd.Series(0, index=out.index, dtype="Int64")
+    out["client_tiers_pair_repeat_count"] = pd.Series(0, index=out.index, dtype="Int64")
+
+    if df_tiers is None or df_tiers.empty or out.empty:
+        return out
+
+    tiers = _ensure_columns(df_tiers, ["tiers_sk", "nom_tiers"]).copy()
+    tiers["tiers_sk"] = _safe_int_series(tiers["tiers_sk"])
+    tiers = tiers[~tiers["tiers_sk"].map(is_missing_key)][["tiers_sk", "nom_tiers"]].drop_duplicates("tiers_sk")
+    tiers["nom_tiers_norm"] = tiers["nom_tiers"].astype(str).str.strip().str.upper()
+    tiers = tiers[tiers["nom_tiers_norm"].ne("") & tiers["nom_tiers_norm"].ne("UNKNOWN")]
+    if tiers.empty:
+        return out
+
+    has_tiers = ~out["tiers_sk"].map(is_missing_key)
+    has_client = ~out["client_sk"].map(is_missing_key)
+    valid = has_tiers & has_client
+    if not valid.any():
+        return out
+
+    # numero_sinistre is required to de-duplicate a single accident split
+    # across several garantie rows (e.g. S25.../CAS + S25.../IDA share the
+    # same client_sk+tiers_sk) -- without it, one real accident inflates the
+    # pair count exactly as if the pairing had genuinely repeated.
+    sinistre_col = out["numero_sinistre"] if "numero_sinistre" in out.columns else pd.Series(pd.NA, index=out.index)
+
+    # reset_index() keeps the original row index as an explicit "index"
+    # column through the merge, so results can be written back accurately
+    # even if dim_tiers ever gains duplicate tiers_sk rows upstream.
+    work = out.loc[valid, ["client_sk", "tiers_sk"]].assign(numero_sinistre=sinistre_col.loc[valid]).reset_index().merge(
+        tiers[["tiers_sk", "nom_tiers_norm"]], on="tiers_sk", how="inner"
+    )
+    if work.empty:
+        return out
+
+    client_counts = work.drop_duplicates(["nom_tiers_norm", "client_sk"]).groupby("nom_tiers_norm")["client_sk"].nunique()
+    # Count DISTINCT sinistre events per (client, tiers) pair, not rows --
+    # one accident with two garantie lines must count as one occurrence.
+    pair_counts = (
+        work.drop_duplicates(["nom_tiers_norm", "client_sk", "numero_sinistre"])
+        .groupby(["nom_tiers_norm", "client_sk"]).size()
+    )
+
+    work["tiers_repeat_client_count"] = work["nom_tiers_norm"].map(client_counts).fillna(0).astype(int)
+    work["client_tiers_pair_repeat_count"] = work.set_index(["nom_tiers_norm", "client_sk"]).index.map(pair_counts).fillna(0).astype(int)
+
+    out.loc[work["index"], "tiers_repeat_client_count"] = work["tiers_repeat_client_count"].to_numpy()
+    out.loc[work["index"], "client_tiers_pair_repeat_count"] = work["client_tiers_pair_repeat_count"].to_numpy()
+    return out
+
+
 def compute_client_recurrence(df: pd.DataFrame) -> pd.DataFrame:
     """Compute prior client claims using only claim_date < current claim_date."""
     out = df.copy()
@@ -672,6 +750,7 @@ def compute_claim_scoring_features(
     features = compute_chronology_features(features)
     features = compute_recent_avenant_features(features, df_contracts)
     features = compute_tiers_identity_features(features, df_tiers)
+    features = compute_tiers_repeat_features(features, df_tiers)
     features = compute_confidence_features(features, as_of_date=as_of_date)
 
     features["scoring_feature_version"] = FEATURE_VERSION
@@ -903,6 +982,7 @@ def compute_claim_scoring_features_v1():
         conn.execute(text(DDL_MIGRATE_AVENANT_COLUMN))
         conn.execute(text(DDL_MIGRATE_RAPID_DECLARATION_COLUMNS))
         conn.execute(text(DDL_MIGRATE_TIERS_IDENTITY_COLUMN))
+        conn.execute(text(DDL_MIGRATE_TIERS_REPEAT_COLUMNS))
     logger.info("DDL ensured for mart.fact_claim_scoring_features")
 
     df_claims = _read_claim_source(engine)

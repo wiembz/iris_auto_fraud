@@ -304,6 +304,97 @@ def test_tiers_identity_incomplete_does_not_fire_when_flag_is_false():
     assert "TIERS_IDENTITY_INCOMPLETE" not in set(signals["rule_code"])
 
 
+def test_tiers_repeated_across_clients_is_not_wired_to_any_rule():
+    # Verified on real data: nom_tiers is massively polluted with claim-cause
+    # words ("DERAPAGE", "BRIS DE GLACE", "INCENDIE", "VOL") and placeholder
+    # codes, not just legitimate shared institutions (STEG, insurers,
+    # leasing companies) -- ~19% of claims fired this rule for reasons
+    # unrelated to fraud. It stays disabled; tiers_repeat_client_count is
+    # still computed (raw data) but must never produce a signal.
+    features = pd.DataFrame([{
+        "claim_sk": 105,
+        "claim_business_id": "S105|G1",
+        "feature_run_id": "FEATURE_RUN",
+        "client_sk": 10,
+        "contrat_sk": 20,
+        "vehicle_sk": 30,
+        "tiers_sk": 501,
+        "client_claim_count_12m": 0,
+        "days_since_previous_claim": pd.NA,
+        "amount_vs_guarantee_median_ratio": 1.0,
+        "amount_percentile_by_guarantee": 0.50,
+        "high_amount_flag": False,
+        "days_contract_start_to_claim": 400,
+        "claim_before_contract_start_flag": False,
+        "days_claim_to_declaration": 1,
+        "tiers_repeat_client_count": 3,
+        "client_tiers_pair_repeat_count": 1,
+        "confidence_level": "HIGH",
+    }])
+
+    signals = compute_claim_business_rule_signals(features, signal_run_id="RULE_RUN")
+
+    assert "TIERS_REPEATED_ACROSS_CLIENTS" not in set(signals["rule_code"])
+
+
+def test_client_tiers_pair_repeated_fires_above_threshold():
+    features = pd.DataFrame([{
+        "claim_sk": 106,
+        "claim_business_id": "S106|G1",
+        "feature_run_id": "FEATURE_RUN",
+        "client_sk": 10,
+        "contrat_sk": 20,
+        "vehicle_sk": 30,
+        "tiers_sk": 501,
+        "client_claim_count_12m": 0,
+        "days_since_previous_claim": pd.NA,
+        "amount_vs_guarantee_median_ratio": 1.0,
+        "amount_percentile_by_guarantee": 0.50,
+        "high_amount_flag": False,
+        "days_contract_start_to_claim": 400,
+        "claim_before_contract_start_flag": False,
+        "days_claim_to_declaration": 1,
+        "tiers_repeat_client_count": 1,
+        "client_tiers_pair_repeat_count": 3,
+        "confidence_level": "HIGH",
+    }])
+
+    signals = compute_claim_business_rule_signals(features, signal_run_id="RULE_RUN")
+    row = signals[signals["rule_code"] == "CLIENT_TIERS_PAIR_REPEATED"].iloc[0]
+
+    assert row["rule_family"] == "Tiers"
+    assert row["candidate_points"] == 18
+    assert "TIERS_REPEATED_ACROSS_CLIENTS" not in set(signals["rule_code"])
+
+
+def test_tiers_repeat_rules_do_not_fire_below_threshold():
+    features = pd.DataFrame([{
+        "claim_sk": 107,
+        "claim_business_id": "S107|G1",
+        "feature_run_id": "FEATURE_RUN",
+        "client_sk": 10,
+        "contrat_sk": 20,
+        "vehicle_sk": 30,
+        "tiers_sk": 501,
+        "client_claim_count_12m": 0,
+        "days_since_previous_claim": pd.NA,
+        "amount_vs_guarantee_median_ratio": 1.0,
+        "amount_percentile_by_guarantee": 0.50,
+        "high_amount_flag": False,
+        "days_contract_start_to_claim": 400,
+        "claim_before_contract_start_flag": False,
+        "days_claim_to_declaration": 1,
+        "tiers_repeat_client_count": 1,
+        "client_tiers_pair_repeat_count": 1,
+        "confidence_level": "HIGH",
+    }])
+
+    signals = compute_claim_business_rule_signals(features, signal_run_id="RULE_RUN")
+
+    assert "TIERS_REPEATED_ACROSS_CLIENTS" not in set(signals["rule_code"])
+    assert "CLIENT_TIERS_PAIR_REPEATED" not in set(signals["rule_code"])
+
+
 def test_geo_recurrence_uses_prior_claims_only_in_same_zone():
     features = pd.DataFrame([
         {

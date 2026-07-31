@@ -177,7 +177,12 @@ def list_vhs_vehicles(
         if not run_id:
             return {"run_id": None, "items": []}
 
-        where = ["s.run_id = :run_id"]
+        # Un score de 0 correspond a un vehicule reellement immobilise/critique
+        # avec toutes les cases d inspection renseignees (pas un artefact de
+        # donnees manquantes) -- mais il s affiche comme une fiche "cassee" en
+        # tete de liste (tri du plus mauvais score au meilleur). Masque de la
+        # liste par defaut a la demande metier.
+        where = ["s.run_id = :run_id", "s.vhs_final_score > 0"]
         params: dict[str, Any] = {"run_id": run_id, "limit": limit}
         if decision in ALLOWED_DECISIONS:
             where.append("s.decision = :decision")
