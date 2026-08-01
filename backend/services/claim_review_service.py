@@ -614,9 +614,9 @@ def get_claim_review(
         garantie = claim_data.get("code_garantie", "CAS")
         checklist.append(f"Vérifier l'historique des garanties {garantie} du client sur les 24 derniers mois ({client_count} sinistres trouvés).")
         
-    # 3.4. Vehicle recurrence check
+    # 3.4. Vehicle frequency check
     if "VEHICLE_CLAIMS_12M_HIGH" in active_codes:
-        checklist.append("Vérifier l'historique des sinistres de ce véhicule (recurrence élevée).")
+        checklist.append("Vérifier l'historique des sinistres de ce véhicule (fréquence élevée).")
         
     # 3.5. Amount check
     if "AMOUNT_HIGH_BY_GUARANTEE" in active_codes:

@@ -1,6 +1,6 @@
 # Claim scoring features V1 summary
 
-- **Run ID:** `IRIS_CLAIM_ATTENTION_FEATURES_V1_CANDIDATE_20260713_211738`
+- **Run ID:** `IRIS_CLAIM_ATTENTION_FEATURES_V1_CANDIDATE_20260731_081540`
 - **Feature version:** `IRIS_CLAIM_ATTENTION_FEATURES_V1_CANDIDATE`
 - **Source rows:** 367464
 - **Feature rows:** 367464
@@ -10,9 +10,9 @@
 
 | Confidence | Rows |
 |---|---:|
-| HIGH | 294713 |
+| HIGH | 292993 |
 | LOW | 15 |
-| MEDIUM | 72736 |
+| MEDIUM | 74456 |
 
 ## V1 scope
 

@@ -1,9 +1,9 @@
 # Claim Attention Hybrid V1 candidate validation
 
-- **Run ID:** `IRIS_CLAIM_ATTENTION_HYBRID_V1_CANDIDATE_20260713_221801`
+- **Run ID:** `IRIS_CLAIM_ATTENTION_HYBRID_V1_CANDIDATE_20260801_231053`
 - **Score version:** `IRIS_CLAIM_ATTENTION_HYBRID_V1_CANDIDATE`
 - **Score rows:** 367464
-- **Signal detail rows:** 485673
+- **Signal detail rows:** 446664
 
 Rules and weights are loaded from the JSON configuration snapshot.
 This score is a prioritization aid and does not modify Claim Attention Score V1 or VHS.
@@ -13,7 +13,7 @@ This score is a prioritization aid and does not modify Claim Attention Score V1 
 | Check | Rows |
 |---|---:|
 | score_rows | 367464 |
-| detail_rows | 485673 |
+| detail_rows | 446664 |
 | duplicate_score_rows | 0 |
 | score_out_of_range_rows | 0 |
 | null_level_rows | 0 |

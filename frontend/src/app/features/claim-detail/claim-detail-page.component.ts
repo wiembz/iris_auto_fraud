@@ -125,7 +125,6 @@ const FAMILY_LABELS: Record<string, string> = {
   MONTANT: 'Montants',
   FINANCIAL: 'Montants',
   HISTORY: 'Historique client',
-  RECURRENCE: 'Recurrence',
   DATA_QUALITY: 'Completude du dossier',
   QUALITY: 'Completude du dossier',
   VEHICULE: 'Vehicule',

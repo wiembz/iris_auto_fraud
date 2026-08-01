@@ -1,8 +1,8 @@
 # Claim business rule signal V1 candidate validation
 
-- **Run ID:** `IRIS_CLAIM_BUSINESS_RULE_SIGNAL_V1_CANDIDATE_20260713_213755`
+- **Run ID:** `IRIS_CLAIM_BUSINESS_RULE_SIGNAL_V1_CANDIDATE_20260731_110239`
 - **Signal version:** `IRIS_CLAIM_BUSINESS_RULE_SIGNAL_V1_CANDIDATE`
-- **Signal rows:** 494735
+- **Signal rows:** 458072
 
 This layer provides deterministic attention signals for review. It does not modify Claim Attention Score V1.
 
@@ -10,7 +10,7 @@ This layer provides deterministic attention signals for review. It does not modi
 
 | Check | Rows |
 |---|---:|
-| signal_rows | 494735 |
+| signal_rows | 458072 |
 | duplicate_grain_rows | 0 |
 | null_required_rows | 0 |
 | negative_candidate_point_rows | 0 |

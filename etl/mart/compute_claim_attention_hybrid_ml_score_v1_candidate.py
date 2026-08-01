@@ -163,7 +163,14 @@ def build_ml_detail_rows(
         "signal_value": values,
         "points": signals["points"].astype(int),
         "severity": signals["points"].map(lambda points: _severity(int(points))),
-        "business_explanation": "Le dossier presente une atypicite statistique calibree par percentile dans la population du run. Ce signal complete les regles metier et reste soumis a verification humaine.",
+        "business_explanation": signals["score_ml"].map(
+            lambda score_ml: (
+                f"Ce dossier se situe au {float(score_ml) * 100:.0f}e percentile d'atypicite "
+                "statistique de la population de ce run. Les variables les plus contributives "
+                "sont detaillees ci-dessous. Ce signal complete les regles metier et reste "
+                "soumis a verification humaine ; il ne constitue pas une preuve."
+            )
+        ),
         "profile_name": PROFILE_NAME,
         "created_at": created_at,
     })
