@@ -1,6 +1,7 @@
 """Flask route registration for the IRIS read-only API."""
 from __future__ import annotations
 
+from backend.routes.auth_routes import auth_bp
 from backend.routes.claims_routes import claims_bp
 from backend.routes.decisions_routes import decisions_bp
 from backend.routes.portfolio_routes import portfolio_bp
@@ -11,6 +12,7 @@ from backend.routes.workflow_routes import workflow_bp
 
 
 def register_blueprints(app) -> None:
+    app.register_blueprint(auth_bp)
     app.register_blueprint(summary_bp)
     app.register_blueprint(claims_bp)
     app.register_blueprint(decisions_bp)

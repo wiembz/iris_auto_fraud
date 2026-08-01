@@ -1,4 +1,6 @@
-﻿import { Injectable, signal } from '@angular/core';
+﻿import { HttpClient } from '@angular/common/http';
+import { Injectable, inject, signal } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import {
   IRIS_ROLE_HOME_ROUTE,
   IRIS_ROLE_LABELS,
@@ -8,19 +10,42 @@ import {
 
 const SESSION_KEY = 'iris.session.v1';
 
+interface ResolveRoleResponse {
+  email: string;
+  role: IrisRole;
+}
+
+/** Thrown when the backend rejects the email (unknown, wrong domain, or bad role config). */
+export class RoleResolutionError extends Error {}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
+  private readonly http = inject(HttpClient);
+  private readonly apiBaseUrl = 'http://127.0.0.1:5000/api';
   private readonly userSignal = signal<IrisUserContext | null>(restoreSession());
   readonly currentUser = this.userSignal.asReadonly();
 
-  signIn(role: IrisRole, email?: string): IrisUserContext {
-    const normalizedEmail = email?.trim().toLowerCase();
-    const displayName = normalizedEmail ? this.displayNameFromEmail(normalizedEmail) : 'Utilisateur IRIS';
+  /**
+   * Resolves the role for this email server-side (backend/services/auth_service.py) and
+   * opens the session. The frontend can no longer decide its own role.
+   */
+  async signIn(email: string): Promise<IrisUserContext> {
+    let resolved: ResolveRoleResponse;
+    try {
+      resolved = await firstValueFrom(
+        this.http.post<ResolveRoleResponse>(`${this.apiBaseUrl}/auth/resolve-role`, { email })
+      );
+    } catch (error: any) {
+      const message = error?.error?.message ?? "Impossible de verifier cette adresse email.";
+      throw new RoleResolutionError(message);
+    }
+
+    const displayName = this.displayNameFromEmail(resolved.email);
     const user: IrisUserContext = {
       displayName,
-      email: normalizedEmail,
-      role,
-      roleLabel: IRIS_ROLE_LABELS[role]
+      email: resolved.email,
+      role: resolved.role,
+      roleLabel: IRIS_ROLE_LABELS[resolved.role]
     };
     this.userSignal.set(user);
     try {

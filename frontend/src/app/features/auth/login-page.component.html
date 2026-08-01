@@ -79,26 +79,16 @@
           </p>
         }
 
-        <fieldset class="login-roles">
-          <legend>Votre profil</legend>
-          <div class="login-roles__grid">
-            @for (option of roleOptions; track option.role) {
-              <button
-                type="button"
-                class="login-role"
-                [class.login-role--active]="selectedRole === option.role"
-                (click)="selectRole(option.role)"
-              >
-                <span class="login-role__check" aria-hidden="true">✓</span>
-                <span class="login-role__title">{{ option.title }}</span>
-                <small>{{ option.description }}</small>
-              </button>
-            }
-          </div>
-        </fieldset>
+        <p class="login-help">
+          Votre profil (gestionnaire, manager ou administrateur) est déterminé automatiquement
+          par IRIS à partir de votre adresse email.
+        </p>
+        @if (roleError()) {
+          <p id="role-error" class="login-error">{{ roleError() }}</p>
+        }
 
-        <button class="login-submit" type="submit" [disabled]="!isBnaEmail">
-          Entrer dans IRIS <span aria-hidden="true">→</span>
+        <button class="login-submit" type="submit" [disabled]="!isBnaEmail || signingIn()">
+          {{ signingIn() ? 'Vérification…' : 'Entrer dans IRIS' }} <span aria-hidden="true">→</span>
         </button>
 
         <p class="login-note">

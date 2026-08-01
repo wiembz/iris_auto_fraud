@@ -1,8 +1,7 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { FormsModule, NgForm } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { AuthService } from '../../core/auth/auth.service';
-import { IRIS_ROLE_LABELS, IrisRole } from '../../core/models/user-role.model';
+import { AuthService, RoleResolutionError } from '../../core/auth/auth.service';
 import { IrisEyeSceneComponent } from '../landing/sections/iris-eye-scene.component';
 import { IrisLogoComponent } from '../../shared/ui/iris-logo.component';
 
@@ -14,32 +13,14 @@ import { IrisLogoComponent } from '../../shared/ui/iris-logo.component';
 })
 export class LoginPageComponent {
   readonly allowedDomain = '@bnaassurance.com';
-  readonly roleOptions: Array<{ role: IrisRole; title: string; description: string }> = [
-    {
-      role: 'gestionnaire',
-      title: IRIS_ROLE_LABELS.gestionnaire,
-      description: 'Consulter et analyser les dossiers à examiner.'
-    },
-    {
-      role: 'responsable',
-      title: IRIS_ROLE_LABELS.responsable,
-      description: 'Suivre les volumes et organiser la revue métier.'
-    },
-    {
-      role: 'manager',
-      title: IRIS_ROLE_LABELS.manager,
-      description: 'Piloter les indicateurs et les validations.'
-    },
-    {
-      role: 'administrateur',
-      title: IRIS_ROLE_LABELS.administrateur,
-      description: 'Gérer les paramètres de la plateforme.'
-    }
-  ];
 
   email = '';
-  selectedRole: IrisRole = 'gestionnaire';
   attemptedSubmit = false;
+  // Signaux (et non simples champs) : cette appli tourne sans zone.js, donc un
+  // etat mis a jour apres un `await` (resolution du role cote backend) ne
+  // declenche un rendu que via un signal, pas via une simple mutation de champ.
+  readonly signingIn = signal(false);
+  readonly roleError = signal<string | null>(null);
 
   constructor(
     private readonly auth: AuthService,
@@ -58,18 +39,26 @@ export class LoginPageComponent {
     return this.attemptedSubmit || this.email.trim().length > 0;
   }
 
-  selectRole(role: IrisRole): void {
-    this.selectedRole = role;
-  }
-
-  signIn(form: NgForm): void {
+  async signIn(form: NgForm): Promise<void> {
     this.attemptedSubmit = true;
+    this.roleError.set(null);
     if (form.invalid || !this.isBnaEmail) {
       form.control.markAllAsTouched();
       return;
     }
 
-    const user = this.auth.signIn(this.selectedRole, this.normalizedEmail);
-    void this.router.navigateByUrl(this.auth.homeRouteFor(user.role));
+    this.signingIn.set(true);
+    try {
+      const user = await this.auth.signIn(this.normalizedEmail);
+      void this.router.navigateByUrl(this.auth.homeRouteFor(user.role));
+    } catch (error) {
+      this.roleError.set(
+        error instanceof RoleResolutionError
+          ? error.message
+          : "Impossible de verifier cette adresse email pour le moment."
+      );
+    } finally {
+      this.signingIn.set(false);
+    }
   }
 }
