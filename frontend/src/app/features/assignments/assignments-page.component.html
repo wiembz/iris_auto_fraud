@@ -1,10 +1,10 @@
 <div class="assign-page">
-  <header class="assign-hero">
+  <header class="iris-page-hero">
     <div>
-      <p class="iris-eyebrow">Affectations</p>
-      <h1>Organisation de la revue</h1>
+      <p class="iris-eyebrow">Pilotage equipe</p>
+      <h1>Pilotage de la revue</h1>
       <p>
-        Repartissez l effort de votre equipe : la file ci-dessous liste les dossiers
+        Suivez la charge de votre equipe : la file ci-dessous presente les dossiers
         prioritaires encore sans decision, et le panneau d activite montre qui a traite quoi.
       </p>
     </div>
@@ -32,7 +32,7 @@
         <small>seconde vague de revue</small>
       </article>
       <article class="iris-card assign-kpi">
-        <span>Decisions enregistrees</span>
+        <span>Activites recentes</span>
         <b>{{ decisionsTotal().toLocaleString('fr-FR') }}</b>
         <small>sur les 200 dernieres activites</small>
       </article>
@@ -44,10 +44,10 @@
     </section>
 
     <div class="assign-layout">
-      <section class="iris-card assign-queue" aria-label="File a repartir">
+      <section class="iris-card assign-queue" aria-label="Priorites a distribuer">
         <header>
           <div>
-            <h2>File a repartir</h2>
+            <h2>Priorites a distribuer</h2>
             <p>Les dossiers en examen prioritaire encore sans decision, du score le plus haut au plus bas</p>
           </div>
           <a class="assign-queue__all" routerLink="/app/claims">Ouvrir la file complete</a>
