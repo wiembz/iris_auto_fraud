@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "iris-backend",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["backend/app.py"],
+      "port": 5000
+    },
+    {
+      "name": "iris-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "start", "--", "--port", "4201"],
+      "port": 4201
+    }
+  ]
+}
