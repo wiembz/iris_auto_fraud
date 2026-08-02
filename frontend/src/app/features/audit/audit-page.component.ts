@@ -9,9 +9,9 @@ import {
 } from '../../core/services/iris-api.service';
 
 const DECISION_LABELS: Record<ClaimDecisionValue, string> = {
-  SUSPICION_CONFIRMED: 'Suspicion confirmee',
-  CONFORME: 'Conforme',
-  A_COMPLETER: 'A completer'
+  SUSPICION_CONFIRMED: 'Fraude',
+  CONFORME: 'Non fraude',
+  A_COMPLETER: 'Incomplet'
 };
 
 const DECISION_TONES: Record<ClaimDecisionValue, string> = {
@@ -71,17 +71,17 @@ export class AuditPageComponent implements OnInit, OnDestroy {
     { value: '', label: 'Tout le journal', count: this.totalDecisions() },
     {
       value: 'SUSPICION_CONFIRMED',
-      label: 'Suspicions confirmees',
+      label: 'Fraude',
       count: this.decisions().filter((d) => d.decision === 'SUSPICION_CONFIRMED').length
     },
     {
       value: 'CONFORME',
-      label: 'Conformes',
+      label: 'Non fraude',
       count: this.decisions().filter((d) => d.decision === 'CONFORME').length
     },
     {
       value: 'A_COMPLETER',
-      label: 'A completer',
+      label: 'Incomplet',
       count: this.decisions().filter((d) => d.decision === 'A_COMPLETER').length
     },
     { value: 'CORRECTIONS', label: 'Corrections', count: this.totalCorrections() }

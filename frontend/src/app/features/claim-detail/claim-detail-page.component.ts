@@ -22,9 +22,9 @@ import {
 import { AttentionBadgeComponent } from '../worklist/attention-badge/attention-badge.component';
 
 const DECISION_LABELS: Record<ClaimDecisionValue, string> = {
-  SUSPICION_CONFIRMED: 'Transmis a l investigation',
-  CONFORME: 'Dossier conforme',
-  A_COMPLETER: 'A completer'
+  SUSPICION_CONFIRMED: 'Fraude',
+  CONFORME: 'Non fraude',
+  A_COMPLETER: 'Incomplet'
 };
 
 const WORKFLOW_STATUS_LABELS: Record<WorkflowStatus, string> = {

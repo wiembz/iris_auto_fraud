@@ -722,8 +722,8 @@
           [class.is-selected]="selectedDecision() === 'SUSPICION_CONFIRMED'"
           (click)="selectDecision('SUSPICION_CONFIRMED')"
         >
-          <strong>Transmis a l investigation</strong>
-          <span>Le dossier doit etre transmis a l equipe fraude pour investigation.</span>
+          <strong>Dossier fraude</strong>
+          <span>Les elements reunis confirment une fraude ; le dossier est transmis a l equipe fraude pour suite a donner.</span>
         </button>
         <button
           type="button"
@@ -732,7 +732,7 @@
           [class.is-selected]="selectedDecision() === 'CONFORME'"
           (click)="selectDecision('CONFORME')"
         >
-          <strong>Dossier conforme</strong>
+          <strong>Dossier non fraude</strong>
           <span>Aucune anomalie retenue apres verification.</span>
         </button>
         <button
@@ -742,7 +742,7 @@
           [class.is-selected]="selectedDecision() === 'A_COMPLETER'"
           (click)="selectDecision('A_COMPLETER')"
         >
-          <strong>A completer</strong>
+          <strong>Dossier incomplet</strong>
           <span>Des elements manquent pour trancher ce dossier.</span>
         </button>
       </div>

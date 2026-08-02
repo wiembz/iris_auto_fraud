@@ -101,9 +101,9 @@
                     <i [style.width.%]="reviewerShare(reviewer)"></i>
                   </span>
                   <div class="assign-team__badges">
-                    <span data-tone="high">{{ reviewer.confirmed }} suspicion(s)</span>
-                    <span data-tone="ok">{{ reviewer.conforme }} conforme(s)</span>
-                    <span data-tone="medium">{{ reviewer.aCompleter }} a completer</span>
+                    <span data-tone="high">{{ reviewer.confirmed }} fraude(s)</span>
+                    <span data-tone="ok">{{ reviewer.conforme }} non fraude(s)</span>
+                    <span data-tone="medium">{{ reviewer.aCompleter }} incomplet(s)</span>
                     @if (reviewer.corrections > 0) {
                       <span data-tone="muted">{{ reviewer.corrections }} correction(s)</span>
                     }

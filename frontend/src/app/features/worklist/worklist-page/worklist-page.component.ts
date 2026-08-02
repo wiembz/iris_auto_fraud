@@ -226,11 +226,11 @@ export class WorklistPageComponent implements OnInit, OnDestroy {
   private validationStatusLabel(value: string | null | undefined): string {
     switch (value) {
       case 'SUSPICION_CONFIRMED':
-        return 'Suspicion confirmee';
+        return 'Fraude';
       case 'CONFORME':
-        return 'Conforme';
+        return 'Non fraude';
       case 'A_COMPLETER':
-        return 'A completer';
+        return 'Incomplet';
       default:
         return 'Non revu';
     }

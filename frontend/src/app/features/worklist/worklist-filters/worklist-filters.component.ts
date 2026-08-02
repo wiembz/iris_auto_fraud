@@ -38,9 +38,9 @@ export class WorklistFiltersComponent implements OnInit, OnChanges, OnDestroy {
   readonly validationOptions: WorklistOption[] = [
     { value: '', label: 'Toute validation' },
     { value: 'NONE', label: 'Non revu' },
-    { value: 'SUSPICION_CONFIRMED', label: 'Suspicion confirmee' },
-    { value: 'CONFORME', label: 'Conforme' },
-    { value: 'A_COMPLETER', label: 'A completer' }
+    { value: 'SUSPICION_CONFIRMED', label: 'Fraude' },
+    { value: 'CONFORME', label: 'Non fraude' },
+    { value: 'A_COMPLETER', label: 'Incomplet' }
   ];
 
   readonly form = this.fb.group({

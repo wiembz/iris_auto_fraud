@@ -6,9 +6,9 @@ import { AuthService } from '../../core/auth/auth.service';
 import { ClaimDecisionRecord, ClaimDecisionValue, IrisApiService } from '../../core/services/iris-api.service';
 
 const DECISION_LABELS: Record<ClaimDecisionValue, string> = {
-  SUSPICION_CONFIRMED: 'Suspicion confirmee',
-  CONFORME: 'Dossier conforme',
-  A_COMPLETER: 'A completer'
+  SUSPICION_CONFIRMED: 'Fraude',
+  CONFORME: 'Non fraude',
+  A_COMPLETER: 'Incomplet'
 };
 
 @Component({
@@ -38,7 +38,7 @@ export class ValidationsPageComponent implements OnInit, OnDestroy {
 
   // Le flux liste chaque decision (y compris celles corrigees depuis), mais
   // les compteurs ne doivent refleter que le statut ACTUEL de chaque dossier :
-  // sans deduplication, un dossier corrige (Conforme -> Suspicion confirmee)
+  // sans deduplication, un dossier corrige (Non fraude -> Fraude)
   // compterait a tort dans les deux categories. Items deja ordonnes par
   // decided_at DESC par le backend -> la premiere occurrence par claim_sk
   // est la plus recente.
