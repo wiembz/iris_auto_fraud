@@ -26,7 +26,7 @@
       "attention_level": "Signal metier a examiner",
       "suggested_action_code": "ACT_VERIFY_CHRONOLOGY",
       "business_explanation": "Le delai de declaration est eleve et peut justifier une verification complementaire.",
-      "threshold_source": "Seuil candidat statistique (30 jours), calibration BNA requise",
+      "threshold_source": "Seuil candidat statistique (7 jours), calibration BNA requise",
       "validated_by": null,
       "validated_on": null,
       "is_active": true
