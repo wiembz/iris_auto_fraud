@@ -1,0 +1,33 @@
+services:
+  airflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["airflow", "standalone"]
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      AIRFLOW_HOME: /opt/airflow
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/iris/airflow/dags
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__PAUSE_DAGS_AT_CREATION: "true"
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: "UTC"
+      IRIS_PROJECT_ROOT: /opt/airflow/iris
+      # Override temporaire pour la validation du DAG : cible la base de test
+      # existante (iris_auto_fraud_TEST), jamais la base reelle utilisee par
+      # Flask/Power BI. A retirer une fois le run de validation confirme.
+      IRIS_TARGET_DB: iris_auto_fraud_TEST
+      DB_NAME: iris_auto_fraud_TEST
+      DB_HOST: host.docker.internal
+    ports:
+      - "8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../:/opt/airflow/iris
+      - ./empty.env:/opt/airflow/iris/.env:ro
+      - airflow_home:/opt/airflow
+
+volumes:
+  airflow_home:

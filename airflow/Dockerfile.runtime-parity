@@ -1,0 +1,16 @@
+FROM apache/airflow:3.3.0-python3.12
+
+COPY requirements-airflow.txt /tmp/requirements-airflow.txt
+
+RUN pip install --no-cache-dir \
+    --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-3.3.0/constraints-3.12.txt" \
+    -r /tmp/requirements-airflow.txt
+
+# The IRIS ETL was validated with this scientific runtime. The official
+# Airflow constraints pin older pandas/numpy versions that fail when technical
+# UNKNOWN rows are concatenated with timezone-aware dimension dataframes.
+RUN pip install --no-cache-dir --upgrade \
+    "numpy==2.4.6" \
+    "pandas==3.0.3" \
+    "scipy==1.18.0" \
+    "scikit-learn==1.9.0"

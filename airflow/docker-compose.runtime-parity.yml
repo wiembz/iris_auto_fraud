@@ -1,0 +1,5 @@
+services:
+  airflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime-parity
