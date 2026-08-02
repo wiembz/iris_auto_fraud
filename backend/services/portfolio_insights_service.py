@@ -159,8 +159,20 @@ def get_portfolio_insights(engine, config: ApiConfig, score_version: str | None 
                     COUNT(d.decision) AS decided_claims,
                     COUNT(*) FILTER (WHERE d.decision = 'SUSPICION_CONFIRMED') AS suspicion_confirmed,
                     COUNT(*) FILTER (WHERE d.decision = 'CONFORME') AS conforme,
-                    COUNT(*) FILTER (WHERE d.decision = 'A_COMPLETER') AS a_completer
+                    COUNT(*) FILTER (WHERE d.decision = 'A_COMPLETER') AS a_completer,
+                    -- SLA depasse : uniquement les dossiers PAS ENCORE decides et
+                    -- ages de plus de 90 jours depuis la survenance. Volontairement
+                    -- different du badge par ligne (age brut) : ici on ne compte que
+                    -- ce qui reste reellement a traiter, pas tout dossier ancien deja
+                    -- clos (cf. retour Wiem : le badge par ligne devient du bruit s il
+                    -- ignore le statut de decision).
+                    COUNT(*) FILTER (
+                        WHERE d.decision IS NULL
+                          AND f.claim_date < CURRENT_DATE - INTERVAL '90 days'
+                    ) AS sla_breached
                 FROM mart.fact_claim_attention_score s
+                JOIN mart.fact_claim_scoring_features f
+                    ON f.claim_sk = s.claim_sk AND f.feature_run_id = s.feature_run_id
                 LEFT JOIN app.claim_review_decision_latest d ON d.claim_sk = s.claim_sk
                 WHERE s.score_version = :score_version AND s.score_run_id = :score_run_id
                 """

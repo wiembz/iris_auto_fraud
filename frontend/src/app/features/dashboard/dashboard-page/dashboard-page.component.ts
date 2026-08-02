@@ -1,8 +1,11 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { Subscription, forkJoin } from 'rxjs';
+import { Subscription } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
 import {
+  ClaimDecisionRecord,
+  ClaimDecisionValue,
   ClaimListItem,
   IrisApiService,
   PortfolioInsightsResponse,
@@ -21,6 +24,10 @@ interface DashboardKpi {
   helper: string;
   tone: 'primary' | 'high' | 'medium' | 'low' | 'ok' | 'muted';
   status?: 'available' | 'pending';
+  // Une carte sans action n est qu un chiffre mort : chaque KPI du cockpit
+  // ouvre la file de travail deja filtree sur ce qu il represente.
+  link?: string;
+  queryParams?: Record<string, string>;
 }
 
 const DEFAULT_SCORE_VERSION = 'IRIS_CLAIM_ATTENTION_HYBRID_ML_V1_CANDIDATE';
@@ -30,6 +37,7 @@ const DEFAULT_SCORE_VERSION = 'IRIS_CLAIM_ATTENTION_HYBRID_ML_V1_CANDIDATE';
   standalone: true,
   imports: [
     RouterLink,
+    DatePipe,
     KpiCardComponent,
     AttentionChartComponent,
     WorkloadChartComponent,
@@ -42,59 +50,68 @@ const DEFAULT_SCORE_VERSION = 'IRIS_CLAIM_ATTENTION_HYBRID_ML_V1_CANDIDATE';
 export class DashboardPageComponent implements OnInit, OnDestroy {
   private readonly api = inject(IrisApiService);
   private readonly auth = inject(AuthService);
-  private subscription?: Subscription;
+  private readonly subscriptions = new Subscription();
 
   readonly loading = signal(true);
   readonly errorMessage = signal<string | null>(null);
   readonly summary = signal<SummaryResponse | null>(null);
   readonly insights = signal<PortfolioInsightsResponse | null>(null);
   readonly attentionRows = signal<AttentionChartRow[]>([]);
-  readonly confidenceRows = signal<AttentionChartRow[]>([]);
   readonly managerKpis = signal<DashboardKpi[]>([]);
   readonly handlerKpis = signal<DashboardKpi[]>([]);
   readonly workloadRows = signal<WorkloadRow[]>([]);
-  readonly financialExposureRows = signal<WorkloadRow[]>([]);
-  readonly guaranteeRows = signal<WorkloadRow[]>([]);
-  readonly reasonRows = signal<WorkloadRow[]>([]);
-  readonly validationRows = signal<WorkloadRow[]>([]);
   readonly trendPoints = signal<TrendPoint[]>([]);
   readonly signalFamilyRows = signal<WorkloadRow[]>([]);
   readonly topClaims = signal<ClaimListItem[]>([]);
+  readonly recentDecisions = signal<ClaimDecisionRecord[]>([]);
+  readonly priorityAlertCount = signal(0);
+  readonly activityCollapsed = signal(false);
+
+  toggleActivityCollapsed(): void {
+    this.activityCollapsed.set(!this.activityCollapsed());
+  }
 
   readonly user = this.auth.currentUser;
-  readonly isHandlerDashboard = computed(() => this.user()?.role === 'gestionnaire');
+  readonly isHandlerDashboard = computed(() => this.user()?.role === 'analyste');
   readonly dashboardTitle = computed(() =>
-    this.isHandlerDashboard() ? 'Tableau de bord gestionnaire' : 'Tableau de bord pilotage'
+    this.isHandlerDashboard() ? 'Tableau de bord analyste' : 'Tableau de bord pilotage'
   );
   readonly dashboardSubtitle = computed(() =>
     this.isHandlerDashboard()
       ? 'Vos priorites du jour : les dossiers a examiner, les raisons en clair et la confiance associee.'
-      : 'Volumes, exposition financiere, tendance et avancement de la revue humaine sur l ensemble du portefeuille.'
+      : 'Ce qui exige votre attention maintenant, ou se trouve le retard, et l activite de l equipe.'
   );
 
   ngOnInit(): void {
-    if (this.isHandlerDashboard()) {
-      this.subscription = this.api.getSummary(DEFAULT_SCORE_VERSION).subscribe({
+    this.subscriptions.add(
+      this.api.getSummary(DEFAULT_SCORE_VERSION).subscribe({
         next: (summary) => this.applySummary(summary),
         error: () => this.onLoadError()
-      });
-      return;
-    }
+      })
+    );
 
-    this.subscription = forkJoin({
-      summary: this.api.getSummary(DEFAULT_SCORE_VERSION),
-      insights: this.api.getPortfolioInsights(DEFAULT_SCORE_VERSION)
-    }).subscribe({
-      next: ({ summary, insights }) => {
-        this.applySummary(summary);
-        this.applyInsights(insights);
-      },
-      error: () => this.onLoadError()
-    });
+    if (!this.isHandlerDashboard()) {
+      // Chargement progressif : la vue generale devient utilisable des que le
+      // resume arrive. Les agregats plus lourds ne bloquent plus le premier rendu.
+      this.subscriptions.add(
+        this.api.getPortfolioInsights(DEFAULT_SCORE_VERSION).subscribe({
+          next: (insights) => this.applyInsights(insights),
+          error: () => {
+            this.insights.set(null);
+          }
+        })
+      );
+      this.subscriptions.add(
+        this.api.getDecisionsFeed(undefined, 8).subscribe({
+          next: (decisions) => this.recentDecisions.set(decisions.items),
+          error: () => this.recentDecisions.set([])
+        })
+      );
+    }
   }
 
   ngOnDestroy(): void {
-    this.subscription?.unsubscribe();
+    this.subscriptions.unsubscribe();
   }
 
   private onLoadError(): void {
@@ -182,8 +199,10 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
     );
 
     this.attentionRows.set(attentionRows);
-    this.confidenceRows.set(confidenceRows);
     this.topClaims.set(topClaims);
+    if (!this.isHandlerDashboard()) {
+      this.updateManagerKpis();
+    }
     this.summary.set(summary);
     this.errorMessage.set(null);
     this.loading.set(false);
@@ -191,120 +210,6 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
 
   private applyInsights(insights: PortfolioInsightsResponse): void {
     this.insights.set(insights);
-
-    const totalExposure = insights.financial_exposure.reduce((sum, item) => sum + item.total_amount, 0);
-    const priorityExposure =
-      insights.financial_exposure.find((item) => this.toneFor(item.attention_level) === 'high')?.total_amount ?? 0;
-    const priorityClaims =
-      insights.financial_exposure.find((item) => this.toneFor(item.attention_level) === 'high')?.claims ?? 0;
-    const coverage = insights.validation_coverage;
-    const coverageShare = coverage && coverage.total_claims
-      ? Math.round((coverage.decided_claims / coverage.total_claims) * 100)
-      : 0;
-
-    this.managerKpis.set([
-      {
-        label: 'Dossiers analyses',
-        value: coverage?.total_claims ?? 0,
-        helper: 'volume couvert par la derniere analyse',
-        tone: 'primary'
-      },
-      {
-        label: 'Exposition financiere totale',
-        value: this.formatAmountShort(totalExposure),
-        helper: 'montant cumule des dossiers analyses',
-        tone: 'primary'
-      },
-      {
-        label: 'Examen prioritaire',
-        value: priorityClaims,
-        helper: `${this.formatAmountShort(priorityExposure)} en jeu sur ces dossiers`,
-        tone: 'high'
-      },
-      {
-        label: 'Couverture de la revue',
-        value: coverageShare,
-        suffix: '%',
-        helper: `${coverage?.decided_claims ?? 0} dossier(s) avec une decision humaine enregistree`,
-        tone: coverageShare > 0 ? 'ok' : 'muted',
-        status: coverageShare > 0 ? 'available' : 'pending'
-      }
-    ]);
-
-    const maxExposure = Math.max(...insights.financial_exposure.map((i) => i.total_amount), 1);
-    this.financialExposureRows.set(
-      insights.financial_exposure.map((item) => ({
-        label: item.attention_level,
-        value: this.formatAmountShort(item.total_amount),
-        share: (item.total_amount / maxExposure) * 100,
-        helper: `${item.claims.toLocaleString('fr-FR')} dossier(s) - moyenne ${this.formatAmountShort(item.avg_amount)}`,
-        status: 'available' as const
-      }))
-    );
-
-    const maxGuaranteeClaims = Math.max(...insights.guarantee_breakdown.map((i) => i.priority_claims), 1);
-    this.guaranteeRows.set(
-      insights.guarantee_breakdown.map((item) => ({
-        label: item.code_garantie,
-        value: item.priority_claims,
-        share: (item.priority_claims / maxGuaranteeClaims) * 100,
-        helper: `${item.claims.toLocaleString('fr-FR')} dossiers - ${this.formatAmountShort(item.total_amount)} au total`,
-        status: 'available' as const
-      }))
-    );
-
-    const maxReason = Math.max(...insights.reason_distribution.map((i) => i.claims), 1);
-    this.reasonRows.set(
-      insights.reason_distribution.map((item) => ({
-        label: item.reason,
-        value: item.claims,
-        share: (item.claims / maxReason) * 100,
-        helper: 'sur l ensemble du portefeuille analyse',
-        status: 'available' as const
-      }))
-    );
-
-    if (coverage) {
-      const nonReviewed = Math.max(coverage.total_claims - coverage.decided_claims, 0);
-      const maxValidation = Math.max(
-        coverage.suspicion_confirmed,
-        coverage.conforme,
-        coverage.a_completer,
-        nonReviewed,
-        1
-      );
-      this.validationRows.set([
-        {
-          label: 'Suspicion confirmee',
-          value: coverage.suspicion_confirmed,
-          share: (coverage.suspicion_confirmed / maxValidation) * 100,
-          helper: 'necessite une investigation ou un refus documente',
-          status: 'available'
-        },
-        {
-          label: 'Conforme',
-          value: coverage.conforme,
-          share: (coverage.conforme / maxValidation) * 100,
-          helper: 'aucune anomalie retenue apres verification',
-          status: 'available'
-        },
-        {
-          label: 'A completer',
-          value: coverage.a_completer,
-          share: (coverage.a_completer / maxValidation) * 100,
-          helper: 'elements manquants pour trancher',
-          status: 'available'
-        },
-        {
-          label: 'Non revu',
-          value: nonReviewed,
-          share: (nonReviewed / maxValidation) * 100,
-          helper: 'en attente d une decision humaine',
-          status: nonReviewed > 0 ? 'pending' : 'available'
-        }
-      ]);
-    }
-
     this.trendPoints.set(
       insights.monthly_trend.map((point) => ({
         month: point.month,
@@ -312,6 +217,55 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
         priorityClaims: point.priority_claims
       }))
     );
+  }
+
+  private updateManagerKpis(): void {
+    const priorityClaims = this.countByTone(this.attentionRows(), 'high');
+    const reinforcedClaims = this.countByTone(this.attentionRows(), 'medium');
+    const toVerifyClaims = this.countByTone(this.attentionRows(), 'low');
+    const reviewCount = priorityClaims + reinforcedClaims + toVerifyClaims;
+
+    // Cockpit volontairement limite a ces 4 cartes : "SLA depasse" et "En
+    // attente de decision" affichaient ~367 463 (quasi tout le portefeuille)
+    // car une seule decision a jamais ete enregistree sur 367 464 dossiers
+    // dans ce jeu de donnees historique. Pas un bug de seuil. A reactiver
+    // une fois l affectation reelle et un vrai flux de decision en place
+    // (decision confirmee avec Wiem).
+    this.managerKpis.set([
+      {
+        label: 'Signales',
+        value: reviewCount,
+        helper: 'prioritaires, renforces ou a verifier',
+        tone: 'primary',
+        link: '/app/claims',
+        queryParams: { attentionLevel: '', sortBy: 'attention_score', sortDirection: 'desc' }
+      },
+      {
+        label: 'Prioritaires',
+        value: priorityClaims,
+        helper: 'dossiers au niveau le plus fort',
+        tone: 'high',
+        link: '/app/claims',
+        queryParams: { attentionLevel: 'Examen prioritaire suggere' }
+      },
+      {
+        label: 'Renforces',
+        value: reinforcedClaims,
+        helper: 'dossiers a suivre de pres',
+        tone: 'medium',
+        link: '/app/claims',
+        queryParams: { attentionLevel: 'Examen renforce suggere' }
+      },
+      {
+        label: 'Points a verifier',
+        value: toVerifyClaims,
+        helper: 'signaux faibles a confirmer',
+        tone: 'low',
+        link: '/app/claims',
+        queryParams: { attentionLevel: 'Points a verifier' }
+      }
+    ]);
+    this.priorityAlertCount.set(priorityClaims);
   }
 
   private toneFor(level: string): AttentionTone {
@@ -394,6 +348,29 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
       return `${(value / 1_000).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} k TND`;
     }
     return `${Math.round(value).toLocaleString('fr-FR')} TND`;
+  }
+
+  decisionLabel(decision: ClaimDecisionValue): string {
+    switch (decision) {
+      case 'SUSPICION_CONFIRMED':
+        return 'Fraude';
+      case 'CONFORME':
+        return 'Non fraude';
+      case 'A_COMPLETER':
+        return 'Incomplet';
+      default:
+        return decision;
+    }
+  }
+
+  decisionTone(decision: ClaimDecisionValue): 'high' | 'ok' | 'medium' {
+    if (decision === 'SUSPICION_CONFIRMED') {
+      return 'high';
+    }
+    if (decision === 'CONFORME') {
+      return 'ok';
+    }
+    return 'medium';
   }
 
   private normalize(value: string): string {

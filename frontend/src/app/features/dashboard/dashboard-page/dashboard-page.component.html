@@ -1,33 +1,17 @@
 <div class="decision-dashboard">
-  <!-- Brand Decorative Background Orbs & Grid Patterns -->
-  <div class="dashboard-bg" aria-hidden="true">
-    <span class="dashboard-orb dashboard-orb--1"></span>
-    <span class="dashboard-orb dashboard-orb--2"></span>
-    <span class="dashboard-grid-pattern"></span>
-  </div>
-
-  <header class="dashboard-hero">
+  <header class="iris-page-hero">
     <div>
       <p class="iris-eyebrow">{{ user()?.roleLabel ?? 'Espace IRIS' }}</p>
       <h1>{{ dashboardTitle() }}</h1>
       <p>{{ dashboardSubtitle() }}</p>
     </div>
 
-    <div class="dashboard-run-card">
+    <div class="iris-page-hero__status">
+      <span class="dashboard-pulse-dot" [style.background]="summary() ? null : 'var(--iris-neutral)'" aria-hidden="true"></span>
       @if (summary(); as s) {
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 2px;">
-          <span class="dashboard-pulse-dot" aria-hidden="true"></span>
-          <span>Analyse active</span>
-        </div>
-        <strong>Score d'attention</strong>
-        <small>{{ s.total_claims.toLocaleString('fr-FR') }} dossiers analysés récemment</small>
+        <span>Analyse active - {{ s.total_claims.toLocaleString('fr-FR') }} dossiers</span>
       } @else {
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 2px;">
-          <span class="dashboard-pulse-dot" style="background: var(--iris-neutral);" aria-hidden="true"></span>
-          <span>Chargement</span>
-        </div>
-        <strong>Analyse IRIS</strong>
-        <small>Mise à jour en cours...</small>
+        <span>Chargement...</span>
       }
     </div>
   </header>
@@ -62,7 +46,7 @@
           <span>Revue quotidienne</span>
           <h2>Consulter, comprendre, prioriser</h2>
         </div>
-        <a class="dashboard-card__link" routerLink="/app/claims">Ouvrir la file de travail</a>
+        <a class="iris-button iris-button--primary" routerLink="/app/claims">Ouvrir la file de travail</a>
       </section>
 
       <section class="dashboard-layout dashboard-layout--handler">
@@ -89,6 +73,9 @@
         />
       </section>
     } @else {
+      <!-- Cockpit operationnel : 4 KPI cliquables, une file, une activite,
+           une seule tendance. Les analyses approfondies (garantie, causes,
+           qualite des donnees) vivent dans Analytique Power BI, pas ici. -->
       <section class="dashboard-kpi-grid" aria-label="Indicateurs manager">
         @for (kpi of managerKpis(); track kpi.label) {
           <app-kpi-card
@@ -98,86 +85,69 @@
             [helper]="kpi.helper"
             [tone]="kpi.tone"
             [status]="kpi.status ?? 'available'"
+            [link]="kpi.link"
+            [queryParams]="kpi.queryParams"
           />
         }
       </section>
 
-      <section class="dashboard-section-title">
-        <div>
-          <span>Exposition et priorisation</span>
-          <h2>Ou se concentre le risque financier</h2>
-        </div>
-        <a class="dashboard-card__link" routerLink="/app/claims">Voir les dossiers</a>
+      <section class="dashboard-row dashboard-row--full">
+        <app-recent-claims
+          title="Priorites du jour"
+          subtitle="Motif, score et anciennete - ouvrez un dossier en un clic"
+          [claims]="topClaims()"
+          [alertCount]="priorityAlertCount()"
+        />
       </section>
 
-      <section class="dashboard-row dashboard-row--split-7-5">
-        <app-workload-chart
-          title="Exposition financiere par niveau"
-          subtitle="Montant cumule des dossiers, par niveau d attention"
-          [rows]="financialExposureRows()"
-        />
-        <app-attention-chart
-          title="Dossiers par niveau d attention"
-          subtitle="Repartition par niveau, sans conclusion automatique"
-          [rows]="attentionRows()"
-          mode="stacked"
-        />
+      <section class="dashboard-card recent-activity" aria-labelledby="recent-activity-title">
+        <header class="dashboard-card__head">
+          <div class="dashboard-card__heading">
+            <h2 id="recent-activity-title">Activite recente</h2>
+            <p>Dernieres decisions enregistrees par l equipe</p>
+          </div>
+          <div class="dashboard-card__actions">
+            <a class="dashboard-card__link" routerLink="/app/feedback">Voir les validations</a>
+            <button
+              type="button"
+              class="dashboard-card__toggle"
+              [class.dashboard-card__toggle--collapsed]="activityCollapsed()"
+              [attr.aria-expanded]="!activityCollapsed()"
+              (click)="toggleActivityCollapsed()"
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        @if (!activityCollapsed()) {
+          @if (recentDecisions().length === 0) {
+            <div class="dashboard-empty">Aucune decision enregistree pour le moment.</div>
+          } @else {
+            <ul class="activity-strip">
+              @for (item of recentDecisions(); track item.decision_id) {
+                <li>
+                  <a [routerLink]="['/app/claims', item.claim_sk]" class="activity-chip">
+                    <span class="worklist-badge" [attr.data-tone]="decisionTone(item.decision)">
+                      {{ decisionLabel(item.decision) }}
+                    </span>
+                    <span class="activity-chip__claim">{{ item.claim_business_id ?? '#' + item.claim_sk }}</span>
+                    <span class="activity-chip__meta">{{ item.reviewer_email }} - {{ item.decided_at | date: 'dd/MM HH:mm' }}</span>
+                  </a>
+                </li>
+              }
+            </ul>
+          }
+        }
       </section>
 
       <section class="dashboard-row dashboard-row--full">
         <app-trend-chart
-          title="Tendance sur 12 mois"
+          title="Evolution des dossiers prioritaires"
           subtitle="Volume de dossiers et part en examen prioritaire, mois par mois"
           [points]="trendPoints()"
-        />
-      </section>
-
-      <section class="dashboard-section-title">
-        <div>
-          <span>Analyse des causes</span>
-          <h2>Ce qui declenche l attention</h2>
-        </div>
-      </section>
-
-      <section class="dashboard-row dashboard-row--split-6-6">
-        <app-workload-chart
-          title="Repartition par garantie"
-          subtitle="Dossiers en examen prioritaire par garantie (top 8)"
-          [rows]="guaranteeRows()"
-        />
-        <app-workload-chart
-          title="Causes principales"
-          subtitle="Raisons observees sur l ensemble du portefeuille analyse"
-          [rows]="reasonRows()"
-        />
-      </section>
-
-      <section class="dashboard-section-title">
-        <div>
-          <span>Revue humaine</span>
-          <h2>Avancement de la validation par l equipe</h2>
-        </div>
-        <a class="dashboard-card__link" routerLink="/app/feedback">Voir les validations</a>
-      </section>
-
-      <section class="dashboard-row dashboard-row--split-7-5">
-        <app-workload-chart
-          title="Statut des decisions"
-          subtitle="Repartition des dossiers selon la decision humaine enregistree"
-          [rows]="validationRows()"
-        />
-        <app-attention-chart
-          title="Qualite et confiance des donnees"
-          subtitle="La qualite informe la lecture, elle n augmente pas l attention"
-          [rows]="confidenceRows()"
-        />
-      </section>
-
-      <section class="dashboard-row dashboard-row--full">
-        <app-recent-claims
-          title="Dossiers a verifier en priorite"
-          subtitle="Echantillon pour revue metier"
-          [claims]="topClaims()"
         />
       </section>
     }
