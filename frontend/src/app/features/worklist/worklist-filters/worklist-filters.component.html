@@ -6,15 +6,6 @@
     </label>
 
     <label>
-      <span>Attention</span>
-      <select formControlName="attentionLevel">
-        @for (option of attentionOptions; track option.value) {
-          <option [value]="option.value">{{ option.label }}</option>
-        }
-      </select>
-    </label>
-
-    <label>
       <span>Confiance</span>
       <select formControlName="confidenceLevel">
         @for (option of confidenceOptions; track option.value) {
@@ -35,10 +26,12 @@
     <div class="worklist-filter-toggles" aria-label="Signaux disponibles">
       <label>
         <input type="checkbox" formControlName="hasPostInspection" />
+        <span class="worklist-filter-toggles__box" aria-hidden="true"></span>
         <span>Post-inspection</span>
       </label>
       <label>
         <input type="checkbox" formControlName="hasMl" />
+        <span class="worklist-filter-toggles__box" aria-hidden="true"></span>
         <span>Atypicite statistique</span>
       </label>
     </div>

@@ -1,12 +1,13 @@
-﻿import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { Subscription } from 'rxjs';
+import { ActivatedRoute } from '@angular/router';
 import { ClaimSummary, SortDirection, WorklistFilters } from '../../../core/models/claim-summary.model';
 import { AttentionDistributionItem, ClaimListItem, IrisApiService } from '../../../core/services/iris-api.service';
 import { ClaimTableComponent, WorklistSortChange } from '../claim-table/claim-table.component';
 import { WorklistFiltersComponent } from '../worklist-filters/worklist-filters.component';
 
 const DEFAULT_SCORE_VERSION = 'IRIS_CLAIM_ATTENTION_HYBRID_ML_V1_CANDIDATE';
-const STORAGE_KEY = 'iris.worklist.filters.v1';
+const STORAGE_KEY = 'iris.worklist.filters.v2';
 
 interface TriageChip {
   value: string;
@@ -25,8 +26,10 @@ interface TriageChip {
 })
 export class WorklistPageComponent implements OnInit, OnDestroy {
   private readonly api = inject(IrisApiService);
+  private readonly route = inject(ActivatedRoute);
   private subscription?: Subscription;
   private summarySubscription?: Subscription;
+  private querySubscription?: Subscription;
 
   readonly loading = signal(true);
   readonly errorMessage = signal<string | null>(null);
@@ -62,7 +65,22 @@ export class WorklistPageComponent implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
+    // Point d entree depuis un clic KPI (dashboard) : la file s ouvre deja
+    // filtree, jamais juste "affichee" sans action possible.
+    const initialParams = this.route.snapshot.queryParamMap;
+    const initialPatch = this.filtersFromQueryParams(initialParams);
+    if (Object.keys(initialPatch).length > 0) {
+      const initial = { ...this.filters(), ...initialPatch, page: 1 };
+      this.filters.set(initial);
+      this.persistFilters(initial);
+    }
     this.loadClaims();
+    this.querySubscription = this.route.queryParamMap.subscribe((params) => {
+      const patch = this.filtersFromQueryParams(params);
+      if (Object.keys(patch).length > 0) {
+        this.updateFilters({ ...patch, page: 1 });
+      }
+    });
     this.summarySubscription = this.api.getSummary(DEFAULT_SCORE_VERSION).subscribe({
       next: (summary) => this.attentionDistribution.set(summary.attention_distribution),
       error: () => {
@@ -74,6 +92,35 @@ export class WorklistPageComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.subscription?.unsubscribe();
     this.summarySubscription?.unsubscribe();
+    this.querySubscription?.unsubscribe();
+  }
+
+  // Traduit les query params d un lien entrant (ex. clic sur une carte KPI du
+  // dashboard) en patch de filtres. Des qu un des trois axes de triage est
+  // present dans l URL, on les fixe TOUS les trois explicitement (y compris
+  // a undefined) pour eviter qu un ancien filtre persiste en local storage
+  // ne fausse silencieusement la vue ouverte depuis le lien.
+  private filtersFromQueryParams(params: import('@angular/router').ParamMap): Partial<WorklistFilters> {
+    const search = params.get('search')?.trim();
+    const attentionLevel = params.get('attentionLevel')?.trim();
+    const validationStatus = params.get('validationStatus')?.trim();
+    const sortBy = params.get('sortBy')?.trim();
+    const sortDirection = params.get('sortDirection')?.trim();
+
+    if (!search && !attentionLevel && !validationStatus && !sortBy) {
+      return {};
+    }
+
+    const patch: Partial<WorklistFilters> = {
+      search: search || undefined,
+      attentionLevel: attentionLevel || undefined,
+      validationStatus: validationStatus || undefined
+    };
+    if (sortBy) {
+      patch.sortBy = sortBy;
+      patch.sortDirection = sortDirection === 'asc' ? 'asc' : 'desc';
+    }
+    return patch;
   }
 
   applyTriage(level: string): void {
@@ -252,6 +299,8 @@ export class WorklistPageComponent implements OnInit, OnDestroy {
       pageSize: 25,
       sortBy: 'attention_score',
       sortDirection: 'desc',
+      attentionLevel: 'Examen prioritaire suggere',
+      validationStatus: 'NONE',
       viewMode: 'comfortable'
     };
   }

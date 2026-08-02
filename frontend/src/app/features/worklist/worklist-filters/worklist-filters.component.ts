@@ -1,4 +1,4 @@
-﻿import { Component, EventEmitter, Input, OnChanges, OnDestroy, OnInit, Output, SimpleChanges, inject } from '@angular/core';
+import { Component, EventEmitter, Input, OnChanges, OnDestroy, OnInit, Output, SimpleChanges, inject } from '@angular/core';
 import { ReactiveFormsModule, NonNullableFormBuilder } from '@angular/forms';
 import { Subscription, debounceTime } from 'rxjs';
 import { WorklistFilters, WorklistOption, WorklistViewMode } from '../../../core/models/claim-summary.model';
@@ -18,16 +18,9 @@ export class WorklistFiltersComponent implements OnInit, OnChanges, OnDestroy {
   @Output() filtersChange = new EventEmitter<Partial<WorklistFilters>>();
   @Output() resetFilters = new EventEmitter<void>();
 
-  // Les valeurs correspondent aux attention_level reellement produits par le
-  // scoring (mart.fact_claim_attention_score) — pas de libelles inventes.
-  readonly attentionOptions: WorklistOption[] = [
-    { value: '', label: 'Tous niveaux' },
-    { value: 'Examen prioritaire suggere', label: 'Examen prioritaire' },
-    { value: 'Examen renforce suggere', label: 'Examen renforce' },
-    { value: 'Points a verifier', label: 'Points a verifier' },
-    { value: 'Analyse standard', label: 'Analyse standard' }
-  ];
-
+  // Le niveau d attention se pilote exclusivement via les puces de triage en
+  // haut de la file de travail (worklist-page.component) : un menu deroulant
+  // ici ferait doublon avec le meme filtre, presente deux fois a l ecran.
   readonly confidenceOptions: WorklistOption[] = [
     { value: '', label: 'Toute confiance' },
     { value: 'HIGH', label: 'Elevee' },
@@ -45,7 +38,6 @@ export class WorklistFiltersComponent implements OnInit, OnChanges, OnDestroy {
 
   readonly form = this.fb.group({
     search: [''],
-    attentionLevel: [''],
     confidenceLevel: [''],
     validationStatus: [''],
     hasMl: [false],
@@ -56,7 +48,6 @@ export class WorklistFiltersComponent implements OnInit, OnChanges, OnDestroy {
   ngOnInit(): void {
     this.form.patchValue({
       search: this.filters.search ?? '',
-      attentionLevel: this.filters.attentionLevel ?? '',
       confidenceLevel: this.filters.confidenceLevel ?? '',
       validationStatus: this.filters.validationStatus ?? '',
       hasMl: this.filters.hasMl ?? false,
@@ -84,7 +75,6 @@ export class WorklistFiltersComponent implements OnInit, OnChanges, OnDestroy {
       this.form.patchValue(
         {
           search: this.filters.search ?? '',
-          attentionLevel: this.filters.attentionLevel ?? '',
           confidenceLevel: this.filters.confidenceLevel ?? '',
           validationStatus: this.filters.validationStatus ?? '',
           hasMl: this.filters.hasMl ?? false,

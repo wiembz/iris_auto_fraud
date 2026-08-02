@@ -46,18 +46,14 @@
               <td>
                 <div class="score-cell" [attr.data-tone]="claim.attention_tone">
                   <span class="score-cell__value">{{ claim.attention_score }}</span>
-                  <span class="score-cell__meta">
-                    <app-attention-badge [label]="claim.attention_level" />
-                    <span class="score-cell__track"><span [style.width.%]="claim.attention_score"></span></span>
-                  </span>
+                  <app-attention-badge [label]="claim.attention_level" />
                 </div>
               </td>
               <td>
                 <span class="reason-text">{{ displayText(claim.main_reason) }}</span>
-                <span class="signal-pills">
-                  @if (claim.has_post_inspection_signal) { <small>Post-inspection</small> }
-                  @if (claim.has_ml_signal) { <small>Atypicite statistique</small> }
-                </span>
+                @if (claim.has_post_inspection_signal || claim.has_ml_signal) {
+                  <span class="reason-origin" [title]="signalOriginTitle(claim)">i</span>
+                }
               </td>
               <td><app-attention-badge [label]="claim.confidence_level" variant="confidence" /></td>
               <td><app-attention-badge [label]="displayText(claim.workflow_status)" variant="status" /></td>
@@ -69,7 +65,13 @@
                   }
                 </div>
               </td>
-              <td>{{ displayAge(claim.age_days, claim.claim_date) }}</td>
+              <td>
+                <span [class.age-alert]="ageTone(claim) !== 'ok'" [attr.data-tone]="ageTone(claim)">
+                  {{ displayAge(claim.age_days, claim.claim_date) }}
+                  @if (ageTone(claim) === 'crit') { <small>SLA depasse</small> }
+                  @if (ageTone(claim) === 'warn') { <small>a surveiller</small> }
+                </span>
+              </td>
             </tr>
           }
         </tbody>

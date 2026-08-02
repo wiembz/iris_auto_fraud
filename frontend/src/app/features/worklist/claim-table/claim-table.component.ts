@@ -103,6 +103,27 @@ export class ClaimTableComponent {
   }
 
   displayAge(value: number | null | undefined, claimDate?: string | null): string {
+    const days = this.resolveAgeDays(value, claimDate);
+    return days === null ? '—' : `${days.toLocaleString('fr-FR')} j`;
+  }
+
+  // Seuils provisoires (30 / 90 j) en l absence de SLA de traitement valide
+  // formellement par le metier — a ajuster des que ce seuil sera confirme.
+  ageTone(claim: ClaimSummary): 'ok' | 'warn' | 'crit' {
+    const days = this.resolveAgeDays(claim.age_days, claim.claim_date);
+    if (days === null) {
+      return 'ok';
+    }
+    if (days > 90) {
+      return 'crit';
+    }
+    if (days > 30) {
+      return 'warn';
+    }
+    return 'ok';
+  }
+
+  private resolveAgeDays(value: number | null | undefined, claimDate?: string | null): number | null {
     let days = value ?? null;
     if (days === null && claimDate) {
       const date = new Date(claimDate);
@@ -110,7 +131,18 @@ export class ClaimTableComponent {
         days = Math.max(0, Math.floor((Date.now() - date.getTime()) / 86_400_000));
       }
     }
-    return days === null ? '—' : `${days.toLocaleString('fr-FR')} j`;
+    return days;
+  }
+
+  signalOriginTitle(claim: ClaimSummary): string {
+    const origins: string[] = [];
+    if (claim.has_post_inspection_signal) {
+      origins.push('Post-inspection');
+    }
+    if (claim.has_ml_signal) {
+      origins.push('Atypicite statistique');
+    }
+    return origins.length ? `Origine des signaux : ${origins.join(', ')}` : '';
   }
 }
 
