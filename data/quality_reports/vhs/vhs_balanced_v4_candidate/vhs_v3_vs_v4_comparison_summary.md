@@ -4,7 +4,7 @@
     | | Value |
     |---|---|
     | V3 run_id | `VHS_BALANCED_V3_CANDIDATE_20260703_181530` |
-    | V4 run_id | `VHS_BALANCED_V4_CANDIDATE_20260714_061541` |
+    | V4 run_id | `VHS_BALANCED_V4_CANDIDATE_20260726_132222` |
     | Inspections compared | 570 |
     | Decision changed | 570 (100.0%) |
     | Safety grade changed | 570 (100.0%) |
