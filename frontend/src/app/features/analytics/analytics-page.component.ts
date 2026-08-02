@@ -1,28 +1,26 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
-import { Subscription } from 'rxjs';
-import { IrisApiService, PowerbiGovernanceComponent } from '../../core/services/iris-api.service';
+import { Component, inject, signal } from '@angular/core';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { AuthService } from '../../core/auth/auth.service';
 
 /**
  * URL du rapport publie sur Power BI Report Server (on-premises).
  * Laisser vide tant que la publication n'est pas faite : la page affiche
  * alors l'etat "publication a venir" au lieu d'un lien mort.
+ *
+ * Deux copies distinctes du rapport : la session IRIS (auth simulee cote
+ * navigateur) n'a aucun lien avec l'identite Windows reelle qui authentifie
+ * l'iframe Power BI Report Server (RLS/OLS Power BI ne peut donc pas suivre
+ * le role choisi a la connexion IRIS). La copie "analyste" ne contient
+ * simplement pas la page Qualite et Gouvernance : la restriction est garantie
+ * par l'absence de la page dans le fichier publie, pas par un role Power BI.
+ *
+ * Le chemin publie sur le serveur Power BI (irisdash2-gestionnaire) garde
+ * encore l'ancien nom de role : c'est un artefact externe (fichier deja
+ * publie), pas la terminologie IRIS -- a renommer cote Power BI Report
+ * Server separement si besoin, ce n'est pas un simple refactoring de code.
  */
-const REPORT_SERVER_URL = '';
-
-interface ReportPage {
-  code: string;
-  title: string;
-  question: string;
-  audience: string;
-  visuals: string[];
-}
-
-const COMPONENT_LABELS: Record<string, string> = {
-  CLAIM_ATTENTION: 'Score d attention sinistres',
-  ML_ANOMALY: 'Signal d atypicite ML',
-  POST_INSPECTION: 'Signaux post-inspection',
-  VHS: 'Sante vehicule (VHS)'
-};
+const REPORT_SERVER_URL_FULL = 'http://localhost/Reports/powerbi/irisdash2';
+const REPORT_SERVER_URL_ANALYSTE = 'http://localhost/Reports/powerbi/irisdash2-gestionnaire';
 
 @Component({
   selector: 'app-analytics-page',
@@ -30,83 +28,19 @@ const COMPONENT_LABELS: Record<string, string> = {
   templateUrl: './analytics-page.component.html',
   styleUrl: './analytics-page.component.scss'
 })
-export class AnalyticsPageComponent implements OnInit, OnDestroy {
-  private readonly api = inject(IrisApiService);
-  private governanceSubscription?: Subscription;
+export class AnalyticsPageComponent {
+  private readonly sanitizer = inject(DomSanitizer);
+  private readonly auth = inject(AuthService);
 
-  readonly reportUrl = REPORT_SERVER_URL;
-  readonly governance = signal<PowerbiGovernanceComponent[]>([]);
-  readonly governanceLoading = signal(true);
+  readonly reportUrl =
+    this.auth.currentUser()?.role === 'analyste' ? REPORT_SERVER_URL_ANALYSTE : REPORT_SERVER_URL_FULL;
+  readonly reportEmbedLoaded = signal(false);
 
-  readonly reportPages: ReportPage[] = [
-    {
-      code: 'P1',
-      title: 'Vue executive',
-      question: 'Ou en est le portefeuille ?',
-      audience: 'Management',
-      visuals: ['Distribution du score 0-100', 'Niveaux d attention', 'Tendance mensuelle', 'Repartition par garantie']
-    },
-    {
-      code: 'P2',
-      title: 'Signaux & priorisation',
-      question: 'Pourquoi et quels dossiers ?',
-      audience: 'Analystes',
-      visuals: ['Contribution par famille de regles', 'Taux d activation par regle', 'Score x montant', 'Convergence ML x metier']
-    },
-    {
-      code: 'P3',
-      title: 'Clients & recurrence',
-      question: 'Qui concentre l activite ?',
-      audience: 'Management, analystes',
-      visuals: ['Distribution des sinistres par client', 'Pareto de concentration', 'Anciennete au sinistre', 'Mono vs multisinistres']
-    },
-    {
-      code: 'P4',
-      title: 'Vehicule & inspections',
-      question: 'Que dit le contexte technique ?',
-      audience: 'Analystes',
-      visuals: ['Pareto des defauts constates', 'Systeme x gravite', 'Distribution du score VHS', 'Delais inspection vers sinistre']
-    },
-    {
-      code: 'P5',
-      title: 'Qualite & gouvernance',
-      question: 'Peut-on se fier a ces chiffres ?',
-      audience: 'Equipe data, jury',
-      visuals: ['Niveaux de confiance par segment', 'Evaluabilite des familles', 'Version, run et catalogue de regles', 'Etat de validation des regles']
-    }
-  ];
-
-  ngOnInit(): void {
-    this.governanceSubscription = this.api.getPowerbiGovernance().subscribe({
-      next: (res) => {
-        this.governance.set(res.components);
-        this.governanceLoading.set(false);
-      },
-      error: () => {
-        this.governance.set([]);
-        this.governanceLoading.set(false);
-      }
-    });
-  }
-
-  ngOnDestroy(): void {
-    this.governanceSubscription?.unsubscribe();
-  }
-
-  componentLabel(component: string): string {
-    return COMPONENT_LABELS[component] ?? component;
-  }
-
-  shortRun(runId: string): string {
-    const match = runId.match(/(\d{8}_\d{6})$/);
-    if (!match) {
-      return runId;
-    }
-    const raw = match[1];
-    return `${raw.slice(6, 8)}/${raw.slice(4, 6)}/${raw.slice(0, 4)}`;
-  }
-
-  formatRows(count: number): string {
-    return Number(count ?? 0).toLocaleString('fr-FR');
-  }
+  /**
+   * rs:embed=true masque le bandeau/toolbar natif de Power BI Report Server
+   * pour un rendu propre en iframe, sans dupliquer sa propre navigation.
+   */
+  readonly reportEmbedUrl: SafeResourceUrl | null = this.reportUrl
+    ? this.sanitizer.bypassSecurityTrustResourceUrl(`${this.reportUrl}?rs:embed=true`)
+    : null;
 }
