@@ -1,8 +1,9 @@
 """Vehicle Health Score endpoints for the IRIS read-only API."""
 from __future__ import annotations
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, abort, current_app, jsonify, request, send_file
 
+from backend.services.inspection_image_service import get_image_asset_for_content, resolve_asset_path
 from backend.services.vhs_service import (
     get_vhs_inspection_detail,
     get_vhs_inspection_detail_by_key,
@@ -32,6 +33,28 @@ def vhs_vehicles():
             search=request.args.get("search"),
             limit=int(limit) if limit else 300,
         )
+    )
+
+
+
+
+@vhs_bp.get("/vhs/inspection-images/<int:asset_id>/content")
+def vhs_inspection_image_content(asset_id: int):
+    """Serve an imported STAFIM photo from IRIS-controlled local storage."""
+    with _engine().connect() as conn:
+        asset = get_image_asset_for_content(conn, asset_id)
+    if asset is None:
+        return jsonify({"message": "Photo inspection introuvable ou non importee dans IRIS."}), 404
+
+    path = resolve_asset_path(current_app.config["IRIS_API_CONFIG"], asset["relative_path"])
+    if path is None or not path.exists() or not path.is_file():
+        abort(404)
+
+    return send_file(
+        path,
+        mimetype=asset.get("mime_type") or "application/octet-stream",
+        conditional=True,
+        max_age=3600,
     )
 
 

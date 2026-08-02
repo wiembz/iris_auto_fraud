@@ -1,4 +1,4 @@
-﻿"""Aggregated read-only claim review service for the IRIS frontend API."""
+"""Aggregated read-only claim review service for the IRIS frontend API."""
 from __future__ import annotations
 
 import ast
@@ -527,8 +527,30 @@ def get_claim_review(
                 },
             ).fetchall()
 
+        # Extract immatriculation from post_rows if available
+        immatriculation = next(
+            (row._mapping.get("immatriculation") for row in post_rows if row._mapping.get("immatriculation")),
+            None,
+        )
+
         vhs_row = None
-        if claim_row and claim_row._mapping.get("vehicle_sk"):
+        # 1. Try to find VHS score by immatriculation first (most reliable for STAFIM)
+        if immatriculation:
+            vhs_row = conn.execute(
+                text(
+                    """
+                    SELECT vhs_final_score, safety_grade, decision, kilometrage, nb_anomalies_total, nb_anomalies_critiques
+                    FROM mart.fact_vhs_score
+                    WHERE immatriculation_norm = :immatriculation
+                    ORDER BY date_inspection_sk DESC, calculated_at DESC
+                    LIMIT 1
+                    """
+                ),
+                {"immatriculation": immatriculation},
+            ).first()
+            
+        # 2. Fallback to vehicle_sk if not found
+        if not vhs_row and claim_row and claim_row._mapping.get("vehicle_sk"):
             vhs_row = conn.execute(
                 text(
                     """

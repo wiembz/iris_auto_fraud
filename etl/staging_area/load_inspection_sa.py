@@ -123,6 +123,9 @@ def _apply_rename(df: pd.DataFrame) -> pd.DataFrame:
 # 2. Immatriculation
 # ---------------------------------------------------------------------------
 
+_ARABIC_NT_RE = re.compile(r"ن\s*ت|ت\s*ن")
+
+
 def _standardise_immat(val: object) -> str | None:
     """
     Standardise une immatriculation tunisienne.
@@ -136,18 +139,38 @@ def _standardise_immat(val: object) -> str | None:
       xxxxRS → RSxxxx
       NTxxxx → xxxxNT
 
-    Valeurs invalides (TEST, NAN, vide, 0, …) → None.
+    Tolerances de saisie STAFIM (avant reconnaissance de format) :
+      - valeur numerique (pandas lit parfois une plaque 100% chiffres comme
+        int/float) : convertie en texte au lieu d etre rejetee d office ;
+      - separateurs "-", "/", "." et espaces internes retires (ex.
+        "163564-RS" == "163564 RS" == "RS163564" une fois normalise) ;
+      - "TN" au meme emplacement que "TU" est une inversion de frappe
+        frequente (pas un code distinct comme NT/RS), traitee comme TU ;
+      - code "NT" saisi en lettres arabes (nun+ta, ex. "226989 ن ت")
+        translitere en latin avant reconnaissance.
+
+    Valeurs invalides (TEST, NAN, vide, 0, plaque sans code TU/RS/NT
+    reconnaissable, …) → None : rester conservateur ici plutot que deviner.
     """
-    if not isinstance(val, str) or not val.strip():
+    if val is None:
+        return None
+    if isinstance(val, float) and val != val:  # NaN
+        return None
+    if not isinstance(val, str):
+        # Ex. "7650217" lu par pandas comme 7650217 ou 7650217.0.
+        val = str(int(val)) if isinstance(val, float) and val.is_integer() else str(val)
+    if not val.strip():
         return None
 
-    s = re.sub(r"\s+", "", val.strip().upper())
+    s = val.strip().upper()
+    s = _ARABIC_NT_RE.sub("NT", s)
+    s = re.sub(r"[\s\-/\.]", "", s)
 
     if s in _INVALID:
         return None
 
-    # Format TU : chiffres encadrant TU
-    m = re.match(r"^(\d{1,4})TU(\d{1,4})$", s)
+    # Format TU (accepte aussi "TN", inversion de frappe au meme emplacement)
+    m = re.match(r"^(\d{1,4})T[UN](\d{1,4})$", s)
     if m:
         return f"{m.group(1)}TU{m.group(2)}"
 
@@ -167,7 +190,14 @@ def _standardise_immat(val: object) -> str | None:
     if m:
         return f"{m.group(1)}NT"
 
-    return None  # format non reconnu → invalide
+    # 7 chiffres seuls, sans lettre : code TU omis a la saisie (constate sur
+    # plusieurs fiches STAFIM). Heuristique deja utilisee ailleurs dans le
+    # projet (etl/staging_area/prepare_inspection_sa.py) pour ce meme cas ;
+    # jamais appliquee sur des longueurs differentes pour rester conservateur.
+    if re.match(r"^\d{7}$", s):
+        return f"{s[:4]}TU{s[4:]}"
+
+    return None  # format non reconnu (ex. 6 chiffres + TN, plaque incomplete) → invalide
 
 
 # ---------------------------------------------------------------------------

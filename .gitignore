@@ -171,4 +171,8 @@ notebooks/data/
 # Temporary profiling exports
 profiling_outputs/
 *.bak
+# STAFIM inspection images imported locally (confidential assets)
+data/inspection_images/**
+!data/inspection_images/
+!data/inspection_images/.gitkeep
 

@@ -75,7 +75,21 @@ def _raw_to_text(value: Any) -> str | None:
     numeric_float = re.fullmatch(r"(\d+)[\.,]0+", text)
     if numeric_float:
         return numeric_float.group(1)
-    return text
+    return _translit_arabic_nt(text)
+
+
+# Certaines fiches STAFIM saisissent le code "NT" en lettres arabes (nun +
+# ta, avec ou sans espace de separation, ex. "226989 ن ت") plutot
+# qu'en latin. Le nettoyage generique ([^A-Z0-9]) effacait silencieusement
+# ces deux lettres, transformant par exemple "226989 NT" en simple "226989"
+# (plaque sans code = signal perdu, jamais un None explicite). On translitere
+# donc en amont vers le latin "NT" pour rejoindre la logique NT existante,
+# deja testee, sans la modifier.
+_ARABIC_NT_PATTERN = re.compile(r"ن\s*ت|ت\s*ن")
+
+
+def _translit_arabic_nt(text: str) -> str:
+    return _ARABIC_NT_PATTERN.sub("NT", text)
 
 
 def _compact(value: str) -> str:
@@ -117,7 +131,11 @@ def normalize_immatriculation(value: Any) -> str | None:
     ):
         return None
 
-    tu_match = re.fullmatch(r"(\d+)TU(\d+)", compact)
+    # "TN" au milieu (ex. "9788TN115", "288TN157") est une inversion de
+    # frappe de "TU" au meme emplacement (jamais un prefixe/suffixe comme NT
+    # ou RS) : meme heuristique gauche/droite que TU, canonicalise vers TU
+    # pour rejoindre les plaques correctement saisies du meme vehicule.
+    tu_match = re.fullmatch(r"(\d+)(?:TU|TN)(\d+)", compact)
     if tu_match:
         left, right = tu_match.groups()
         if len(left) <= 3 and len(right) >= 4:

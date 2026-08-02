@@ -199,7 +199,7 @@ ENCODING_MAP: dict[str, float] = {
     "Contrôle non OK":                              0.0,
 }
 
-# Colonnes images — exclues du staging analytique
+# Colonnes images - conservees comme liens documentaires en staging
 COLS_IMAGES: list[str] = [f"image{i}" for i in range(1, 11)]
 
 # ---------------------------------------------------------------------------
@@ -662,8 +662,9 @@ def transform_inspection(
     rename_eff = _build_rename_map(df.columns)
     df = df.rename(columns=rename_eff)
 
-    # Supprimer colonnes images (non analytiques)
-    df = df.drop(columns=[c for c in COLS_IMAGES if c in df.columns], errors="ignore")
+    # Conserver les colonnes image1..image10 en staging comme preuves documentaires.
+    # Elles ne participent pas au scoring, mais enrichissent la fiche
+    # d'inspection affichee cote plateforme.
 
     # ── 2. Nettoyage apostrophes dans checkpoints ──────────────────────────
     for col in ALL_CHECKPOINT_COLS:
@@ -796,7 +797,8 @@ def transform_inspection(
     # Les enc_* restent dans df_working mais ne sont pas dans STAGING_COLS.
     # Les colonnes checkpoint brutes détectées dynamiquement (étape 15)
     # sont ajoutées après STAGING_COLS.
-    _all_staging_cols = STAGING_COLS + _raw_ck_cols_added
+    _image_cols_added = [c for c in COLS_IMAGES if c in df.columns]
+    _all_staging_cols = STAGING_COLS + _raw_ck_cols_added + _image_cols_added
     for col in _all_staging_cols:
         if col not in df.columns:
             df[col] = None
@@ -817,6 +819,7 @@ def transform_inspection(
         "n_critique":        int((df_final["niveau_etat_vehicule"] == "CRITIQUE").sum()),
         "dist_niveau":       df_final["niveau_etat_vehicule"].value_counts().to_dict(),
         "km_median":         int(df_final["kilometrage"].median()) if df_final["kilometrage"].notna().any() else None,
+        "image_cols_preserved": len(_image_cols_added),
     }
 
     return df_final, metrics

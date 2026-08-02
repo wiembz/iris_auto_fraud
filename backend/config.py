@@ -21,6 +21,8 @@ class ApiConfig:
     post_inspection_signal_version: str = DEFAULT_POST_INSPECTION_SIGNAL_VERSION
     max_page_size: int = 200
     summary_cache_ttl_seconds: int = 60
+    inspection_image_storage_dir: str = "data/inspection_images"
+    inspection_image_max_bytes: int = 8 * 1024 * 1024
 
 
 def load_config() -> ApiConfig:
@@ -35,4 +37,9 @@ def load_config() -> ApiConfig:
         ),
         max_page_size=int(os.getenv("IRIS_API_MAX_PAGE_SIZE", "200")),
         summary_cache_ttl_seconds=int(os.getenv("IRIS_API_SUMMARY_CACHE_TTL_SECONDS", "60")),
+        inspection_image_storage_dir=os.getenv(
+            "IRIS_INSPECTION_IMAGE_STORAGE_DIR",
+            "data/inspection_images",
+        ),
+        inspection_image_max_bytes=int(os.getenv("IRIS_INSPECTION_IMAGE_MAX_BYTES", str(8 * 1024 * 1024))),
     )

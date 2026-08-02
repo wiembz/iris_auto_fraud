@@ -1,4 +1,5 @@
 ﻿import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { Subject, Subscription, debounceTime } from 'rxjs';
 import {
   IrisApiService,
@@ -94,6 +95,7 @@ const STATUS_LABELS: Record<string, string> = {
 })
 export class VhsPageComponent implements OnInit, OnDestroy {
   private readonly api = inject(IrisApiService);
+  private readonly route = inject(ActivatedRoute);
   private overviewSubscription?: Subscription;
   private vehiclesSubscription?: Subscription;
   private detailSubscription?: Subscription;
@@ -352,6 +354,10 @@ export class VhsPageComponent implements OnInit, OnDestroy {
         this.loading.set(false);
       }
     });
+    const initialSearch = this.route.snapshot.queryParamMap.get('search');
+    if (initialSearch) {
+      this.searchTerm.set(initialSearch);
+    }
     this.loadVehicles();
     this.searchSubscription = this.searchInput$.pipe(debounceTime(400)).subscribe((term) => {
       this.searchTerm.set(term);

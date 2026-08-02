@@ -55,6 +55,33 @@ INDEX_STATEMENTS = [
     CREATE INDEX IF NOT EXISTS idx_fcas_version_run_score
         ON mart.fact_claim_attention_score (score_version, score_run_id, attention_score DESC)
     """,
+    # Dashboard summary : distributions par niveau d'attention et confiance.
+    """
+    CREATE INDEX IF NOT EXISTS idx_fcas_version_run_attention
+        ON mart.fact_claim_attention_score (score_version, score_run_id, attention_level)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_fcas_version_run_confidence
+        ON mart.fact_claim_attention_score (score_version, score_run_id, confidence_level)
+    """,
+    # Dashboard top claims : EXISTS sur les signaux ML/STAFIM par claim_sk.
+    """
+    CREATE INDEX IF NOT EXISTS idx_fcmas_claim_version_run
+        ON mart.fact_claim_ml_anomaly_signal (claim_sk, signal_version, signal_run_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_fpias_claim_version_run
+        ON mart.fact_post_inspection_attention_signal (claim_sk, signal_version, signal_run_id)
+    """,
+    # Portfolio insights : jointures s.claim_sk + f.feature_run_id et tendance par date.
+    """
+    CREATE INDEX IF NOT EXISTS idx_fcsf_feature_run_claim
+        ON mart.fact_claim_scoring_features (feature_run_id, claim_sk)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_fcsf_feature_run_claim_date
+        ON mart.fact_claim_scoring_features (feature_run_id, claim_date)
+    """,
     # Signaux d'un dossier (revue dossier) : point de lecture le plus frequent
     # apres le chargement de la liste, table sans aucun index secondaire avant.
     """

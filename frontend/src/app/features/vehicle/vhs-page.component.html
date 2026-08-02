@@ -1,5 +1,5 @@
 ﻿<div class="vhs-page">
-  <header class="vhs-hero">
+  <header class="iris-page-hero">
     <div>
       <p class="iris-eyebrow">Vehicule &amp; VHS</p>
       <h1>Sante technique des vehicules inspectes</h1>
@@ -9,10 +9,9 @@
         avant un sinistre est un contexte precieux pour la revue du dossier.
       </p>
     </div>
-    <aside>
-      <span>Lecture du score</span>
-      <strong>Plus le score est bas, plus l etat constate est degrade</strong>
-    </aside>
+    <div class="iris-page-hero__status">
+      <span>Lecture du score — <strong>plus le score est bas, plus l etat constate est degrade</strong></span>
+    </div>
   </header>
 
   @if (loading()) {
@@ -90,7 +89,7 @@
         </div>
         <label class="vhs-search">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="search" placeholder="Immatriculation..." (input)="onSearchInput($event)" />
+          <input type="search" placeholder="Immatriculation..." [value]="searchTerm()" (input)="onSearchInput($event)" />
         </label>
       </header>
 

@@ -1,4 +1,4 @@
-﻿.claim-review {
+.claim-review {
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1459,11 +1459,11 @@ li[data-expanded='true'] .signal-row__chevron {
 
   &.is-done {
     background: var(--iris-surface);
-    border-color: var(--iris-positive-bg);
+    border-color: var(--iris-success-bg);
 
     .checklist__box {
-      border-color: var(--iris-positive);
-      color: var(--iris-positive);
+      border-color: var(--iris-success);
+      color: var(--iris-success);
       &::after {
         opacity: 1;
         transform: scale(1);
@@ -1673,8 +1673,7 @@ li[data-expanded='true'] .signal-row__chevron {
   gap: 20px;
 }
 
-.vhs-modal-card-sub,
-.vhs-modal-card-anomalies {
+.vhs-modal-card-sub {
   h3 {
     margin: 0 0 12px;
     font-family: var(--iris-font-display);
@@ -1682,6 +1681,37 @@ li[data-expanded='true'] .signal-row__chevron {
     color: var(--iris-text);
     border-bottom: 1px solid var(--iris-border);
     padding-bottom: 6px;
+  }
+}
+
+// Section anomalies : visuellement distincte avec le rouge pour ne pas confondre avec les checkpoints
+.vhs-modal-card-anomalies {
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--iris-high) 28%, var(--iris-border));
+  background: color-mix(in srgb, var(--iris-high) 4%, var(--iris-surface));
+
+  h3 {
+    margin: 0 0 12px;
+    font-family: var(--iris-font-display);
+    font-size: 15px;
+    // Titre rouge exclusif à la section anomalies
+    color: var(--iris-high);
+    border-bottom: 1px solid color-mix(in srgb, var(--iris-high) 20%, var(--iris-border));
+    padding-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+
+    &::before {
+      content: '';
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--iris-high);
+      flex: none;
+    }
   }
 }
 
@@ -1732,12 +1762,14 @@ li[data-expanded='true'] .signal-row__chevron {
   align-items: center;
   gap: 16px;
   padding: 10px 14px;
-  background: var(--iris-surface-2);
+  // Anomalies : fond rouge distinctif pour les différencier clairement des checkpoints
+  background: color-mix(in srgb, var(--iris-high) 6%, var(--iris-surface-2));
   border-radius: 8px;
-  border-left: 3px solid var(--iris-border-2);
+  border-left: 3px solid var(--iris-high);
 
   &[data-critical='true'] {
     border-left-color: var(--iris-high);
+    background: color-mix(in srgb, var(--iris-high) 10%, var(--iris-surface-2));
   }
 }
 
@@ -2114,9 +2146,17 @@ li[data-expanded='true'] .signal-row__chevron {
     border-left: 3px solid var(--iris-border-2);
     background: var(--iris-surface);
 
-    &[data-tone='ok'] { border-left-color: var(--iris-positive); }
+    // Checkpoints use non-red colors to stay distinct from anomalies (red = anomalie pénalisante)
+    &[data-tone='ok'] {
+      border-left-color: var(--iris-positive);
+      background: color-mix(in srgb, var(--iris-positive) 5%, var(--iris-surface));
+    }
     &[data-tone='medium'] { border-left-color: var(--iris-medium); }
-    &[data-tone='high'] { border-left-color: var(--iris-high); }
+    // Défaillant : bleu-acier, pas rouge — le rouge est réservé aux anomalies pénalisantes
+    &[data-tone='high'] {
+      border-left-color: var(--iris-primary);
+      background: color-mix(in srgb, var(--iris-primary) 6%, var(--iris-surface));
+    }
     &[data-tone='unknown'] { border-left-color: var(--iris-neutral); }
 
     p {
@@ -2154,7 +2194,8 @@ li[data-expanded='true'] .signal-row__chevron {
 }
 
 .vhs-checkpoint-penalty {
-  color: var(--iris-high);
+  // Points de pénalité dans la grille checkpoint : orange pour le distinguer du rouge anomalie
+  color: var(--iris-medium);
   font-size: 12px;
   font-weight: 850;
   font-variant-numeric: tabular-nums;
@@ -2164,8 +2205,10 @@ li[data-expanded='true'] .signal-row__chevron {
 .vhs-checkpoint-flag {
   padding: 2px 7px;
   border-radius: 999px;
-  background: var(--iris-high-bg);
-  color: var(--iris-high);
+  // Flags Vital/Immobilisant : fond bleu primaire pour les distinguer du rouge anomalie
+  background: color-mix(in srgb, var(--iris-primary) 12%, var(--iris-surface));
+  color: var(--iris-primary);
+  border: 1px solid color-mix(in srgb, var(--iris-primary) 30%, transparent);
   font-size: 10.5px;
   font-weight: 850;
   white-space: nowrap;

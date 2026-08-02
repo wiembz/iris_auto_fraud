@@ -295,11 +295,29 @@ SELECT
     END                                          AS business_explanation,
     i.indicateur_inspection_complete,
     COALESCE(NULLIF(BTRIM(split_part(regexp_replace(i.agent_controle, '\s*-\s*', ' - '), ' - ', 1)), ''), 'Non renseigne') AS garage_nom,
-    COALESCE(NULLIF(BTRIM(split_part(regexp_replace(i.agent_controle, '\s*-\s*', ' - '), ' - ', 2)), ''), 'Non renseigne') AS garage_localite
+    COALESCE(NULLIF(BTRIM(split_part(regexp_replace(i.agent_controle, '\s*-\s*', ' - '), ' - ', 2)), ''), 'Non renseigne') AS garage_localite,
+    -- Date d'inspection portee directement par cette vue (deja disponible sur
+    -- mart.fact_vhs_score.date_inspection_sk) : un visuel VHS ne doit jamais
+    -- avoir besoin de croiser v_inspection pour obtenir une date, ce qui
+    -- produisait des lignes a moitie vides (v_inspection a 284 lignes,
+    -- v_vhs_score n'en expose que ~276 par construction, cf. filtre
+    -- immatriculation ci-dessous : les deux vues n'ont pas le meme grain).
+    CASE
+        WHEN v.date_inspection_sk > 19000101
+        THEN to_date(v.date_inspection_sk::text, 'YYYYMMDD')
+    END                                          AS inspection_date
 FROM mart.fact_vhs_score v
 LEFT JOIN dwh.fact_inspection_vehicule i
   ON i.inspection_key = v.inspection_key
-WHERE v.run_id = (SELECT MAX(run_id) FROM mart.fact_vhs_score)
+WHERE v.run_id = (
+    -- Meme regle de resolution que backend/services/vhs_service.py::_LATEST_RUN_SQL
+    -- (ORDER BY created_at DESC), pour que Power BI et l'app Angular servent
+    -- toujours le meme run. Un MAX(run_id) lexicographique cassait des que le
+    -- numero de version depassait un chiffre (ex. "V10" < "V2" en tri texte).
+    SELECT run_id FROM mart.fact_vhs_score
+    ORDER BY created_at DESC, run_id DESC
+    LIMIT 1
+  )
   -- Regle metier : pas de score exploitable sans immatriculation complete
   -- (le gestionnaire ne peut pas rattacher le score a un vehicule identifie).
   AND v.immatriculation_norm IS NOT NULL;

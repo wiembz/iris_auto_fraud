@@ -1,9 +1,10 @@
 """Vehicle Health Score (VHS) read-only service for the IRIS frontend API.
 
-Serves the latest VHS run only: scores per inspection (mart.fact_vhs_score)
-and per-checkpoint penalties (mart.fact_vhs_penalty_detail). The VHS informs
-the claim review with the technical condition of inspected vehicles; it never
-takes any decision by itself.
+Serves the latest VHS run only: scores per inspection (mart.fact_vhs_score),
+per-checkpoint penalties (mart.fact_vhs_penalty_detail), and the complete
+observed STAFIM checkpoint sheet (dwh.fact_inspection_checkpoint). The VHS
+informs the claim review with the technical condition of inspected vehicles; it
+never takes any decision by itself.
 """
 from __future__ import annotations
 
@@ -11,6 +12,10 @@ from typing import Any
 
 from sqlalchemy import text
 
+from backend.services.inspection_image_service import (
+    build_fallback_image_assets,
+    list_image_assets_for_inspection,
+)
 from backend.services.serialization import rows_to_dicts
 
 ALLOWED_DECISIONS = {"OK", "DEGRADE", "CRITIQUE", "IMMOBILISE"}
@@ -57,6 +62,135 @@ _LIST_COLUMNS_QUALIFIED = ", ".join(f"s.{name}" for name in _LIST_COLUMN_NAMES)
 
 def _latest_run(conn) -> str | None:
     return conn.execute(text(_LATEST_RUN_SQL)).scalar_one_or_none()
+
+
+
+def _staging_image_select(conn) -> str:
+    """Return dynamic SELECT fragments for STAFIM image links when available."""
+    rows = conn.execute(
+        text(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'staging'
+              AND table_name = 'stg_inspection'
+              AND column_name IN ('image1','image2','image3','image4','image5','image6','image7','image8','image9','image10')
+            ORDER BY ordinal_position
+            """
+        )
+    ).fetchall()
+    if not rows:
+        return ""
+    return "".join(f',\n                    i."{row.column_name}" AS "{row.column_name}"' for row in rows)
+
+
+def _image_slot_sort_key(slot: str) -> tuple[int, str]:
+    suffix = "".join(ch for ch in str(slot) if ch.isdigit())
+    return (int(suffix) if suffix else 999, str(slot))
+
+
+def _build_image_links(conn, inspection_key: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return platform-owned image assets, plus Drive fallback evidence when needed."""
+    fallback_links = build_fallback_image_assets(inspection_key, payload)
+    imported_assets = list_image_assets_for_inspection(conn, inspection_key)
+
+    by_slot: dict[str, dict[str, Any]] = {item["slot"]: item for item in fallback_links}
+    for asset in imported_assets:
+        slot = asset.get("slot")
+        if slot:
+            by_slot[str(slot)] = asset
+
+    return [by_slot[key] for key in sorted(by_slot, key=_image_slot_sort_key)]
+
+
+def _fetch_penalties(conn, inspection_key: str, run_id: str) -> list[dict[str, Any]]:
+    penalties = conn.execute(
+        text(
+            """
+            SELECT
+                p.checkpoint_code,
+                COALESCE(p.checkpoint_libelle, d.checkpoint_libelle, p.checkpoint_code) AS checkpoint_libelle,
+                COALESCE(p.zone_controle, d.zone_controle) AS zone_controle,
+                p.observed_value,
+                p.observed_status,
+                p.penalty_applied,
+                p.penalty_reason,
+                p.tier,
+                COALESCE(p.is_vital, d.is_vital) AS is_vital,
+                COALESCE(p.is_immobilizing, d.is_immobilizing) AS is_immobilizing,
+                p.is_hard_cap_trigger,
+                p.est_anomalie_critique,
+                p.systeme_fonctionnel,
+                p.penalty_raw_checkpoint,
+                p.penalty_capped_by_system
+            FROM mart.fact_vhs_penalty_detail p
+            LEFT JOIN mart.dim_checkpoint d ON d.checkpoint_code = p.checkpoint_code
+            WHERE p.inspection_key = :inspection_key
+              AND p.run_id = :run_id
+              AND p.penalty_applied > 0
+            ORDER BY p.penalty_applied DESC, 3, p.checkpoint_code
+            LIMIT 200
+            """
+        ),
+        {"inspection_key": inspection_key, "run_id": run_id},
+    ).fetchall()
+    return rows_to_dicts(penalties)
+
+
+def _fetch_checkpoints(conn, inspection_key: str, run_id: str) -> list[dict[str, Any]]:
+    checkpoints = conn.execute(
+        text(
+            """
+            SELECT
+                cp.checkpoint_code,
+                COALESCE(cp.checkpoint_libelle, d.checkpoint_libelle, cp.checkpoint_code) AS checkpoint_libelle,
+                COALESCE(cp.zone_controle, d.zone_controle) AS zone_controle,
+                cp.valeur_controle,
+                cp.commentaire_zone,
+                cp.est_anomalie,
+                cp.est_anomalie_critique,
+                cp.est_controle_renseigne,
+                COALESCE(
+                    p.observed_status,
+                    CASE
+                        WHEN cp.est_anomalie THEN 'BROKEN'
+                        WHEN cp.est_controle_renseigne THEN 'OK'
+                        ELSE 'UNKNOWN'
+                    END
+                ) AS observed_status,
+                COALESCE(p.penalty_applied, 0) AS penalty_applied,
+                p.penalty_reason,
+                p.tier,
+                COALESCE(p.is_vital, d.is_vital) AS is_vital,
+                COALESCE(p.is_immobilizing, d.is_immobilizing) AS is_immobilizing,
+                p.is_hard_cap_trigger,
+                p.systeme_fonctionnel,
+                p.penalty_raw_checkpoint,
+                p.penalty_capped_by_system
+            FROM dwh.fact_inspection_checkpoint cp
+            LEFT JOIN mart.dim_checkpoint d ON d.checkpoint_code = cp.checkpoint_code
+            LEFT JOIN mart.fact_vhs_penalty_detail p
+              ON p.inspection_key = cp.inspection_key
+             AND p.run_id = :run_id
+             AND p.checkpoint_code = cp.checkpoint_code
+            WHERE cp.inspection_key = :inspection_key
+            ORDER BY
+                CASE COALESCE(cp.zone_controle, d.zone_controle)
+                    WHEN 'TOUR_DU_VEHICULE' THEN 1
+                    WHEN 'INTERIEUR' THEN 2
+                    WHEN 'SOUS_CAPOT' THEN 3
+                    WHEN 'SOUS_VEHICULE' THEN 4
+                    WHEN 'ENTRETIEN' THEN 5
+                    ELSE 9
+                END,
+                cp.checkpoint_libelle,
+                cp.checkpoint_code
+            LIMIT 300
+            """
+        ),
+        {"inspection_key": inspection_key, "run_id": run_id},
+    ).fetchall()
+    return rows_to_dicts(checkpoints)
 
 
 def get_vhs_overview(engine) -> dict[str, Any]:
@@ -220,9 +354,10 @@ def get_vhs_inspection_detail(engine, vhs_score_sk: int) -> dict[str, Any] | Non
     frontend-side. Only positive penalties are returned: they are what
     actually lowers the score."""
     with engine.connect() as conn:
+        image_select = _staging_image_select(conn)
         score_row = conn.execute(
             text(
-                """
+                f"""
                 SELECT 
                     s.vhs_score_sk,
                     s.inspection_key,
@@ -258,6 +393,7 @@ def get_vhs_inspection_detail(engine, vhs_score_sk: int) -> dict[str, Any] | Non
                     i.numero_commande_travaux,
                     i.heure_entree,
                     i.horodateur
+                    {image_select}
                 FROM mart.fact_vhs_score s
                 LEFT JOIN staging.stg_inspection i 
                   ON s.immatriculation_norm = i.immatriculation 
@@ -271,40 +407,13 @@ def get_vhs_inspection_detail(engine, vhs_score_sk: int) -> dict[str, Any] | Non
         if not score_row:
             return None
 
-        penalties = conn.execute(
-            text(
-                """
-                SELECT
-                    p.checkpoint_code,
-                    COALESCE(p.checkpoint_libelle, d.checkpoint_libelle, p.checkpoint_code) AS checkpoint_libelle,
-                    COALESCE(p.zone_controle, d.zone_controle) AS zone_controle,
-                    p.observed_value,
-                    p.observed_status,
-                    p.penalty_applied,
-                    p.penalty_reason,
-                    p.tier,
-                    COALESCE(p.is_vital, d.is_vital) AS is_vital,
-                    COALESCE(p.is_immobilizing, d.is_immobilizing) AS is_immobilizing,
-                    p.is_hard_cap_trigger,
-                    p.est_anomalie_critique,
-                    p.systeme_fonctionnel,
-                    p.penalty_raw_checkpoint,
-                    p.penalty_capped_by_system
-                FROM mart.fact_vhs_penalty_detail p
-                LEFT JOIN mart.dim_checkpoint d ON d.checkpoint_code = p.checkpoint_code
-                WHERE p.inspection_key = :inspection_key
-                  AND p.run_id = :run_id
-                  AND p.penalty_applied > 0
-                ORDER BY p.penalty_applied DESC, 3, p.checkpoint_code
-                LIMIT 200
-                """
-            ),
-            {"inspection_key": score_row.inspection_key, "run_id": score_row.run_id},
-        ).fetchall()
-
-    result = dict(score_row._mapping)
-    result["penalties"] = rows_to_dicts(penalties)
-    return result
+        penalties = _fetch_penalties(conn, score_row.inspection_key, score_row.run_id)
+        checkpoints = _fetch_checkpoints(conn, score_row.inspection_key, score_row.run_id)
+        result = dict(score_row._mapping)
+        result["penalties"] = penalties
+        result["checkpoints"] = checkpoints
+        result["image_links"] = _build_image_links(conn, score_row.inspection_key, result)
+        return result
 
 
 def get_vhs_inspection_detail_by_key(
@@ -320,10 +429,11 @@ def get_vhs_inspection_detail_by_key(
         latest_run = _latest_run(conn)
         if not latest_run:
             return None
+        image_select = _staging_image_select(conn)
 
         score_row = conn.execute(
             text(
-                """
+                f"""
                 SELECT 
                     s.vhs_score_sk,
                     s.inspection_key,
@@ -359,6 +469,7 @@ def get_vhs_inspection_detail_by_key(
                     i.numero_commande_travaux,
                     i.heure_entree,
                     i.horodateur
+                    {image_select}
                 FROM mart.fact_vhs_score s
                 LEFT JOIN staging.stg_inspection i 
                   ON s.immatriculation_norm = i.immatriculation 
@@ -379,38 +490,11 @@ def get_vhs_inspection_detail_by_key(
         if not score_row:
             return None
 
-        penalties = conn.execute(
-            text(
-                """
-                SELECT
-                    p.checkpoint_code,
-                    COALESCE(p.checkpoint_libelle, d.checkpoint_libelle, p.checkpoint_code) AS checkpoint_libelle,
-                    COALESCE(p.zone_controle, d.zone_controle) AS zone_controle,
-                    p.observed_value,
-                    p.observed_status,
-                    p.penalty_applied,
-                    p.penalty_reason,
-                    p.tier,
-                    COALESCE(p.is_vital, d.is_vital) AS is_vital,
-                    COALESCE(p.is_immobilizing, d.is_immobilizing) AS is_immobilizing,
-                    p.is_hard_cap_trigger,
-                    p.est_anomalie_critique,
-                    p.systeme_fonctionnel,
-                    p.penalty_raw_checkpoint,
-                    p.penalty_capped_by_system
-                FROM mart.fact_vhs_penalty_detail p
-                LEFT JOIN mart.dim_checkpoint d ON d.checkpoint_code = p.checkpoint_code
-                WHERE p.inspection_key = :inspection_key
-                  AND p.run_id = :run_id
-                  AND p.penalty_applied > 0
-                ORDER BY p.penalty_applied DESC, 3, p.checkpoint_code
-                LIMIT 200
-                """
-            ),
-            {"inspection_key": score_row.inspection_key, "run_id": score_row.run_id},
-        ).fetchall()
-
-    result = dict(score_row._mapping)
-    result["penalties"] = rows_to_dicts(penalties)
-    return result
+        penalties = _fetch_penalties(conn, score_row.inspection_key, score_row.run_id)
+        checkpoints = _fetch_checkpoints(conn, score_row.inspection_key, score_row.run_id)
+        result = dict(score_row._mapping)
+        result["penalties"] = penalties
+        result["checkpoints"] = checkpoints
+        result["image_links"] = _build_image_links(conn, score_row.inspection_key, result)
+        return result
 

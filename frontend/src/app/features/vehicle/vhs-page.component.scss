@@ -6,58 +6,6 @@
   margin: 0 auto;
 }
 
-// ---------------------------------------------------------------------------
-// Hero â€” compact, comme l entete d un poste de travail sinistres (peu d espace
-// perdu : le titre et la note de lecture tiennent sur une bande fine).
-// ---------------------------------------------------------------------------
-.vhs-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.3fr);
-  gap: 14px;
-  align-items: stretch;
-
-  h1 {
-    margin: 0;
-    color: var(--iris-text);
-    font: 700 19px/1.2 var(--iris-font-display);
-  }
-
-  > div > p {
-    max-width: 78ch;
-    margin: 4px 0 0;
-    color: var(--iris-text-2);
-    font-size: 12.5px;
-    line-height: 1.5;
-  }
-
-  aside {
-    display: grid;
-    align-content: center;
-    gap: 4px;
-    border: 1px solid var(--iris-border);
-    border-radius: var(--iris-radius-lg);
-    padding: 10px 14px;
-    background: var(--iris-surface);
-    box-shadow: var(--iris-shadow-sm);
-
-    span {
-      color: var(--iris-text-3);
-      font-size: 10.5px;
-      font-weight: 850;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-    }
-
-    strong {
-      color: var(--iris-text);
-      font: 650 13px/1.3 var(--iris-font-display);
-    }
-  }
-
-  @media (max-width: 900px) {
-    grid-template-columns: 1fr;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Etats de chargement / erreur
