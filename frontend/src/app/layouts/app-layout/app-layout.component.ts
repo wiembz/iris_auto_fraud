@@ -1,5 +1,5 @@
 import { DOCUMENT } from '@angular/common';
-import { Component, Inject, computed, inject } from '@angular/core';
+import { Component, HostListener, Inject, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { IrisLogoComponent } from '../../shared/ui/iris-logo.component';
@@ -20,6 +20,8 @@ interface AppNavItem {
 })
 export class AppLayoutComponent {
   theme: 'light' | 'dark' = 'light';
+  readonly mobileNavOpen = signal(false);
+  readonly globalSearch = signal('');
 
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
@@ -65,7 +67,7 @@ export class AppLayoutComponent {
       ]
     },
     {
-      label: 'Affectations',
+      label: 'Pilotage equipe',
       route: '/app/assignments',
       roles: ['responsable'],
       icon: [
@@ -114,10 +116,47 @@ export class AppLayoutComponent {
     return user ? this.auth.homeRouteFor(user.role) : '/login';
   });
 
+  readonly greeting = 'Bonjour';
+
   constructor(@Inject(DOCUMENT) private readonly documentRef: Document) {
     this.applyTheme();
   }
 
+  toggleMobileNav(): void {
+    this.mobileNavOpen.update((open) => !open);
+  }
+
+  closeMobileNav(): void {
+    this.mobileNavOpen.set(false);
+  }
+
+  onGlobalSearchInput(event: Event): void {
+    this.globalSearch.set((event.target as HTMLInputElement).value);
+  }
+
+  /*
+   * Recherche unique pour toute information IRIS : dossier, numero de sinistre,
+   * garantie, identifiant client ou plaque d immatriculation. La file de
+   * travail (dossiers sinistre) sait desormais matcher une plaque elle-meme
+   * (backend: claims_service.list_claims rejoint dwh.dim_vehicule), donc une
+   * plaque route vers les dossiers, pas uniquement vers la fiche inspection
+   * VHS — qui reste consultable via sa propre recherche sur la page Vehicule.
+   */
+  runGlobalSearch(event: Event): void {
+    event.preventDefault();
+    const search = this.globalSearch().trim();
+    if (!search) {
+      return;
+    }
+    this.closeMobileNav();
+    void this.router.navigate(['/app/claims'], { queryParams: { search } });
+  }
+
+  @HostListener('document:keydown.control.k', ['$event'])
+  focusGlobalSearch(event: Event): void {
+    event.preventDefault();
+    this.documentRef.querySelector<HTMLInputElement>('#iris-global-search')?.focus();
+  }
   toggleTheme(): void {
     this.theme = this.theme === 'light' ? 'dark' : 'light';
     this.applyTheme();

@@ -1,5 +1,5 @@
 <div class="app-shell">
-  <aside class="sidebar" aria-label="Navigation IRIS applicative">
+  <aside class="sidebar" [class.is-open]="mobileNavOpen()" aria-label="Navigation IRIS applicative">
     <a class="brand" [routerLink]="homeRoute()">
       <iris-logo [size]="32" />
       <span class="brand-word">IRIS</span>
@@ -9,7 +9,7 @@
 
     <nav>
       @for (item of visibleNavItems(); track item.route) {
-        <a [routerLink]="item.route" routerLinkActive="active">
+        <a [routerLink]="item.route" routerLinkActive="active" (click)="closeMobileNav()">
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             @for (d of item.icon; track d) {
               <path [attr.d]="d" />
@@ -43,16 +43,16 @@
 
   <section class="workspace">
     <header class="topbar">
+      <button type="button" class="mobile-menu" (click)="toggleMobileNav()" [attr.aria-expanded]="mobileNavOpen()" aria-label="Ouvrir la navigation">☰</button>
       <div class="topbar-context">
-        <strong>Bonjour{{ firstName() ? ', ' + firstName() : '' }} 👋</strong>
+        <strong>{{ greeting }}{{ firstName() ? ', ' + firstName() : '' }}</strong>
         <small>Voici l'état de vos dossiers sinistres.</small>
       </div>
 
-      <div class="iris-search topbar-search">
+<form class="iris-search topbar-search" role="search" (submit)="runGlobalSearch($event)">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-        <span>Rechercher un dossier, un assuré, une plaque...</span>
-        <span class="iris-search__kbd">Ctrl K</span>
-      </div>
+        <input id="iris-global-search" type="search" aria-label="Recherche globale" placeholder="Dossier, sinistre, garantie, client, plaque..." [value]="globalSearch()" (input)="onGlobalSearchInput($event)" (keydown.enter)="runGlobalSearch($event)" />
+      </form>
 
       <div class="topbar-actions">
         <button type="button" class="theme-toggle" (click)="toggleTheme()">

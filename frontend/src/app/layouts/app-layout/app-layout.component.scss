@@ -8,16 +8,18 @@
 
 /* ============ Sidebar ============ */
 .sidebar {
-  position: sticky;
-  top: 0;
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 268px;
+  height: 100vh;
   max-height: 100vh;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 18px;
   padding: 20px 16px;
   border-right: 1px solid var(--iris-border);
   background: var(--iris-surface);
-  overflow-y: auto;
 }
 
 .brand {
@@ -31,9 +33,6 @@
   text-decoration: none;
 }
 
-.brand iris-logo {
-  filter: drop-shadow(0 2px 8px rgba(15, 182, 165, 0.35));
-}
 
 .nav-label {
   margin: 4px 8px -8px;
@@ -84,8 +83,7 @@
   top: 8px;
   bottom: 8px;
   width: 3px;
-  border-radius: 999px;
-  background: var(--iris-gradient);
+  background: var(--iris-primary);
 }
 
 .sidebar nav a.active svg {
@@ -108,13 +106,12 @@
 }
 
 .governance-note__dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   flex: none;
   margin-top: 4px;
   border-radius: 50%;
   background: var(--iris-primary);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--iris-primary) 16%, transparent);
 }
 
 .user-card {
@@ -174,14 +171,15 @@
   width: 36px;
   height: 36px;
   flex: none;
-  border-radius: 11px;
-  background: var(--iris-gradient);
-  color: #ffffff;
+  border-radius: var(--iris-radius-md);
+  background: var(--iris-primary);
+  color: var(--iris-on-primary);
   font: 700 12px/1 var(--iris-font-display);
 }
 
 /* ============ Workspace ============ */
 .workspace {
+  grid-column: 2;
   min-width: 0;
   display: grid;
   grid-template-rows: auto 1fr;
@@ -198,8 +196,7 @@
   gap: 18px;
   border-bottom: 1px solid var(--iris-border);
   padding: 12px 26px;
-  background: color-mix(in srgb, var(--iris-bg) 82%, transparent);
-  backdrop-filter: blur(14px);
+  background: var(--iris-bg);
 }
 
 .topbar-context strong {
@@ -254,9 +251,7 @@
      tout debordement doit rester local a son propre conteneur scrollable. */
   overflow-x: hidden;
   padding: 26px 28px 40px;
-  background:
-    radial-gradient(760px 300px at 88% -8%, var(--iris-canvas-glow-1), transparent 60%),
-    var(--iris-bg);
+  background: var(--iris-bg);
 }
 
 /* ============ Responsive ============ */
@@ -268,11 +263,19 @@
   .topbar-search {
     display: none;
   }
+
+  .sidebar {
+    width: 240px;
+  }
 }
 
 @media (max-width: 860px) {
   .app-shell {
     grid-template-columns: 1fr;
+  }
+
+  .workspace {
+    grid-column: 1;
   }
 
   .sidebar {
@@ -304,5 +307,87 @@
 
   .app-content {
     padding: 18px 16px 32px;
+  }
+}
+
+.mobile-menu {
+  display: none;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border: 1px solid var(--iris-border-2);
+  border-radius: 10px;
+  background: var(--iris-surface);
+  color: var(--iris-text);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.topbar-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--iris-text);
+  font: inherit;
+}
+
+.topbar-search input::placeholder {
+  color: var(--iris-text-3);
+}
+
+@media (max-width: 860px) {
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 60;
+    width: min(82vw, 300px);
+    max-height: 100vh;
+    border-right: 1px solid var(--iris-border);
+    border-bottom: 0;
+    transform: translateX(-105%);
+    transition: transform 0.2s ease;
+    box-shadow: var(--iris-shadow-lg);
+  }
+
+  .sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .sidebar nav {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-menu {
+    display: grid;
+    place-items: center;
+  }
+
+  .topbar {
+    padding-inline: 16px;
+  }
+}
+
+@media (max-width: 560px) {
+  .topbar,
+  .topbar-actions {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .topbar {
+    gap: 10px;
+  }
+
+  .topbar-context small,
+  .topbar-actions .iris-button,
+  .topbar-actions .avatar {
+    display: none;
+  }
+
+  .theme-toggle {
+    min-height: 36px;
+    padding-inline: 10px;
   }
 }
