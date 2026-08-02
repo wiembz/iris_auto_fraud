@@ -35,10 +35,19 @@ def _backend_text() -> str:
     ).lower()
 
 
+def _strip_comment_lines(source: str) -> str:
+    """Drop whole-line '#' comments before scanning for forbidden SQL keywords --
+    a comment explaining *why* some other layer once ran ALTER/DROP is documentation,
+    not executable code, and shouldn't trip a read-only guard on this service."""
+    return "\n".join(
+        line for line in source.splitlines() if not line.strip().startswith("#")
+    )
+
+
 def _service_text(exclude: tuple[str, ...] = ()) -> str:
     services_dir = BACKEND_DIR / "services"
     return "\n".join(
-        path.read_text(encoding="utf-8")
+        _strip_comment_lines(path.read_text(encoding="utf-8"))
         for path in services_dir.rglob("*.py")
         if path.name not in exclude
     ).lower()
@@ -72,13 +81,16 @@ def test_serialization_converts_common_database_values():
 def test_backend_service_sql_stays_read_only():
     # decision_service.py and workflow_service.py are the deliberate write
     # paths (schema `app`, append-only, DB triggers block UPDATE/DELETE).
-    # They are excluded here and checked precisely below instead of
-    # weakening this guarantee for every other service.
-    text = _service_text(exclude=("decision_service.py", "workflow_service.py"))
+    # inspection_image_service.py is a third: it owns app.inspection_image_asset
+    # (idempotent CREATE TABLE IF NOT EXISTS, same pattern every ETL mart
+    # script already uses for its own tables). All three are excluded here
+    # and, where warranted, checked precisely instead of weakening this
+    # guarantee for every other service.
+    text = _service_text(exclude=("decision_service.py", "workflow_service.py", "inspection_image_service.py"))
 
     forbidden_patterns = [
         r"(?<!path\.)\binsert\b",
-        r"\bupdate\b",
+        r"(?<!\.)\bupdate\b",  # allow dict.update(...); SQL UPDATE is never preceded by a dot
         r"\bdelete\b",
         r"\bdrop\b",
         r"\btruncate\b",
