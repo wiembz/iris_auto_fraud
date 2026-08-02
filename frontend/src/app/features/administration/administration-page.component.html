@@ -1,5 +1,5 @@
 <div class="admin-page">
-  <header class="admin-hero">
+  <header class="iris-page-hero">
     <div>
       <p class="iris-eyebrow">Administration</p>
       <h1>Etat de la plateforme</h1>
@@ -8,16 +8,16 @@
         l espace de controle de l administrateur, en lecture sur l etat reel du systeme.
       </p>
     </div>
-    <aside [attr.data-status]="apiStatus()">
-      <span>API IRIS</span>
+    <div class="iris-page-hero__status" [attr.data-status]="apiStatus()">
+      <span class="dashboard-pulse-dot" [attr.data-status]="apiStatus() === 'down' ? 'down' : null" aria-hidden="true"></span>
       @if (apiStatus() === 'checking') {
-        <strong>Verification en cours…</strong>
+        <span>API IRIS — verification en cours…</span>
       } @else if (apiStatus() === 'up') {
-        <strong>Operationnelle · {{ apiLatencyMs() }} ms</strong>
+        <span>API IRIS — operationnelle · {{ apiLatencyMs() }} ms</span>
       } @else {
-        <strong>Indisponible — verifier le service backend</strong>
+        <span>API IRIS — indisponible</span>
       }
-    </aside>
+    </div>
   </header>
 
   <section class="admin-grid">

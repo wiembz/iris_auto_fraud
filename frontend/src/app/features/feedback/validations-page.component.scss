@@ -1,22 +1,7 @@
 .validations-page {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-}
-
-.validations-hero {
-  h1 {
-    margin: 4px 0 8px;
-    font-family: var(--iris-font-display);
-    font-size: 28px;
-    color: var(--iris-text);
-  }
-
-  p {
-    margin: 0;
-    color: var(--iris-text-2);
-    font-size: 14px;
-  }
+  gap: 14px;
 }
 
 .validations-counters {

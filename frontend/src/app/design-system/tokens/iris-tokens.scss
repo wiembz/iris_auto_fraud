@@ -30,9 +30,9 @@
   --iris-neutral-bg: #eaf0f0;
   --iris-na: #8ca0a2;
   --iris-na-bg: #eef3f3;
-  --iris-shadow-sm: 0 1px 2px rgba(9, 40, 44, 0.06), 0 1px 3px rgba(9, 40, 44, 0.05);
-  --iris-shadow-md: 0 6px 20px -6px rgba(9, 40, 44, 0.13), 0 2px 6px rgba(9, 40, 44, 0.05);
-  --iris-shadow-lg: 0 28px 64px -22px rgba(9, 45, 50, 0.3);
+  --iris-shadow-sm: 0 1px 2px rgba(9, 40, 44, 0.05);
+  --iris-shadow-md: 0 2px 6px rgba(9, 40, 44, 0.08);
+  --iris-shadow-lg: 0 6px 16px rgba(9, 40, 44, 0.12);
   --iris-gradient: linear-gradient(135deg, #0fb6a5 0%, #1fc6d2 52%, #2aa0e0 100%);
   --iris-canvas-glow-1: rgba(15, 182, 165, 0.1);
   --iris-canvas-glow-2: rgba(23, 183, 201, 0.08);
@@ -69,9 +69,9 @@
   --iris-neutral-bg: rgba(125, 154, 153, 0.14);
   --iris-na: #7e9598;
   --iris-na-bg: rgba(126, 149, 152, 0.12);
-  --iris-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.42);
-  --iris-shadow-md: 0 8px 24px -8px rgba(0, 0, 0, 0.55);
-  --iris-shadow-lg: 0 34px 74px -26px rgba(0, 0, 0, 0.7);
+  --iris-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --iris-shadow-md: 0 2px 7px rgba(0, 0, 0, 0.4);
+  --iris-shadow-lg: 0 6px 18px rgba(0, 0, 0, 0.45);
   --iris-gradient: linear-gradient(135deg, #16c6b2 0%, #26d6e2 52%, #3ab0f0 100%);
   --iris-canvas-glow-1: rgba(47, 209, 189, 0.12);
   --iris-canvas-glow-2: rgba(56, 210, 228, 0.09);
@@ -113,8 +113,8 @@
   --iris-font-sans: 'Instrument Sans', 'Segoe UI', system-ui, sans-serif;
   --iris-font-display: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
   --iris-font-mono: 'JetBrains Mono', 'Consolas', monospace;
-  --iris-radius-sm: 8px;
-  --iris-radius-md: 12px;
-  --iris-radius-lg: 18px;
+  --iris-radius-sm: 5px;
+  --iris-radius-md: 6px;
+  --iris-radius-lg: 8px;
   --iris-content-max: 1180px;
 }

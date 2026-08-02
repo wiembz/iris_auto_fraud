@@ -72,58 +72,54 @@
   color: var(--iris-text-2);
 }
 
-/* ---- Badges (attention / status pills) ---- */
+/* ---- Badges (attention / status - tampon de registre, pas une pastille) ---- */
 .iris-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 11px;
-  border-radius: 999px;
-  font: 600 12.5px/1 var(--iris-font-sans);
+  padding: 3px 9px;
+  border: 1.5px solid currentColor;
+  border-radius: var(--iris-radius-sm);
+  background: transparent;
+  font: 700 11px/1.4 var(--iris-font-sans);
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
-.iris-badge::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
 .iris-badge--positive {
-  background: var(--iris-positive-bg);
   color: var(--iris-positive);
+  background: var(--iris-positive-bg);
 }
 
 .iris-badge--low {
-  background: var(--iris-low-bg);
   color: var(--iris-low);
+  background: var(--iris-low-bg);
 }
 
 .iris-badge--medium {
-  background: var(--iris-medium-bg);
   color: var(--iris-medium);
+  background: var(--iris-medium-bg);
 }
 
 .iris-badge--high {
-  background: var(--iris-high-bg);
   color: var(--iris-high);
+  background: var(--iris-high-bg);
 }
 
 .iris-badge--info {
-  background: var(--iris-info-bg);
   color: var(--iris-info);
+  background: var(--iris-info-bg);
 }
 
 .iris-badge--neutral {
-  background: var(--iris-neutral-bg);
   color: var(--iris-neutral);
+  background: var(--iris-neutral-bg);
 }
 
 .iris-badge--na {
-  background: var(--iris-na-bg);
   color: var(--iris-na);
+  background: var(--iris-na-bg);
+  border-style: dashed;
 }
 
 /* ---- Tags ---- */

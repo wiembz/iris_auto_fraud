@@ -5,51 +5,7 @@
 .audit-page {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 18px;
-}
-
-.audit-hero {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
-  flex-wrap: wrap;
-
-  h1 {
-    margin: 4px 0 8px;
-    font-size: 1.55rem;
-    letter-spacing: -0.02em;
-  }
-
-  > div > p:last-child {
-    max-width: 64ch;
-    color: var(--iris-text-muted, #5b6e82);
-    line-height: 1.55;
-  }
-
-  aside {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    max-width: 260px;
-    padding: 14px 16px;
-    border-radius: 12px;
-    border: 1px solid var(--iris-border, #d4dde6);
-    background: var(--iris-surface-2, #f8fafc);
-
-    span {
-      font-size: 0.72rem;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--iris-accent, #0f766e);
-    }
-
-    strong {
-      font-size: 0.9rem;
-      line-height: 1.4;
-    }
-  }
+  gap: 14px;
 }
 
 .audit-kpis {
