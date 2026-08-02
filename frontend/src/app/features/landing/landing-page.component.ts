@@ -75,7 +75,7 @@ export class LandingPageComponent implements AfterViewInit, OnDestroy {
     {
       label: 'Connexion',
       title: 'Un espace pensé pour chaque profil',
-      text: 'Gestionnaire, superviseur, auditeur : chacun se connecte à un environnement adapté à son rôle et à ses responsabilités.',
+      text: 'Analyste, responsable, administrateur : chacun se connecte à un environnement adapté à son rôle et à ses responsabilités.',
       mock: 'login'
     },
     {

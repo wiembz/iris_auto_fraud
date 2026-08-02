@@ -24,12 +24,12 @@ export class ValidationsPageComponent implements OnInit, OnDestroy {
   private subscription?: Subscription;
 
   readonly user = this.auth.currentUser;
-  readonly isPersonalView = computed(() => this.user()?.role === 'gestionnaire');
+  readonly isPersonalView = computed(() => this.user()?.role === 'analyste');
   readonly pageTitle = computed(() => (this.isPersonalView() ? 'Mes validations' : 'Validations de l equipe'));
   readonly pageSubtitle = computed(() =>
     this.isPersonalView()
       ? 'Retrouvez l historique de vos decisions sur les dossiers examines.'
-      : 'Suivi des decisions prises sur les dossiers prioritaires, tous gestionnaires confondus.'
+      : 'Suivi des decisions prises sur les dossiers prioritaires, tous analystes confondus.'
   );
 
   readonly loading = signal(true);

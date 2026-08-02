@@ -29,19 +29,19 @@ export class AppLayoutComponent {
     {
       label: 'Vue générale',
       route: '/app/dashboard',
-      roles: ['responsable', 'manager', 'administrateur'],
+      roles: ['responsable', 'administrateur'],
       icon: ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M14 14h7v7h-7z', 'M3 14h7v7H3z']
     },
     {
       label: 'File de travail',
       route: '/app/claims',
-      roles: ['gestionnaire', 'responsable', 'manager'],
+      roles: ['analyste', 'responsable'],
       icon: ['M8 6h13', 'M8 12h13', 'M8 18h13', 'M3.5 6h.01', 'M3.5 12h.01', 'M3.5 18h.01']
     },
     {
       label: 'Véhicule & VHS',
       route: '/app/vehicle',
-      roles: ['gestionnaire', 'responsable', 'manager'],
+      roles: ['analyste', 'responsable'],
       icon: [
         'M5 16.5 6.6 11a2 2 0 0 1 1.9-1.5h7a2 2 0 0 1 1.9 1.5L19 16.5',
         'M4 16.5h16v3a1 1 0 0 1-1 1h-1.5a1 1 0 0 1-1-1v-1h-9v1a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z',
@@ -52,13 +52,13 @@ export class AppLayoutComponent {
     {
       label: 'Analytique Power BI',
       route: '/app/analytics',
-      roles: ['responsable', 'manager', 'administrateur'],
+      roles: ['analyste', 'responsable', 'administrateur'],
       icon: ['M3 3v16a2 2 0 0 0 2 2h16', 'M7 13.5 11 9l3.5 3.5L20 6', 'M20 6h-4', 'M20 6v4']
     },
     {
       label: 'Validation métier',
       route: '/app/feedback',
-      roles: ['gestionnaire', 'responsable', 'manager'],
+      roles: ['analyste', 'responsable'],
       icon: [
         'M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z',
         'M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3'
@@ -67,7 +67,7 @@ export class AppLayoutComponent {
     {
       label: 'Affectations',
       route: '/app/assignments',
-      roles: ['responsable', 'manager'],
+      roles: ['responsable'],
       icon: [
         'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2',
         'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8',
@@ -78,7 +78,7 @@ export class AppLayoutComponent {
     {
       label: 'Audit',
       route: '/app/audit',
-      roles: ['manager', 'administrateur'],
+      roles: ['responsable', 'administrateur'],
       icon: ['M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', 'm9 12 2 2 4-4']
     },
     {
@@ -103,6 +103,15 @@ export class AppLayoutComponent {
       return '';
     }
     return user.displayName.split(' ')[0] ?? user.displayName;
+  });
+
+  // Le logo pointait en dur vers /app/dashboard, une page reservee a
+  // responsable/administrateur : un analyste qui cliquait dessus atterrissait
+  // sur une page qui n'est pas la sienne. Route maintenant vers l'espace
+  // reel de l'utilisateur connecte.
+  readonly homeRoute = computed(() => {
+    const user = this.user();
+    return user ? this.auth.homeRouteFor(user.role) : '/login';
   });
 
   constructor(@Inject(DOCUMENT) private readonly documentRef: Document) {

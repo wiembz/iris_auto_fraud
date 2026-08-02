@@ -1,8 +1,8 @@
 {
   "description": "Repertoire email -> role IRIS. Une adresse absente de cette liste ne peut pas se connecter, meme si son domaine est autorise. A completer par un administrateur au fur et a mesure des acces reels.",
   "users": {
-    "gestionnaire.test@bnaassurance.com": "gestionnaire",
-    "manager.test@bnaassurance.com": "manager",
+    "analyste.test@bnaassurance.com": "analyste",
+    "responsable.test@bnaassurance.com": "responsable",
     "admin.test@bnaassurance.com": "administrateur"
   }
 }

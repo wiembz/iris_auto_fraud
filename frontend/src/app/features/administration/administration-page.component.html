@@ -74,9 +74,8 @@
         <thead>
           <tr>
             <th scope="col">Espace</th>
-            <th scope="col">Gestionnaire</th>
+            <th scope="col">Analyste</th>
             <th scope="col">Responsable</th>
-            <th scope="col">Manager</th>
             <th scope="col">Administrateur</th>
           </tr>
         </thead>
@@ -84,9 +83,8 @@
           @for (row of accessMatrix; track row.space) {
             <tr>
               <th scope="row">{{ row.space }}</th>
-              <td [attr.data-granted]="row.gestionnaire">{{ row.gestionnaire ? '✓' : '—' }}</td>
+              <td [attr.data-granted]="row.analyste">{{ row.analyste ? '✓' : '—' }}</td>
               <td [attr.data-granted]="row.responsable">{{ row.responsable ? '✓' : '—' }}</td>
-              <td [attr.data-granted]="row.manager">{{ row.manager ? '✓' : '—' }}</td>
               <td [attr.data-granted]="row.administrateur">{{ row.administrateur ? '✓' : '—' }}</td>
             </tr>
           }

@@ -13,7 +13,7 @@ from typing import Any
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 USER_DIRECTORY_PATH = BASE_DIR / "config" / "auth" / "user_directory.json"
 
-ALLOWED_ROLES = {"gestionnaire", "manager", "administrateur"}
+ALLOWED_ROLES = {"analyste", "responsable", "administrateur"}
 ALLOWED_EMAIL_DOMAIN = "@bnaassurance.com"
 
 

@@ -8,9 +8,8 @@ import {
 
 interface AccessRow {
   space: string;
-  gestionnaire: boolean;
+  analyste: boolean;
   responsable: boolean;
-  manager: boolean;
   administrateur: boolean;
 }
 
@@ -45,14 +44,14 @@ export class AdministrationPageComponent implements OnInit, OnDestroy {
   );
 
   readonly accessMatrix: AccessRow[] = [
-    { space: 'Vue generale', gestionnaire: false, responsable: true, manager: true, administrateur: true },
-    { space: 'File de travail & revue de dossier', gestionnaire: true, responsable: true, manager: true, administrateur: false },
-    { space: 'Vehicule & VHS', gestionnaire: true, responsable: true, manager: true, administrateur: false },
-    { space: 'Analytique Power BI', gestionnaire: false, responsable: true, manager: true, administrateur: true },
-    { space: 'Validation metier', gestionnaire: true, responsable: true, manager: true, administrateur: false },
-    { space: 'Affectations', gestionnaire: false, responsable: true, manager: true, administrateur: false },
-    { space: 'Audit', gestionnaire: false, responsable: false, manager: true, administrateur: true },
-    { space: 'Administration', gestionnaire: false, responsable: false, manager: false, administrateur: true }
+    { space: 'Vue generale', analyste: false, responsable: true, administrateur: true },
+    { space: 'File de travail & revue de dossier', analyste: true, responsable: true, administrateur: false },
+    { space: 'Vehicule & VHS', analyste: true, responsable: true, administrateur: false },
+    { space: 'Analytique Power BI', analyste: true, responsable: true, administrateur: true },
+    { space: 'Validation metier', analyste: true, responsable: true, administrateur: false },
+    { space: 'Affectations', analyste: false, responsable: true, administrateur: false },
+    { space: 'Audit', analyste: false, responsable: true, administrateur: true },
+    { space: 'Administration', analyste: false, responsable: false, administrateur: true }
   ];
 
   ngOnInit(): void {

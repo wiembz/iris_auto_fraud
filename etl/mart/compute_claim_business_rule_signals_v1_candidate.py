@@ -258,12 +258,49 @@ def _add_prior_recurrence_features(
     return out
 
 
-def enrich_features_for_business_rules(features: pd.DataFrame) -> pd.DataFrame:
-    """Compute additional candidate-only recurrence context from existing feature keys."""
+
+# No genuine individual driver plausibly appears on more than this many claims in
+# the current population: on real data every conducteur_sk above this count turned
+# out to be a circumstance placeholder ("EN STATIONNEMENT", "SANS CONDUCTEUR", and
+# at least 6 misspelled variants of "stationnement") rather than an identified
+# person -- a keyword filter would be as fragile as the one ruled out for
+# nom_tiers, so this uses the same volume-based signal that made the
+# contamination obvious in the first place.
+DRIVER_KEY_MAX_PLAUSIBLE_CLAIMS = 20
+
+
+def enrich_features_for_business_rules(
+    features: pd.DataFrame,
+    degenerate_conducteur_keys: set[int] | None = None,
+) -> pd.DataFrame:
+    """Compute additional candidate-only recurrence context from existing feature keys.
+
+    degenerate_conducteur_keys: conducteur_sk values that carry neither a name nor a
+    permit number in dwh.dim_conducteur (unidentified-driver placeholders that still
+    got a real, non-zero surrogate key). Without excluding them here, every claim
+    missing driver identity collapses onto the same handful of keys and looks like
+    it shares "the same recidivist driver" with thousands of unrelated claims.
+
+    A second, independent exclusion catches conducteur_sk values that DO have a
+    non-null name/permit but are still not a real individual (see
+    DRIVER_KEY_MAX_PLAUSIBLE_CLAIMS): these are excluded purely by how many claims
+    they are linked to in the batch being processed, not by matching specific text.
+    """
     enriched = features.copy()
     for column in ["claim_date", "vehicle_sk", "conducteur_sk", "tiers_sk", "client_sk", "code_garantie", "claim_geo_sk"]:
         if column not in enriched.columns:
             enriched[column] = pd.NA
+
+    if "conducteur_sk" in enriched.columns:
+        conducteur_numeric = pd.to_numeric(enriched["conducteur_sk"], errors="coerce")
+        is_degenerate = pd.Series(False, index=enriched.index)
+        if degenerate_conducteur_keys:
+            is_degenerate |= conducteur_numeric.isin(degenerate_conducteur_keys)
+        claim_counts = conducteur_numeric[conducteur_numeric != 0].value_counts()
+        overloaded_keys = set(claim_counts[claim_counts > DRIVER_KEY_MAX_PLAUSIBLE_CLAIMS].index)
+        if overloaded_keys:
+            is_degenerate |= conducteur_numeric.isin(overloaded_keys)
+        enriched.loc[is_degenerate, "conducteur_sk"] = 0
 
     recurrence_specs = [
         (["vehicle_sk"], "vehicle"),
@@ -1067,11 +1104,12 @@ def compute_claim_business_rule_signals(
     features: pd.DataFrame,
     signal_run_id: str | None = None,
     created_at: datetime | None = None,
+    degenerate_conducteur_keys: set[int] | None = None,
 ) -> pd.DataFrame:
     signal_run_id = signal_run_id or f"{SIGNAL_VERSION}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
     created_at = created_at or datetime.now(timezone.utc).replace(tzinfo=None)
 
-    features = enrich_features_for_business_rules(features)
+    features = enrich_features_for_business_rules(features, degenerate_conducteur_keys=degenerate_conducteur_keys)
 
     signal_rows: list[dict[str, Any]] = []
     for _, row in features.iterrows():
@@ -1285,6 +1323,19 @@ def _latest_feature_run_id(engine) -> str:
     return str(row[0])
 
 
+def _load_degenerate_conducteur_keys(engine) -> set[int]:
+    """conducteur_sk values with neither a name nor a permit number: unidentified-driver
+    placeholders that still carry a real, non-zero surrogate key (see docstring of
+    enrich_features_for_business_rules for why this matters)."""
+    query = text("""
+        SELECT conducteur_sk
+        FROM dwh.dim_conducteur
+        WHERE conducteur_sk <> 0 AND nom_conducteur IS NULL AND numero_permis IS NULL
+    """)
+    with engine.connect() as conn:
+        return {int(row[0]) for row in conn.execute(query)}
+
+
 def _read_features(engine, feature_run_id: str) -> pd.DataFrame:
     query = text("""
         SELECT *
@@ -1359,7 +1410,13 @@ def compute_claim_business_rule_signals_v1_candidate(feature_run_id: str | None 
     features = _read_features(engine, feature_run_id)
     logger.info(f"feature rows loaded: {len(features)}")
 
-    signals = compute_claim_business_rule_signals(features, signal_run_id=signal_run_id, created_at=today)
+    degenerate_conducteur_keys = _load_degenerate_conducteur_keys(engine)
+    logger.info(f"degenerate (unidentified) conducteur_sk excluded from driver recurrence: {len(degenerate_conducteur_keys)}")
+
+    signals = compute_claim_business_rule_signals(
+        features, signal_run_id=signal_run_id, created_at=today,
+        degenerate_conducteur_keys=degenerate_conducteur_keys,
+    )
     validation = validate_business_rule_signals(signals)
     logger.info(f"business rule signal rows: {len(signals)}")
     logger.info(f"validation: {validation}")

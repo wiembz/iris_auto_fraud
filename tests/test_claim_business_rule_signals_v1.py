@@ -651,6 +651,183 @@ def test_unknown_driver_key_never_produces_a_driver_recurrence_signal():
     assert "DRIVER_RECENT_PREVIOUS_CLAIM" not in set(signals["rule_code"])
 
 
+def test_degenerate_conducteur_sk_never_produces_a_driver_recurrence_signal():
+    # Regression: dwh.dim_conducteur can assign a real, non-zero conducteur_sk
+    # to a record with neither a name nor a permit number (e.g. sk=18 with
+    # 19 892 unrelated claims attached on real data). Without excluding these
+    # keys, unrelated claims missing driver identity look like "the same
+    # recidivist driver". degenerate_conducteur_keys is how the caller (loaded
+    # from dwh.dim_conducteur) flags such keys.
+    base_fields = {
+        "feature_run_id": "FEATURE_RUN",
+        "confidence_level": "LOW",
+        "client_claim_count_12m": 0,
+        "days_since_previous_claim": pd.NA,
+        "amount_vs_guarantee_median_ratio": 1.0,
+        "amount_percentile_by_guarantee": 0.5,
+        "high_amount_flag": False,
+        "days_contract_start_to_claim": pd.NA,
+        "claim_before_contract_start_flag": False,
+        "days_claim_to_declaration": 1,
+    }
+    features = pd.DataFrame([
+        {
+            **base_fields,
+            "claim_sk": 50,
+            "claim_business_id": "S50|G1",
+            "claim_date": "2024-01-01",
+            "client_sk": 950,
+            "vehicle_sk": 250,
+            "conducteur_sk": 18,
+            "tiers_sk": 850,
+            "code_garantie": "G50",
+        },
+        {
+            **base_fields,
+            "claim_sk": 51,
+            "claim_business_id": "S51|G1",
+            "claim_date": "2024-01-10",
+            "client_sk": 951,
+            "vehicle_sk": 251,
+            "conducteur_sk": 18,
+            "tiers_sk": 851,
+            "code_garantie": "G51",
+        },
+        {
+            **base_fields,
+            "claim_sk": 52,
+            "claim_business_id": "S52|G1",
+            "claim_date": "2024-01-20",
+            "client_sk": 952,
+            "vehicle_sk": 252,
+            "conducteur_sk": 18,
+            "tiers_sk": 852,
+            "code_garantie": "G52",
+        },
+    ])
+
+    signals = compute_claim_business_rule_signals(
+        features, signal_run_id="RULE_RUN", degenerate_conducteur_keys={18},
+    )
+
+    assert "DRIVER_CLAIMS_12M_HIGH" not in set(signals["rule_code"])
+    assert "DRIVER_RECENT_PREVIOUS_CLAIM" not in set(signals["rule_code"])
+
+
+def test_real_repeated_conducteur_sk_still_fires_when_not_degenerate():
+    # A genuinely identified repeat driver (not in degenerate_conducteur_keys)
+    # must keep firing -- the fix must not blunt the legitimate 86% of cases.
+    base_fields = {
+        "feature_run_id": "FEATURE_RUN",
+        "confidence_level": "LOW",
+        "client_claim_count_12m": 0,
+        "days_since_previous_claim": pd.NA,
+        "amount_vs_guarantee_median_ratio": 1.0,
+        "amount_percentile_by_guarantee": 0.5,
+        "high_amount_flag": False,
+        "days_contract_start_to_claim": pd.NA,
+        "claim_before_contract_start_flag": False,
+        "days_claim_to_declaration": 1,
+    }
+    features = pd.DataFrame([
+        {
+            **base_fields,
+            "claim_sk": 60,
+            "claim_business_id": "S60|G1",
+            "claim_date": "2024-01-01",
+            "client_sk": 960,
+            "vehicle_sk": 260,
+            "conducteur_sk": 700,
+            "tiers_sk": 860,
+            "code_garantie": "G60",
+        },
+        {
+            **base_fields,
+            "claim_sk": 61,
+            "claim_business_id": "S61|G1",
+            "claim_date": "2024-01-10",
+            "client_sk": 961,
+            "vehicle_sk": 261,
+            "conducteur_sk": 700,
+            "tiers_sk": 861,
+            "code_garantie": "G61",
+        },
+    ])
+
+    signals = compute_claim_business_rule_signals(
+        features, signal_run_id="RULE_RUN", degenerate_conducteur_keys={18},
+    )
+
+    assert "DRIVER_RECENT_PREVIOUS_CLAIM" in set(signals["rule_code"])
+
+
+def test_overloaded_conducteur_sk_excluded_by_claim_volume_even_with_a_real_looking_name():
+    # Regression: some conducteur_sk carry a non-null nom_conducteur/numero_permis
+    # that is itself contamination ("EN STATIONNEMENT", "SANS CONDUCTEUR", and at
+    # least 6 misspelled variants) rather than a real identity. Those can't be
+    # caught by the null/null check, so DRIVER_KEY_MAX_PLAUSIBLE_CLAIMS excludes
+    # any conducteur_sk linked to more claims than a real individual plausibly
+    # generates in one run -- without needing to know the exact garbage text.
+    base_fields = {
+        "feature_run_id": "FEATURE_RUN",
+        "confidence_level": "LOW",
+        "client_claim_count_12m": 0,
+        "days_since_previous_claim": pd.NA,
+        "amount_vs_guarantee_median_ratio": 1.0,
+        "amount_percentile_by_guarantee": 0.5,
+        "high_amount_flag": False,
+        "days_contract_start_to_claim": pd.NA,
+        "claim_before_contract_start_flag": False,
+        "days_claim_to_declaration": 1,
+    }
+    overloaded_rows = [
+        {
+            **base_fields,
+            "claim_sk": 1000 + i,
+            "claim_business_id": f"S{1000 + i}|G1",
+            "claim_date": f"2024-01-{(i % 28) + 1:02d}",
+            "client_sk": 2000 + i,
+            "vehicle_sk": 3000 + i,
+            "conducteur_sk": 999,
+            "tiers_sk": 4000 + i,
+            "code_garantie": f"G{1000 + i}",
+        }
+        for i in range(25)
+    ]
+    real_driver_rows = [
+        {
+            **base_fields,
+            "claim_sk": 70,
+            "claim_business_id": "S70|G1",
+            "claim_date": "2024-01-01",
+            "client_sk": 970,
+            "vehicle_sk": 270,
+            "conducteur_sk": 700,
+            "tiers_sk": 870,
+            "code_garantie": "G70",
+        },
+        {
+            **base_fields,
+            "claim_sk": 71,
+            "claim_business_id": "S71|G1",
+            "claim_date": "2024-01-10",
+            "client_sk": 971,
+            "vehicle_sk": 271,
+            "conducteur_sk": 700,
+            "tiers_sk": 871,
+            "code_garantie": "G71",
+        },
+    ]
+    features = pd.DataFrame(overloaded_rows + real_driver_rows)
+
+    signals = compute_claim_business_rule_signals(features, signal_run_id="RULE_RUN")
+
+    overloaded_claim_sks = {row["claim_sk"] for row in overloaded_rows}
+    driver_signals = signals[signals["rule_code"].isin(["DRIVER_CLAIMS_12M_HIGH", "DRIVER_RECENT_PREVIOUS_CLAIM"])]
+    assert set(driver_signals["claim_sk"]).isdisjoint(overloaded_claim_sks)
+    assert 71 in set(driver_signals["claim_sk"])
+
+
 def test_vehicle_driver_third_party_and_guarantee_rules_are_candidate_signals():
     features = pd.DataFrame([
         {

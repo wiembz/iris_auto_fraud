@@ -5,18 +5,18 @@ from backend.services.auth_service import RoleResolutionError, resolve_role
 
 
 def test_resolve_role_returns_role_for_known_email():
-    result = resolve_role("gestionnaire.test@bnaassurance.com")
-    assert result == {"email": "gestionnaire.test@bnaassurance.com", "role": "gestionnaire"}
+    result = resolve_role("analyste.test@bnaassurance.com")
+    assert result == {"email": "analyste.test@bnaassurance.com", "role": "analyste"}
 
 
 def test_resolve_role_is_case_and_whitespace_insensitive():
-    result = resolve_role("  Manager.Test@BnaAssurance.com  ")
-    assert result == {"email": "manager.test@bnaassurance.com", "role": "manager"}
+    result = resolve_role("  Responsable.Test@BnaAssurance.com  ")
+    assert result == {"email": "responsable.test@bnaassurance.com", "role": "responsable"}
 
 
 def test_resolve_role_rejects_wrong_domain():
     with pytest.raises(RoleResolutionError):
-        resolve_role("gestionnaire.test@example.com")
+        resolve_role("analyste.test@example.com")
 
 
 def test_resolve_role_rejects_unknown_email_on_allowed_domain():
