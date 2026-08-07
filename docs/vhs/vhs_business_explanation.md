@@ -1,7 +1,7 @@
 ﻿# Explication métier du Vehicle Health Score (VHS)
 
 > Document à destination de BNA Assurances et de l'encadrement académique.  
-> Version : VHS_BALANCED_V3_CANDIDATE — Juillet 2026
+> Version : VHS_BALANCED_V4_CANDIDATE — Août 2026
 
 ---
 

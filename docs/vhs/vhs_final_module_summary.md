@@ -1,8 +1,8 @@
 # Synthèse finale du module Vehicle Health Score
 
 > **Document de référence transversal — Module VHS**  
-> **Version :** 1.0 — 2026-07-04  
-> **Profil validé :** `VHS_BALANCED_V3_CANDIDATE`  
+> **Version :** 1.1 — 2026-08-07 (V4 ; historique V3 conservé section 4.7)  
+> **Profil validé :** `VHS_BALANCED_V4_CANDIDATE`  
 > **Destinataires :** BNA Assurances, encadrement académique, jury technique
 
 ---
@@ -41,7 +41,7 @@ Chaque inspection STAFFIM fournit :
 
 ### 2.2 Transformation préalable
 
-Avant calcul du score, les valeurs brutes STAFFIM subissent une normalisation en **statut technique standardisé** selon les règles V3 :
+Avant calcul du score, les valeurs brutes STAFFIM subissent une normalisation en **statut technique standardisé**. Ces règles de normalisation datent de V3 et sont inchangées en V4 (seul le calcul du score/pénalité change, voir section 4.7) :
 
 | Valeur brute observée | Statut normalisé | Libellé métier |
 |----------------------|-----------------|----------------|
@@ -52,11 +52,11 @@ Avant calcul du score, les valeurs brutes STAFFIM subissent une normalisation en
 | Réparé | `REPAIRED` | Élément réparé |
 | Valeur non reconnue | `UNKNOWN` | Information non exploitable |
 
-Les valeurs **PROPOSITION FAITE** et **NON** ne sont jamais normalisées en `BROKEN`. Elles produisent au maximum `WORN_STRONG`, conformément à la règle métier V3 visant à éviter les faux positifs d'immobilisation.
+Les valeurs **PROPOSITION FAITE** et **NON** ne sont jamais normalisées en `BROKEN`. Elles produisent au maximum `WORN_STRONG`, conformément à la règle métier introduite en V3 visant à éviter les faux positifs d'immobilisation.
 
 ### 2.3 Périmètre de validation
 
-Le run de référence validé couvre **286 inspections STAFFIM** du profil `VHS_BALANCED_V3_CANDIDATE`, avec **9 724 lignes de détail checkpoint**, et **0 anomalie de mapping** détectée.
+Le run de référence validé couvre **284 inspections STAFFIM** du profil `VHS_BALANCED_V4_CANDIDATE`, avec **9 656 lignes de détail checkpoint**, et **0 anomalie de mapping** détectée.
 
 ---
 
@@ -75,17 +75,23 @@ Le VHS est un **moteur de scoring déterministe à base de règles**. Pour un m�
 
 ### 3.2 Architecture du moteur
 
-Le moteur actif est implémenté dans `etl/mart/compute_vhs_v3_candidate.py`. Il suit la séquence suivante :
+Le moteur actif est implémenté dans `etl/mart/compute_vhs_v4_candidate.py`. Il suit la séquence suivante :
 
 ```
 Checkpoints STAFFIM
     → Normalisation du statut observé (10 règles prioritaires)
     → Calcul de la pénalité par checkpoint
-    → Agrégation du score final (somme pondérée des pénalités)
+    → Plafond de pénalité par système fonctionnel (freinage, suspension, ...)
+    → Agrégation du score final (somme des pénalités plafonnées par système)
+    → Score plancher de 5 points si le véhicule reste roulable
     → Application des caps (IMMOBILISE si checkpoint immobilisant BROKEN)
     → Attribution de la note (A / B / C / D) et du niveau d'attention
     → Traduction en libellés métier
 ```
+
+Les deux étapes « plafond de pénalité par système » et « score plancher »
+ci-dessus sont l'apport de V4 sur V3 — voir section 4.7 pour le défaut
+qu'elles corrigent.
 
 ### 3.3 Pourquoi pas SHAP, pas XGBoost
 
@@ -100,11 +106,11 @@ Checkpoints STAFFIM
 
 | Paramètre | Valeur |
 |-----------|--------|
-| Profil | `VHS_BALANCED_V3_CANDIDATE` |
-| Run ID | `VHS_BALANCED_V3_CANDIDATE_20260703_181257` |
-| Script actif | `etl/mart/compute_vhs_v3_candidate.py` |
-| Inspections scorées | 286 |
-| Lignes de pénalité | 9 724 |
+| Profil | `VHS_BALANCED_V4_CANDIDATE` |
+| Run ID | `VHS_BALANCED_V4_CANDIDATE_20260807_115527` |
+| Script actif | `etl/mart/compute_vhs_v4_candidate.py` |
+| Inspections scorées | 284 |
+| Lignes de pénalité | 9 656 |
 | Anomalies de mapping | **0** |
 | Statut de validation | **PASS** |
 
@@ -112,29 +118,29 @@ Checkpoints STAFFIM
 
 | Niveau d'attention | Code technique | Nombre | % |
 |-------------------|----------------|-------:|---|
-| État satisfaisant | `OK` | 89 | 31,1 % |
-| État à surveiller | `DEGRADE` | 133 | 46,5 % |
-| Usage déconseillé | `IMMOBILISE` | 13 | 4,5 % |
-| Examen prioritaire suggéré | `CRITIQUE` | 51 | 17,8 % |
-| **Total** | | **286** | **100 %** |
+| État satisfaisant | `OK` | 93 | 32,7 % |
+| État à surveiller | `DEGRADE` | 116 | 40,8 % |
+| Usage déconseillé | `IMMOBILISE` | 25 | 8,8 % |
+| Examen prioritaire suggéré | `CRITIQUE` | 50 | 17,6 % |
+| **Total** | | **284** | **100 %** |
 
 ### 4.3 Distribution des niveaux d'état technique
 
 | Note | Libellé | Nombre |
 |------|---------|-------:|
-| A | Aucun signal technique majeur | 95 |
+| A | Aucun signal technique majeur | 96 |
 | B | Quelques points à surveiller | 11 |
-| C | Dégradation technique notable | 129 |
-| D | Situation technique sensible | 51 |
+| C | Dégradation technique notable | 127 |
+| D | Situation technique sensible | 50 |
 
 ### 4.4 Distribution des statuts checkpoint
 
 | Statut normalisé | Libellé métier | Occurrences |
 |-----------------|----------------|------------:|
-| `OK` | Élément conforme | 8 538 |
-| `WORN` | Usure observée | 389 |
-| `WORN_STRONG` | Intervention conseillée | 283 |
-| `BROKEN` | Défaut confirmé | 502 |
+| `OK` | Élément conforme | 8 479 |
+| `WORN` | Usure observée | 387 |
+| `WORN_STRONG` | Intervention conseillée | 282 |
+| `BROKEN` | Défaut confirmé | 496 |
 | `REPAIRED` | Élément réparé | 12 |
 | `UNKNOWN` | Information non exploitable | 0 |
 
@@ -146,19 +152,44 @@ Checkpoints STAFFIM
 | NON → BROKEN | 0 | 0 | PASS |
 | UNKNOWN = 0 (mapping complet) | 0 | 0 | PASS |
 | Score dans [0, 100] | True | True | PASS |
-| Cas Usage déconseillé après correctif V3 | 13 | 13 | PASS |
+| Cohérence score 0 / décision (jamais DEGRADE à score plancher) | 4/4 | 4/4 | PASS |
 
 ### 4.6 Statistiques de score
 
 | Métrique | Valeur |
 |----------|--------|
-| Score moyen | 56,46 / 100 |
+| Score moyen | 66,05 / 100 |
 | Score minimum | 0,00 |
 | Score maximum | 100,00 |
 
-### 4.7 Correctif V3 — réduction Usage déconseillé
+### 4.7 Correctif V3 → V4 — saturation d'échelle incohérente
 
-Le passage de V2 à V3 a corrigé une sur-activation du niveau **Usage déconseillé** :
+V3 cumulait sans plafond les pénalités des checkpoints d'un même **système
+fonctionnel** (ex. les 4 points de contrôle du système de freinage), ce qui
+pouvait saturer le score à 0 par double comptage plutôt que par état global
+réellement critique. Comparaison sur le même jeu de données (284
+inspections, run V3 du 2026-07-13) :
+
+| Indicateur | V3 | V4 |
+|---|---:|---:|
+| Véhicules à score 0/100 | 21 | 4 |
+| ...dont décision **DEGRADE** (incohérent : score plancher mais libellé « roulable ») | **5** | **0** |
+| Score moyen | 56,4 | 66,0 |
+
+**Cause racine V3 :** l'absence de plafond par système permettait à un seul
+système mécanique de saturer le score total à 0, y compris pour des
+véhicules dont l'état global restait « à surveiller » plutôt que critique —
+d'où 5 véhicules à score 0 néanmoins étiquetés DEGRADE en V3.
+
+**Correctif V4 :** plafond de pénalité par système fonctionnel + score
+plancher de 5 points pour tout véhicule encore roulable. Résultat : en V4,
+un score de 0 signifie toujours un véhicule non roulant (CRITIQUE ou
+IMMOBILISE), jamais DEGRADE.
+
+### 4.8 Historique — correctif V2 → V3 (réduction Usage déconseillé)
+
+Avant le correctif de saturation ci-dessus, une première itération avait
+déjà corrigé une sur-activation du niveau **Usage déconseillé** :
 
 | Niveau | Avant correctif (V2) | Après correctif (V3) | Variation |
 |--------|--------------------:|--------------------:|----------|
@@ -167,7 +198,12 @@ Le passage de V2 à V3 a corrigé une sur-activation du niveau **Usage déconsei
 
 **Cause racine V2 :** le flag `is_immobilizing` n'était pas conditionné à `observed_status = BROKEN`. Des checkpoints en statut *Intervention conseillée* déclenchaient à tort le niveau Usage déconseillé.
 
-**Correctif V3 :** Usage déconseillé requiert désormais `is_immobilizing = TRUE` **ET** `observed_status = BROKEN` simultanément.
+**Correctif V3 :** Usage déconseillé requiert désormais `is_immobilizing = TRUE` **ET** `observed_status = BROKEN` simultanément — logique inchangée en V4.
+
+*(Le comptage Usage déconseillé a ensuite évolué au fil des runs suivants,
+à mesure que de nouvelles inspections STAFFIM arrivaient dans le DWH — les
+25 cas du tableau 4.2 reflètent le périmètre actuel de 284 inspections, pas
+une régression du correctif V2 → V3.)*
 
 ---
 
@@ -254,7 +290,7 @@ Une fois les revues humaines accumulées en volume suffisant, il sera possible d
 
 ### 7.1 Volume de validation
 
-La validation technique repose sur **286 inspections** issues d'un run unique du profil `VHS_BALANCED_V3_CANDIDATE`. Ce volume est suffisant pour une validation académique et un prototype fonctionnel, mais insuffisant pour :
+La validation technique repose sur **284 inspections** issues d'un run unique du profil `VHS_BALANCED_V4_CANDIDATE`. Ce volume est suffisant pour une validation académique et un prototype fonctionnel, mais insuffisant pour :
 
 - mesurer la stabilité du score sur des données saisonnières,
 - évaluer la robustesse sur des typologies de véhicules rares,
@@ -312,7 +348,7 @@ Il ne constitue pas un verdict automatique sur la conformité ou la régularité
 
 > *IRIS propose un niveau d'attention. Le gestionnaire ou l'expert métier conserve la décision finale.*
 
-La version `VHS_BALANCED_V3_CANDIDATE` est techniquement validée comme version candidate finale. Sa mise en production dans le cadre de la plateforme IRIS reste conditionnée à la **validation métier par BNA Assurances** et à la mise en place de la couche de gouvernance décrite dans ce document.
+La version `VHS_BALANCED_V4_CANDIDATE` est techniquement validée comme version candidate finale — elle succède à V3 (retenue candidate le 2026-07-03) en corrigeant une saturation d'échelle démontrée par comparaison directe sur le même jeu de données (section 4.7). Sa mise en production dans le cadre de la plateforme IRIS reste conditionnée à la **validation métier par BNA Assurances** et à la mise en place de la couche de gouvernance décrite dans ce document.
 
 ---
 
