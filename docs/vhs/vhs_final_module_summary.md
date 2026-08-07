@@ -325,7 +325,8 @@ La version `VHS_BALANCED_V3_CANDIDATE` est techniquement validée comme version 
 | `docs/vhs/governance/vhs_governance_table_design.md` | Design des tables |
 | `docs/vhs/governance/sql/001_create_vhs_governance_tables.sql` | DDL proposé |
 | `docs/vhs/governance/vhs_governance_sql_validation_summary.md` | Synthèse validation DDL |
-| `data/quality_reports/vhs/final/vhs_v3_audit_summary.md` | Rapport d'audit V3 |
+| `data/quality_reports/vhs/vhs_balanced_v4_candidate/vhs_v4_audit_summary.md` | Rapport d'audit V4 (version active) |
+| `data/quality_reports/vhs/v3_archive/vhs_v3_audit_summary.md` | Rapport d'audit V3 (archivé, superseded par V4) |
 | `notebooks/validation_vhs/01_validate_vhs_balanced_v3_candidate.ipynb` | Notebook de validation |
 
 ---

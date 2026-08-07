@@ -16,7 +16,12 @@ car les vues `powerbi_v.*` dependent de ces tables et bloquent leur DROP TABLE
   3. Supprime les vues powerbi_v (DROP VIEW ... CASCADE).
   4. Lance etl/dwh/load_all_dwh.py (18 etapes dims+facts+audit).
   5. Lance la chaine mart/scoring dans l'ordre documente (features -> regles
-     metier -> post-inspection -> ML -> hybride -> hybride ML -> index).
+     metier -> post-inspection -> ML -> hybride -> hybride ML -> index -> VHS
+     V4). VHS est independant de la chaine claim-scoring (il lit
+     dwh.fact_inspection_vehicule / dwh.fact_inspection_checkpoint, pas
+     mart.fact_claim_scoring_features) mais partage le meme prerequis
+     load_all_dwh et alimente powerbi_v.v_vhs_score : il doit donc rester
+     resynchronise avec chaque recalcul complet.
   6. Recree les vues via etl/powerbi/create_powerbi_views.py (CREATE OR
      REPLACE, smoke-test integre).
   7. Controles metier finaux (lecture seule) : le recalcul peut "reussir"
@@ -66,6 +71,7 @@ MART_CHAIN: list[tuple[str, Path]] = [
     ("compute_claim_attention_hybrid_score_v1_candidate", BASE_DIR / "etl" / "mart" / "compute_claim_attention_hybrid_score_v1_candidate.py"),
     ("compute_claim_attention_hybrid_ml_score_v1_candidate", BASE_DIR / "etl" / "mart" / "compute_claim_attention_hybrid_ml_score_v1_candidate.py"),
     ("ensure_scoring_indexes", BASE_DIR / "etl" / "mart" / "ensure_scoring_indexes.py"),
+    ("compute_vhs_v4", BASE_DIR / "etl" / "mart" / "compute_vhs_v4_candidate.py"),
 ]
 
 LOAD_ALL_DWH = BASE_DIR / "etl" / "dwh" / "load_all_dwh.py"

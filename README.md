@@ -1138,7 +1138,7 @@ IRIS_AUTO_FRAUD/
 │   │   └── geo_audit_tools/             # manual-review candidate generators
 │   └── mart/
 │       ├── load_dim_checkpoint.py       # VHS checkpoint reference (one-time)
-│       └── compute_vhs_v3_candidate.py  # VHS scoring (active version)
+│       └── compute_vhs_v4_candidate.py  # VHS scoring (active version)
 ├── tests/                               # pytest suite (63 tests)
 ├── config/                              # database.example.yaml template
 ├── data/
@@ -1156,8 +1156,10 @@ IRIS_AUTO_FRAUD/
 
 | Component | Path |
 |-----------|------|
-| VHS compute script | `etl/mart/compute_vhs_v3_candidate.py` |
+| VHS compute script | `etl/mart/compute_vhs_v4_candidate.py` |
 | Checkpoint reference loader | `etl/mart/load_dim_checkpoint.py` |
+
+V4 fixes a V3 defect: unbounded penalty cumulation across checkpoints of the same system (e.g. braking) could saturate a vehicle's score to 0 regardless of actual condition. V4 caps cumulative penalty per system. V3 is kept for reference/comparison only (`etl/mart/compute_vhs_v3_candidate.py`) — do not use it to serve scores.
 
 ### VHS documentation
 
@@ -1169,11 +1171,19 @@ IRIS_AUTO_FRAUD/
 | Technical diagrams | `docs/diagrams/` |
 | Internal cleanup audit trail | `ArchiveVHS/repo_docs_archive_20260707/` (external archive) |
 
-### Final validated reports
+### Current (V4) reports
 
-All final VHS reports are under `data/quality_reports/vhs/final/`:
+Current VHS reports are under `data/quality_reports/vhs/vhs_balanced_v4_candidate/`:
 
-- `vhs_v3_audit_summary.md` — distribution of decisions and grades for the final run
+- `vhs_v4_audit_summary.md` — distribution of decisions and grades for the current run
+- `vhs_v3_vs_v4_comparison_summary.md` — narrative comparison V3 → V4
+- `vhs_v4_penalty_by_system.csv` — per-system penalty cap detail (the V3 fix)
+
+### Archived V3 reports
+
+Superseded V3 reports (kept for the V2→V3 fix narrative) are under `data/quality_reports/vhs/v3_archive/`:
+
+- `vhs_v3_audit_summary.md` — distribution of decisions and grades for the V3 run
 - `vhs_v2_vs_v3_comparison_summary.md` — narrative comparison V2 → V3
 - `dim_checkpoint_immobilizing_update_summary.md` — reference table update log
 - `v3_immobilise_fix_summary.md` — validation of the immobilizing fix (8 checks passed)
