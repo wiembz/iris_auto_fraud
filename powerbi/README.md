@@ -1,4 +1,4 @@
-# Dashboard Power BI IRIS - iris_auto_fraudDASH
+# Dashboard Power BI IRIS - IRIS_DASHBOARD_FINAL
 
 Construction **manuelle** dans Power BI Desktop (edition Report Server),
 publication sur **Power BI Report Server on-premises**. Aucun mode projet
@@ -212,7 +212,11 @@ Une fois active, clic droit sur un point de P1/P2 > Explorer > PM.
 
 ## Etape 7 - Enregistrer et publier
 
-1. Fichier > Enregistrer sous > `iris_auto_fraudDASH.pbix` dans ce dossier.
+1. Fichier > Enregistrer sous > `IRIS_DASHBOARD_FINAL.pbix` dans ce dossier
+   (fichier de référence retenu le 07/08/2026 — les autres itérations sont
+   archivées dans `powerbi/_archive/`. Avant toute présentation, ouvrir ce
+   fichier et **Actualiser** contre PostgreSQL : son cache de données a été
+   sauvegardé quasi vide).
 2. Publication Report Server : Fichier > Enregistrer une copie > **Power BI
    Report Server**, choisir le dossier du portail cible, ou uploader
    directement le `.pbix` via le portail web du serveur.
