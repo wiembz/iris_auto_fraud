@@ -8,7 +8,7 @@ Fonctions :
   build_engine     — SQLAlchemy engine via URL.create + .env (etl.utils.runtime)
   normalize_numcnt — normalisation des identifiants contrat
   create_dwh_schema — CREATE SCHEMA IF NOT EXISTS dwh
-  write_to_dwh     — to_sql mode replace avec chunksize
+  write_to_dwh     — DROP/CREATE (schema) + COPY natif (donnees), mode replace
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ import logging
 import re
 import sys
 from datetime import datetime, timezone
+from io import StringIO
 from pathlib import Path
 
 import pandas as pd
@@ -136,25 +137,72 @@ def write_to_dwh(
     engine,
     table_name: str,
     logger: logging.Logger,
-    chunksize: int = 5000,
+    chunksize: int = 100_000,
 ) -> tuple[int, float]:
     """
     Charge df dans dwh.<table_name> en mode replace.
+
+    Schema (DROP/CREATE) via to_sql sur un DataFrame vide (rapide, dtypes
+    corrects) ; donnees via COPY natif Postgres (psycopg2 copy_expert),
+    memes idiomes que _copy_frame_to_db() dans les scripts mart
+    (compute_claim_attention_hybrid_score_v1_candidate.py et consorts) :
+    CSV tabule en memoire, sentinelle NULL '\\N', colonnes datetime
+    formatees explicitement. Remplace l'ancien to_sql(method="multi") --
+    des INSERT par lots de 5000 lignes via psycopg2 -- mesure ~x10 plus
+    lent que COPY sur les tables de plusieurs centaines de milliers de
+    lignes de ce projet (voir docs/soutenance/LIMITES_SCALABILITE_PERSPECTIVES.md).
+
     Retourne (n_rows, elapsed_seconds).
     """
     full_name = f"dwh.{table_name}"
     t0 = datetime.now(timezone.utc)
-    df.to_sql(
+
+    df.head(0).to_sql(
         table_name,
         engine,
         schema="dwh",
         if_exists="replace",
         index=False,
-        method="multi",
-        chunksize=chunksize,
     )
-    elapsed = (datetime.now(timezone.utc) - t0).total_seconds()
+
     n = len(df)
+    if n > 0:
+        columns = list(df.columns)
+        columns_sql = ", ".join(f'"{c}"' for c in columns)
+        copy_sql = (
+            f"COPY {full_name} ({columns_sql}) "
+            f"FROM STDIN WITH (FORMAT CSV, HEADER FALSE, DELIMITER E'\\t', NULL '\\N')"
+        )
+
+        export = df.copy()
+        datetime_cols = export.select_dtypes(include=["datetime64[ns]", "datetimetz"]).columns
+        for col in datetime_cols:
+            export[col] = export[col].dt.strftime("%Y-%m-%d %H:%M:%S.%f")
+
+        raw_conn = engine.raw_connection()
+        try:
+            with raw_conn.cursor() as cursor:
+                for start in range(0, n, chunksize):
+                    chunk = export.iloc[start:start + chunksize]
+                    buffer = StringIO()
+                    chunk.to_csv(
+                        buffer,
+                        sep="\t",
+                        header=False,
+                        index=False,
+                        na_rep="\\N",
+                        lineterminator="\n",
+                    )
+                    buffer.seek(0)
+                    cursor.copy_expert(copy_sql, buffer)
+            raw_conn.commit()
+        except Exception:
+            raw_conn.rollback()
+            raise
+        finally:
+            raw_conn.close()
+
+    elapsed = (datetime.now(timezone.utc) - t0).total_seconds()
     logger.info(
         f"[LOAD] {full_name} : {n} lignes x {df.shape[1]} cols en {elapsed:.1f}s"
     )
