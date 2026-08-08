@@ -435,6 +435,15 @@ def main() -> int:
         help="Sauter load_all_dwh.py (DWH deja rejoue) et ne lancer que la chaine mart + vues.",
     )
     parser.add_argument(
+        "--mart-from", choices=[name for name, _ in MART_CHAIN],
+        help="Reprendre la chaine mart a cette etape (les precedentes sont considerees deja "
+             "faites) au lieu de repartir de compute_claim_scoring_features_v1. Implique "
+             "--skip-dwh. A utiliser apres une interruption pour ne pas refaire les etapes "
+             "deja reussies (chaque etape mart est additive : la rejouer ne corrompt rien, "
+             "mais coute du temps sur les tables volumineuses -- voir "
+             "docs/soutenance/LIMITES_SCALABILITE_PERSPECTIVES.md point 5).",
+    )
+    parser.add_argument(
         "--reference-numero", default="G26511000017765",
         help="numero_sinistre du dossier de reference pour les controles metier finaux.",
     )
@@ -478,6 +487,13 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    mart_chain = MART_CHAIN
+    if args.mart_from:
+        args.skip_dwh = True
+        start_idx = next(i for i, (name, _) in enumerate(MART_CHAIN) if name == args.mart_from)
+        skipped_steps = [name for name, _ in MART_CHAIN[:start_idx]]
+        mart_chain = MART_CHAIN[start_idx:]
+
     run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     logger = dwh_utils.setup_logging(run_id, log_name="orchestrate_full_recompute")
     engine = dwh_utils.build_engine(logger)
@@ -513,6 +529,9 @@ def main() -> int:
 
     durations: dict[str, float] = {}
 
+    if args.mart_from:
+        logger.info(f"[RESUME] --mart-from={args.mart_from} : etape(s) sautee(s) (deja faites) : {skipped_steps}")
+
     backup_path = _backup_view_definitions(engine, logger, run_id)
     dropped_views = _drop_views(engine, logger)
 
@@ -537,7 +556,7 @@ def main() -> int:
             _print_summary(logger, durations, success=False, backup_path=backup_path)
             return 1
 
-    for name, script in MART_CHAIN:
+    for name, script in mart_chain:
         ok, elapsed = _run_step(name, script, logger)
         durations[name] = elapsed
         if not ok:
