@@ -7,36 +7,50 @@ vues Power BI.
 Contexte : `load_all_dwh.py` echoue sur `load_dim_client`, `load_dim_geo`,
 `load_fact_inspection_vehicule` (et le ferait aussi sur plusieurs tables mart)
 car les vues `powerbi_v.*` dependent de ces tables et bloquent leur DROP TABLE
-(mode replace). Cet orchestrateur :
+(mode replace). De la meme facon, toute contrainte PK/FK deja posee par
+`etl/dwh/add_dwh_relations.sql` bloque le DROP TABLE de la table referencee
+(ex. `fk_fs_geo` sur `dim_geo`) -- ce n'est visible qu'apres avoir applique ce
+script au moins une fois, ce qui a fait echouer un recalcul complet le
+2026-08-07 (12/12 dimensions, meme signature que l'echec du 2026-07-29, deux
+causes racines distinctes derriere le meme symptome). Cet orchestrateur :
 
   1. Verifie la base cible (garde-fou --confirm-db).
   2. Sauvegarde les definitions des vues powerbi_v (pg_get_viewdef, lecture
      seule) avant toute suppression -- filet de securite independant de
      etl/powerbi/create_powerbi_views.sql.
   3. Supprime les vues powerbi_v (DROP VIEW ... CASCADE).
-  4. Lance etl/dwh/load_all_dwh.py (18 etapes dims+facts+audit).
-  5. Lance la chaine mart/scoring dans l'ordre documente (features -> regles
+  4. Supprime toutes les contraintes PK/FK du schema dwh (generique, via
+     pg_constraint -- pas de liste codee en dur qui pourrait diverger de
+     add_dwh_relations.sql).
+  5. Lance etl/dwh/load_all_dwh.py (18 etapes dims+facts+audit).
+  6. Reapplique les contraintes PK/FK via etl/dwh/add_dwh_relations.sql
+     (idempotent : chaque ALTER fait DROP CONSTRAINT IF EXISTS avant ADD).
+  7. Lance la chaine mart/scoring dans l'ordre documente (features -> regles
      metier -> post-inspection -> ML -> hybride -> hybride ML -> index -> VHS
      V4). VHS est independant de la chaine claim-scoring (il lit
      dwh.fact_inspection_vehicule / dwh.fact_inspection_checkpoint, pas
      mart.fact_claim_scoring_features) mais partage le meme prerequis
      load_all_dwh et alimente powerbi_v.v_vhs_score : il doit donc rester
      resynchronise avec chaque recalcul complet.
-  6. Recree les vues via etl/powerbi/create_powerbi_views.py (CREATE OR
+  8. Recree les vues via etl/powerbi/create_powerbi_views.py (CREATE OR
      REPLACE, smoke-test integre).
-  7. Controles metier finaux (lecture seule) : le recalcul peut "reussir"
+  9. Controles metier finaux (lecture seule) : le recalcul peut "reussir"
      techniquement (tous les scripts renvoient 0) tout en produisant un
      resultat metier faux -- ces controles verifient le dossier de reference,
      la stabilite du nombre de sinistres notes, et des bornes de sante sur la
      population conducteur avant de declarer le run reellement valide.
 
 Fail-fast : a la premiere etape en echec, l'orchestrateur s'arrete
-immediatement, tente une restauration best-effort des vues (etape 6) pour ne
+immediatement, tente une restauration best-effort des vues (etape 8) pour ne
 jamais laisser la base sans couche de restitution Power BI, puis sort en
 erreur avec un rapport clair de l'etat atteint. Si les controles metier
-(etape 7) echouent, les vues restent en place (elles sont structurellement
+(etape 9) echouent, les vues restent en place (elles sont structurellement
 valides) mais le run est marque en echec : les donnees ne doivent pas etre
-considerees fiables sans revue manuelle.
+considerees fiables sans revue manuelle. Si l'echec survient avant l'etape 6
+(add_dwh_relations), les contraintes PK/FK dwh.* restent absentes jusqu'au
+prochain run reussi -- sans consequence fonctionnelle immediate (aucun
+script ne depend de ces contraintes pour lire/ecrire), mais a noter si un
+outil externe (pgAdmin, un ORM) les attend.
 
 Usage :
   python etl/orchestrate_full_recompute.py --confirm-db iris_auto_fraud_test_20260724
@@ -76,6 +90,7 @@ MART_CHAIN: list[tuple[str, Path]] = [
 
 LOAD_ALL_DWH = BASE_DIR / "etl" / "dwh" / "load_all_dwh.py"
 CREATE_POWERBI_VIEWS = BASE_DIR / "etl" / "powerbi" / "create_powerbi_views.py"
+ADD_DWH_RELATIONS_SQL = BASE_DIR / "etl" / "dwh" / "add_dwh_relations.sql"
 
 # Bornes de sante dérivées du rapport d'impact (data/quality_reports/dim_conducteur/) :
 # ~161 439 conducteurs reels attendus (perte de ~85 vs avant correctif) et
@@ -143,6 +158,47 @@ def _drop_views(engine, logger) -> list[str]:
             conn.execute(text(f"DROP VIEW IF EXISTS powerbi_v.{v} CASCADE"))
     logger.info(f"[OK]   {len(views)} vue(s) powerbi_v supprimee(s) : {views}")
     return views
+
+
+def _drop_dwh_relations(engine, logger) -> list[str]:
+    """dwh_utils.write_to_dwh() reloads every dwh.* table via
+    pandas.to_sql(if_exists="replace"), i.e. a plain DROP TABLE. Any PK/FK
+    added by add_dwh_relations.sql (run once, by hand, after an earlier
+    load) blocks that DROP TABLE on the referenced dimension with a
+    DependentObjectsStillExist error -- this must run before load_all_dwh
+    on any database that already has those constraints applied."""
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT conrelid::regclass::text AS table_name, conname, contype
+            FROM pg_constraint
+            WHERE contype IN ('p', 'f') AND connamespace = 'dwh'::regnamespace
+            ORDER BY (contype = 'f') DESC, conrelid::regclass::text, conname
+        """)).fetchall()
+    # Foreign keys first (contype='f'), then primary keys (contype='p') --
+    # a PK cannot be dropped while a FK still depends on its backing index.
+    with engine.begin() as conn:
+        for table_name, conname, _contype in rows:
+            conn.execute(text(f"ALTER TABLE {table_name} DROP CONSTRAINT {conname}"))
+    dropped = [f"{t}.{c}" for t, c, _ in rows]
+    logger.info(f"[OK]   {len(dropped)} contrainte(s) PK/FK dwh.* supprimee(s) (sera(ont) recreee(s) par add_dwh_relations.sql)")
+    return dropped
+
+
+def _add_dwh_relations(engine, logger) -> bool:
+    """Re-apply the dwh.* PK/FK constraints via the project's own
+    add_dwh_relations.sql (idempotent: each ALTER does DROP CONSTRAINT IF
+    EXISTS before ADD). Must run after load_all_dwh succeeds, and before
+    the constraints are relied upon."""
+    logger.info(f"[STEP] add_dwh_relations ({ADD_DWH_RELATIONS_SQL.name}) ...")
+    sql = ADD_DWH_RELATIONS_SQL.read_text(encoding="utf-8")
+    try:
+        with engine.begin() as conn:
+            conn.exec_driver_sql(sql)
+        logger.info(f"[OK]   contraintes PK/FK dwh.* retablies depuis {ADD_DWH_RELATIONS_SQL.name}")
+        return True
+    except Exception as exc:  # noqa: BLE001 - report and let caller decide fail-fast
+        logger.error(f"[FAIL] add_dwh_relations : {exc}")
+        return False
 
 
 def _restore_views_best_effort(logger) -> bool:
@@ -461,11 +517,22 @@ def main() -> int:
     dropped_views = _drop_views(engine, logger)
 
     if not args.skip_dwh:
+        _drop_dwh_relations(engine, logger)
+
         t0 = time.monotonic()
         ok, elapsed = _run_step("load_all_dwh (18 etapes)", LOAD_ALL_DWH, logger)
         durations["load_all_dwh"] = elapsed
         if not ok:
             logger.error("[FAIL] load_all_dwh a echoue -- arret immediat (fail-fast).")
+            _restore_views_best_effort(logger)
+            _print_summary(logger, durations, success=False, backup_path=backup_path)
+            return 1
+
+        t0 = time.monotonic()
+        relations_ok = _add_dwh_relations(engine, logger)
+        durations["add_dwh_relations"] = time.monotonic() - t0
+        if not relations_ok:
+            logger.error("[FAIL] add_dwh_relations a echoue -- arret immediat (fail-fast).")
             _restore_views_best_effort(logger)
             _print_summary(logger, durations, success=False, backup_path=backup_path)
             return 1
