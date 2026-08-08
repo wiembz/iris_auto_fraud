@@ -132,6 +132,28 @@ def _run_step(name: str, script: Path, logger) -> tuple[bool, float]:
     return ok, elapsed
 
 
+def _start_step_async(name: str, script: Path, logger) -> tuple[subprocess.Popen, float]:
+    """Lance une etape mart en arriere-plan (non bloquant). A utiliser
+    uniquement pour une etape independante des autres (VHS ne lit ni
+    n'ecrit aucune table touchee par la chaine claim-scoring). Retourne
+    le process et son t0 pour _join_step_async()."""
+    logger.info(f"[STEP async] {name} ...")
+    t0 = time.monotonic()
+    process = subprocess.Popen([sys.executable, str(script)], cwd=str(BASE_DIR))
+    return process, t0
+
+
+def _join_step_async(name: str, process: subprocess.Popen, t0: float, logger) -> tuple[bool, float]:
+    process.wait()
+    elapsed = time.monotonic() - t0
+    ok = process.returncode == 0
+    if ok:
+        logger.info(f"[OK]   {name} ({elapsed:.0f}s, execute en parallele)")
+    else:
+        logger.error(f"[FAIL] {name} (exit={process.returncode}, {elapsed:.0f}s, execute en parallele)")
+    return ok, elapsed
+
+
 def _backup_view_definitions(engine, logger, ts: str) -> Path:
     with engine.connect() as conn:
         rows = conn.execute(text("""
@@ -556,11 +578,37 @@ def main() -> int:
             _print_summary(logger, durations, success=False, backup_path=backup_path)
             return 1
 
+    # compute_vhs_v4 ne lit ni n'ecrit aucune table touchee par la chaine
+    # claim-scoring (voir docstring module) : lance en parallele en tache de
+    # fond des le debut de la chaine mart, rejoint juste avant
+    # create_powerbi_views qui, lui, depend des deux. Gain mesure : ~16-20s
+    # sur ~5900s au total (compute_vhs_v4 est bien plus rapide que la chaine
+    # claim-scoring) -- voir docs/soutenance/LIMITES_SCALABILITE_PERSPECTIVES.md.
+    vhs_async: tuple[str, subprocess.Popen, float] | None = None
+    sequential_chain = []
     for name, script in mart_chain:
+        if name == "compute_vhs_v4":
+            vhs_async = (name, *_start_step_async(name, script, logger))
+        else:
+            sequential_chain.append((name, script))
+
+    for name, script in sequential_chain:
         ok, elapsed = _run_step(name, script, logger)
         durations[name] = elapsed
         if not ok:
             logger.error(f"[FAIL] {name} a echoue -- arret immediat (fail-fast).")
+            if vhs_async:
+                _join_step_async(*vhs_async, logger)
+            _restore_views_best_effort(logger)
+            _print_summary(logger, durations, success=False, backup_path=backup_path)
+            return 1
+
+    if vhs_async:
+        vhs_name, vhs_process, vhs_t0 = vhs_async
+        ok, elapsed = _join_step_async(vhs_name, vhs_process, vhs_t0, logger)
+        durations[vhs_name] = elapsed
+        if not ok:
+            logger.error(f"[FAIL] {vhs_name} a echoue -- arret immediat (fail-fast).")
             _restore_views_best_effort(logger)
             _print_summary(logger, durations, success=False, backup_path=backup_path)
             return 1
