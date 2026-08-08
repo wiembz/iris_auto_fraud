@@ -2,63 +2,82 @@
 
 > Écrit le 08/08/2026, à partir d'observations directes faites en exécutant
 > le pipeline complet la nuit précédente (task 3.3 du plan de soutenance) —
-> pas des suppositions. Objectif : montrer une conscience mature des limites
-> de l'architecture actuelle, sans les corriger à 15 jours de la soutenance
-> (risque de régression non justifié à ce stade — voir section 5 du plan).
+> pas des suppositions.
+>
+> **Mise à jour du 08/08/2026** : 3 des 5 points ci-dessous (1, 2, 5) ont
+> finalement été corrigés le jour même, sur demande explicite — chacun
+> validé par un run réel réussi avant d'être considéré fait. Restent en
+> l'état, par choix documenté et non par oubli : le point 3 (chargement
+> incrémental — hors de portée en 15 jours, refonte d'architecture) et le
+> point 4 (déjà réglé lors de la tâche 3.3, gardé ici pour le contexte).
 
-## Pourquoi documenter plutôt que corriger maintenant
+## Pourquoi documenter d'abord, corriger ensuite au cas par cas
 
 Le projet fonctionne correctement au volume actuel (~382 000 sinistres,
 ~586 000 contrats, 284 inspections). Les limites ci-dessous sont des
 questions de **passage à l'échelle** (10x, 100x le volume), pas des bugs
 qui affectent la fiabilité aujourd'hui — le recalcul complet réussi cette
 nuit (`docs/soutenance/PLAN_15_JOURS_VERS_EXCELLENCE.md`, tâche 3.3) le
-prouve. Les corriger maintenant serait du temps d'ingénierie dépensé sur un
-problème qui n'est pas encore réel, au prix d'un risque de régression qui,
-lui, serait réel à 15 jours de l'oral.
+prouve. La démarche suivie : documenter d'abord (zéro risque), puis
+évaluer chaque correction individuellement selon son rapport effort/risque
+avant de toucher au code — pas de refonte générale précipitée à 15 jours
+de l'oral. Les 3 corrections faites (1, 2, 5) avaient chacune un risque
+mesuré et contenu ; le chargement incrémental (3) a été explicitement
+exclu car hors de portée dans ce délai.
 
-## 1. Chargement DWH : inserts par lots plutôt que `COPY` natif
+## 1. Chargement DWH : inserts par lots plutôt que `COPY` natif — ✅ CORRIGÉ le 08/08/2026
 
-**Constat** : `etl/dwh/dwh_utils.write_to_dwh()` charge chaque table via
-`pandas.DataFrame.to_sql(if_exists="replace", method="multi", chunksize=5000)`
-— des `INSERT` par lots de 5000 lignes via psycopg2, pas la commande
-`COPY` native de PostgreSQL (ordres de grandeur plus rapide pour du chargement
-en masse).
+**Constat initial** : `etl/dwh/dwh_utils.write_to_dwh()` chargeait chaque
+table via `pandas.DataFrame.to_sql(if_exists="replace", method="multi",
+chunksize=5000)` — des `INSERT` par lots de 5000 lignes via psycopg2, pas
+la commande `COPY` native de PostgreSQL.
 
-**Mesuré cette nuit** : le chargement de `mart.fact_claim_scoring_features`
-(367 464 lignes) a pris ~15 minutes de calcul pandas + insertion. Sur un
-DWH assurantiel réel (plusieurs millions de sinistres), ce temps croîtrait
-au moins linéairement, probablement plus vite (index, contraintes, réseau).
+**Mesuré la veille** : le chargement de `mart.fact_claim_scoring_features`
+(367 464 lignes) avait pris ~15 minutes de calcul pandas + insertion.
 
-**Piste** : remplacer `to_sql` par un `COPY` via `psycopg2.copy_expert`
-(export du DataFrame en CSV en mémoire, chargement en une passe). Gain
-attendu : x5 à x20 sur les tables volumineuses, sans changer la logique
-métier des loaders — un changement isolé dans `dwh_utils.py`.
+**Correction appliquée** : `write_to_dwh()` crée maintenant le schéma via
+`to_sql` sur un DataFrame vide (0 ligne, rapide, dtypes corrects), puis
+charge les données via `COPY` natif (`psycopg2.copy_expert`) — même
+idiome déjà utilisé dans les scripts mart scoring
+(`compute_claim_attention_hybrid_score_v1_candidate.py` et consorts).
+Validé avant commit par un test round-trip isolé (2000 lignes avec valeurs
+adversariales : accents, apostrophes, tabulations/retours à la ligne dans
+le texte, NULL/NaN, précision flottante — hash de contenu identique avant
+et après), puis par un chargement réel (`load_dim_date.py`,
+`load_dim_client.py`) contre le DWH vivant : comptages et lignes
+échantillonnées identiques, 264 tests toujours verts.
 
-## 2. Chaîne mart : séquentielle, pas de parallélisation
+## 2. Chaîne mart : séquentielle, pas de parallélisation — ✅ CORRIGÉ le 08/08/2026 (gain marginal, fait sur demande explicite)
 
-**Constat** : `etl/orchestrate_full_recompute.py::MART_CHAIN` exécute ses
-8 étapes une par une (`compute_claim_scoring_features_v1` →
-`compute_claim_business_rule_signals_v1_candidate` → ... → `compute_vhs_v4`).
-Certaines sont indépendantes (ex. `compute_vhs_v4` ne dépend d'aucune
-étape claim-scoring — voir le docstring ajouté dans l'orchestrateur le
-2026-08-07) mais tournent quand même en série.
+**Constat initial** : `etl/orchestrate_full_recompute.py::MART_CHAIN` exécutait
+ses 8 étapes une par une. `compute_vhs_v4` est indépendant de la chaîne
+claim-scoring (lit `dwh.fact_inspection_vehicule/checkpoint`, écrit
+`mart.fact_vhs_score/penalty_detail` — aucune table partagée) mais tournait
+quand même en dernier, en série.
 
-**Mesuré cette nuit** : durée totale de la chaîne mart = 5 897 secondes
+**Mesuré la veille** : durée totale de la chaîne mart = 5 897 secondes
 (~1h38), dont `compute_claim_scoring_features_v1` (1811s),
 `compute_claim_business_rule_signals_v1_candidate` (1201s),
 `compute_claim_attention_hybrid_score_v1_candidate` (1171s) et
 `compute_claim_ml_anomaly_signal_v1_candidate` (908s, incluant
-l'entraînement d'un Isolation Forest sur 367 464 lignes à chaque run).
+l'entraînement d'un Isolation Forest sur 367 464 lignes à chaque run) —
+`compute_vhs_v4` lui-même ne prend que ~16-20s : le gain de la
+parallélisation est donc marginal (<0,5% du temps total), signalé comme
+tel avant de l'implémenter, sur demande explicite.
 
-**Piste** : paralléliser les étapes indépendantes (VHS vs chaîne
-claim-scoring) via Airflow (déjà l'outil d'orchestration du projet — deux
-branches de tâches au lieu d'une chaîne linéaire dans le DAG). Ne
-paralléliserait pas la chaîne claim-scoring elle-même (dépendances
-séquentielles réelles entre features → règles → hybride → hybride ML),
-mais gagnerait le temps de VHS (8s, négligeable) en parallèle — gain
-marginal ici, mais le principe s'applique mieux à de futurs signaux
-indépendants.
+**Correction appliquée** : `compute_vhs_v4` est lancé en tâche de fond
+(`subprocess.Popen`) dès le début de la chaîne mart et rejoint juste avant
+`create_powerbi_views`, qui dépend des deux chaînes. Validé par un run
+réel où les logs confirment un démarrage à la même seconde pour
+`compute_vhs_v4` et l'étape séquentielle en cours, et où l'orchestrateur a
+correctement attendu la fin de VHS avant de poursuivre — `statut global :
+SUCCES`, données vérifiées identiques après coup.
+
+**Ce qui reste vrai** : la chaîne claim-scoring elle-même (features →
+règles → ML → hybride → hybride ML) garde des dépendances séquentielles
+réelles et n'est pas parallélisable sans changer la logique métier. Le
+principe s'appliquerait mieux à de futurs signaux indépendants qu'à cette
+chaîne actuelle.
 
 ## 3. Recalcul complet uniquement — pas de chargement incrémental
 
@@ -95,36 +114,49 @@ DROP/CREATE, toute contrainte doit être explicitement redéposée après coup
 — une classe de fragilité qui disparaîtrait avec un chargement incrémental
 (UPDATE/INSERT ne cassent pas les contraintes existantes).
 
-## 5. Résilience de l'exécution longue durée
+## 5. Résilience de l'exécution longue durée — ✅ CORRIGÉ (partiellement) le 08/08/2026
 
-**Constat** : le recalcul complet prend ~1h45 de bout en bout (DWH +
-scoring + VHS + vues). Un processus de cette durée, lancé manuellement ou
+**Constat initial** : le recalcul complet prend ~1h45 de bout en bout (DWH
++ scoring + VHS + vues). Un processus de cette durée, lancé manuellement ou
 via un terminal, est vulnérable à une interruption externe (fermeture de
-session, coupure réseau, redémarrage machine) — observé concrètement cette
-nuit (deux tentatives interrompues par l'environnement d'exécution avant
-qu'une troisième aboutisse).
+session, coupure réseau, redémarrage machine) — observé concrètement à
+plusieurs reprises pendant cette session (process tués silencieusement par
+l'environnement d'exécution, sans rapport avec le code du projet).
 
-**Mitigation déjà en place** : le comportement fail-fast de l'orchestrateur
-restaure les vues Power BI en best-effort à tout échec détecté (voir
-`_restore_views_best_effort`), donc une interruption *propre* (le process
-reçoit une erreur et se termine normalement) ne laisse jamais la base sans
-couche de restitution. Une interruption *brutale* (kill du process, comme
-observé cette nuit) contourne ce filet de sécurité — c'est ce qui explique
-pourquoi les vues sont restées supprimées deux fois avant d'être restaurées
-manuellement.
+**Mitigation déjà en place avant correction** : le comportement fail-fast
+de l'orchestrateur restaure les vues Power BI en best-effort à tout échec
+*détecté* (`_restore_views_best_effort`) — une interruption *propre* ne
+laisse jamais la base sans couche de restitution. Une interruption
+*brutale* (kill du process) contourne ce filet de sécurité, ce qui a
+nécessité une restauration manuelle des vues à plusieurs reprises cette
+nuit.
 
-**Piste** : exécuter le recalcul via Airflow (déjà en place,
-`airflow/dags/iris_full_pipeline.py`) plutôt qu'en ligne de commande directe
-pour les runs de production — Airflow persiste l'état de la tâche et permet
-une reprise, alors qu'un process tué en ligne de commande ne laisse aucune
-trace de son état d'avancement.
+**Correction appliquée** : ajout d'un flag `--mart-from <etape>` à
+`orchestrate_full_recompute.py`, sur le même principe que le `--from` déjà
+existant de `load_all_dwh.py`. Permet de reprendre la chaîne mart à
+n'importe quelle étape après une interruption, sans refaire les étapes
+déjà réussies (chaque étape mart est additive — la rejouer ne corromprait
+rien, mais coûte du temps). Validé par un run réel interrompu puis repris :
+`--mart-from compute_vhs_v4` a sauté les 7 étapes précédentes et terminé
+en 179s (au lieu de 5897s pour la chaîne complète), avec `statut global :
+SUCCES` et tous les contrôles métier finaux passés.
+
+**Ce qui reste vrai** : ceci ne couvre que la chaîne mart, pas les 18
+étapes de `load_all_dwh.py` (qui a déjà son propre `--from`, non testé
+dans cette session) ni une reprise *automatique* — il faut relire le log
+pour savoir où reprendre manuellement. Une vraie persistance d'état
+(comme le permettrait Airflow, déjà en place via
+`airflow/dags/iris_full_pipeline.py`, pour les runs de production) irait
+plus loin : reprise automatique sans intervention humaine pour identifier
+la dernière étape réussie.
 
 ## Phrase jury
 
 > « Le pipeline actuel est fiable au volume d'aujourd'hui — on l'a prouvé
-> cette nuit avec un recalcul complet réussi. On sait déjà où sont les
-> limites de passage à l'échelle : le chargement par lots plutôt que par
-> `COPY` natif, l'absence de chargement incrémental, l'exécution
-> séquentielle de la chaîne de scoring. Ce sont des choix de simplicité
-> assumés à ce stade du projet, pas des angles morts — et voici comment on
-> les résoudrait si le volume l'exigeait. »
+> avec plusieurs recalculs complets réussis. On avait identifié 5 limites de
+> passage à l'échelle ; 3 ont été corrigées et validées par des runs réels
+> (chargement `COPY` natif, parallélisation VHS, reprise après interruption),
+> une reste hors de portée en 15 jours par choix assumé (chargement
+> incrémental — refonte d'architecture), une dernière était déjà réglée en
+> amont. Ce ne sont pas des angles morts découverts en urgence : c'est une
+> démarche d'amélioration continue documentée et mesurée, pas juste promise. »
