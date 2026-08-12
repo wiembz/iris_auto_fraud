@@ -98,15 +98,19 @@
         <section class="iris-card audit-governance" aria-label="Gouvernance des calculs">
           <h2>Gouvernance des calculs</h2>
           <p>Versions servies actuellement — identiques dans l application et Power BI.</p>
-          <ul>
-            @for (item of governance(); track item.component) {
-              <li>
-                <strong>{{ componentLabel(item.component) }}</strong>
-                <small>{{ item.version }}</small>
-                <span>{{ formatRows(item.row_count) }} lignes · {{ shortRun(item.run_id) }}</span>
-              </li>
-            }
-          </ul>
+          @if (governance().length === 0) {
+            <p class="audit-empty">Aucune information de gouvernance disponible.</p>
+          } @else {
+            <ul>
+              @for (item of governance(); track item.component) {
+                <li>
+                  <strong>{{ componentLabel(item.component) }}</strong>
+                  <small>{{ item.version }}</small>
+                  <span>{{ formatRows(item.row_count) }} lignes · {{ shortRun(item.run_id) }}</span>
+                </li>
+              }
+            </ul>
+          }
         </section>
 
       </aside>

@@ -141,9 +141,10 @@
               </header>
               <ul>
                 <li><span>Nature / âge</span> <strong>{{ client360().anciennete }}</strong></li>
-                <li><span>Identifiant client</span> <strong>{{ client360().contratsActifs }}</strong></li>
+                <li><span>Identifiant client</span> <strong>{{ client360().identifiantClient }}</strong></li>
                 <li><span>Sinistres (24m)</span> <strong>{{ client360().sinistres24m }}</strong></li>
-                <li><span>Profil déclaré</span> <strong>{{ client360().dernierSinistre }}</strong></li>
+                <li><span>Profil déclaré</span> <strong>{{ client360().profilDeclare }}</strong></li>
+                <li><span>Dernier sinistre</span> <strong>{{ client360().dernierSinistre }}</strong></li>
               </ul>
             </article>
 
@@ -154,8 +155,8 @@
                 <h3>Véhicule</h3>
               </header>
               <ul>
-                <li><span>Immatriculation</span> <strong>{{ vehicule360().marqueModele }}</strong></li>
-                <li><span>Grade sécurité VHS</span> <strong>{{ vehicule360().annee }}</strong></li>
+                <li><span>Immatriculation</span> <strong>{{ vehicule360().immatriculation }}</strong></li>
+                <li><span>Grade sécurité VHS</span> <strong>{{ vehicule360().gradeSecuriteVhs }}</strong></li>
                 <li><span>Kilométrage</span> <strong>{{ vehicule360().kilometrage }}</strong></li>
                 <li><span>VHS</span> <strong>{{ vehicule360().vhs }}</strong></li>
               </ul>
@@ -189,7 +190,7 @@
                   <span>Fin du contrat</span>
                   <strong>{{ (contrat360().dateFinEffet ?? contrat360().dateFin) ? ((contrat360().dateFinEffet ?? contrat360().dateFin) | date: 'dd/MM/yyyy') : 'Non renseignée' }}</strong>
                 </li>
-                <li><span>Numéro de contrat</span> <strong>{{ contrat360().prime }}</strong></li>
+                <li><span>Numéro de contrat</span> <strong>{{ contrat360().numeroContrat }}</strong></li>
                 <li [attr.data-tone]="contrat360().isValidAtClaimDate === false ? 'high' : contrat360().isValidAtClaimDate === true ? 'ok' : 'unknown'">
                   <span>Validité à la date du sinistre</span> <strong>{{ contrat360().validiteLabel }}</strong>
                 </li>
@@ -233,7 +234,7 @@
               </header>
               <ul>
                 <li><span>Lieu</span> <strong>{{ geographie360().lieu }}</strong></li>
-                <li><span>Région</span> <strong>{{ geographie360().distanceDomicile }}</strong></li>
+                <li><span>Région</span> <strong>{{ geographie360().region }}</strong></li>
                 <li><span>Pays</span> <strong>{{ geographie360().zoneSinistralite }}</strong></li>
               </ul>
             </article>

@@ -89,7 +89,13 @@
         </div>
         <label class="vhs-search">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="search" placeholder="Immatriculation..." [value]="searchTerm()" (input)="onSearchInput($event)" />
+          <input
+            type="search"
+            aria-label="Rechercher une immatriculation"
+            placeholder="Immatriculation..."
+            [value]="searchTerm()"
+            (input)="onSearchInput($event)"
+          />
         </label>
       </header>
 

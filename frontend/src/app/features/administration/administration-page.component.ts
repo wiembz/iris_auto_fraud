@@ -36,6 +36,7 @@ export class AdministrationPageComponent implements OnInit, OnDestroy {
 
   readonly governance = signal<PowerbiGovernanceComponent[]>([]);
   readonly governanceLoading = signal(true);
+  readonly governanceError = signal(false);
   readonly apiStatus = signal<'checking' | 'up' | 'down'>('checking');
   readonly apiLatencyMs = signal<number | null>(null);
 
@@ -73,6 +74,7 @@ export class AdministrationPageComponent implements OnInit, OnDestroy {
       error: () => {
         this.governance.set([]);
         this.governanceLoading.set(false);
+        this.governanceError.set(true);
       }
     });
   }

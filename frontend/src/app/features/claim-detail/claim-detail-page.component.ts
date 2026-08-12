@@ -21,6 +21,19 @@ import {
 } from '../../core/services/iris-api.service';
 import { AttentionBadgeComponent } from '../worklist/attention-badge/attention-badge.component';
 
+function formatDdMmYyyy(value: string): string {
+  // Parse the Y-M-D prefix directly instead of `new Date(value)` : claim_date
+  // is a DATE column (no time-of-day), and letting the JS Date constructor
+  // interpret it as UTC midnight can shift the displayed day by one when the
+  // browser's local timezone is negative relative to UTC.
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) {
+    return value;
+  }
+  const [, year, month, day] = match;
+  return `${day}/${month}/${year}`;
+}
+
 const DECISION_LABELS: Record<ClaimDecisionValue, string> = {
   SUSPICION_CONFIRMED: 'Fraude',
   CONFORME: 'Non fraude',
@@ -310,16 +323,25 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
   });
 
   // --- REAL DATA MAPPED FOR 360 VIEW ---
+  // Noms de propriete alignes sur la donnee reelle qu ils portent (pas sur le
+  // libelle affiche, qui peut regrouper plusieurs sources dans un meme
+  // article HTML) : evite qu une lecture du code source donne une fausse
+  // idee de ce qui est realmente calcule.
   readonly client360 = computed(() => {
     const c = this.review()?.client_context;
     const birthDate = c?.date_naissance ? new Date(c.date_naissance) : null;
     const age = birthDate ? new Date().getFullYear() - birthDate.getFullYear() : null;
     const ageStr = age ? `, ${age} ans` : '';
+    const history = this.review()?.related_claims?.client_history_24m ?? [];
+    const lastClaim = history.find((item) => !!item.claim_date);
     return {
       anciennete: c ? `${c.nature_client ? c.nature_client.replace(/_/g, ' ').toLowerCase() : 'personne physique'}${ageStr}` : 'Client BNA',
-      contratsActifs: c?.idclt ?? 'Non renseigné',
+      identifiantClient: c?.idclt ?? 'Non renseigné',
       sinistres24m: this.claim()?.client_claim_count_24m ?? 0,
-      dernierSinistre: c?.sexe ?? 'Non renseigné'
+      profilDeclare: c?.sexe ?? 'Non renseigné',
+      dernierSinistre: lastClaim?.claim_date
+        ? formatDdMmYyyy(lastClaim.claim_date)
+        : 'Aucun sinistre anterieur (24 derniers mois)'
     };
   });
 
@@ -327,12 +349,11 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
     const v = this.vehicle();
     const vhs = this.review()?.vhs_context;
     return {
-      marqueModele: v?.immatriculation ?? 'Non renseignée',
-      annee: vhs?.safety_grade ?? 'Non disponible',
+      immatriculation: v?.immatriculation ?? 'Non renseignée',
+      gradeSecuriteVhs: vhs?.safety_grade ?? 'Non disponible',
       kilometrage: vhs?.kilometrage ? `${Math.round(vhs.kilometrage).toLocaleString('fr-FR')} km` : 'Kilométrage inconnu',
       vhs: vhs?.vhs_final_score !== undefined ? `${Math.round(vhs.vhs_final_score)}/100 (${vhs.decision ?? '—'})` : 'Aucun score VHS',
-      inspection: this.postInspections().length > 0 ? 'Oui' : 'Non',
-      immatriculation: v?.immatriculation ?? 'Inconnue'
+      inspection: this.postInspections().length > 0 ? 'Oui' : 'Non'
     };
   });
 
@@ -358,7 +379,7 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
     return {
       type: con?.statut_contrat ?? 'Non renseigné',
       depuis: dateDebut,
-      prime: con?.numero_contrat ?? 'Non renseigné',
+      numeroContrat: con?.numero_contrat ?? 'Non renseigné',
       dateFin: con?.date_fin_contrat ?? null,
       dateDebutEffet: con?.date_debut_effet ?? null,
       dateFinEffet: con?.date_fin_effet ?? null,
@@ -387,7 +408,7 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
     const g = this.review()?.geo_context;
     return {
       lieu: g?.localite ? `${g.localite}, ${g.gouvernorat ?? ''}` : 'Géographie inconnue',
-      distanceDomicile: g?.region ?? 'Non renseignée',
+      region: g?.region ?? 'Non renseignée',
       zoneSinistralite: g?.pays ?? 'Non renseigné'
     };
   });

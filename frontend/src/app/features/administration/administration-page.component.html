@@ -45,8 +45,10 @@
       <h2>Donnees servies</h2>
       @if (governanceLoading()) {
         <div class="admin-loading"><span></span><span></span><span></span></div>
+      } @else if (governanceError()) {
+        <p class="admin-muted">Gouvernance momentanement indisponible (erreur de chargement).</p>
       } @else if (governance().length === 0) {
-        <p class="admin-muted">Gouvernance momentanement indisponible.</p>
+        <p class="admin-muted">Aucune donnee de gouvernance a afficher.</p>
       } @else {
         <ul class="admin-components">
           @for (item of governance(); track item.component) {

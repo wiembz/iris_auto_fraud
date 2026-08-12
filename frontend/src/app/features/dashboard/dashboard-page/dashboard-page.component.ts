@@ -1,7 +1,7 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { Subscription } from 'rxjs';
+import { Subscription, catchError, of, timeout } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
 import {
   ClaimDecisionRecord,
@@ -94,12 +94,23 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
       // Chargement progressif : la vue generale devient utilisable des que le
       // resume arrive. Les agregats plus lourds ne bloquent plus le premier rendu.
       this.subscriptions.add(
-        this.api.getPortfolioInsights(DEFAULT_SCORE_VERSION).subscribe({
-          next: (insights) => this.applyInsights(insights),
-          error: () => {
-            this.insights.set(null);
-          }
-        })
+        this.api
+          .getPortfolioInsights(DEFAULT_SCORE_VERSION)
+          .pipe(
+            // get_portfolio_insights a un historique de requetes tres lentes
+            // (bug backend connu, non corrige). Un timeout cote frontend evite
+            // de laisser une requete ouverte des heures pendant une demo ; la
+            // tendance retombe simplement sur son etat vide deja gere.
+            timeout(15000),
+            catchError(() => of(null))
+          )
+          .subscribe((insights) => {
+            if (insights) {
+              this.applyInsights(insights);
+            } else {
+              this.insights.set(null);
+            }
+          })
       );
       this.subscriptions.add(
         this.api.getDecisionsFeed(undefined, 8).subscribe({
