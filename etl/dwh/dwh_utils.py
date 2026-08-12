@@ -152,12 +152,29 @@ def write_to_dwh(
     lent que COPY sur les tables de plusieurs centaines de milliers de
     lignes de ce projet (voir docs/soutenance/LIMITES_SCALABILITE_PERSPECTIVES.md).
 
+    Colonnes dtype object contenant uniquement des Timestamp/date (et NaN) --
+    frequent quand une ligne technique est construite via pd.DataFrame([{...
+    "col": None ...}]) puis pd.concat() avec un bloc deja en datetime64, ce
+    qui retombe en object -- sont detectees et reconverties en datetime64
+    AVANT le schema (sinon to_sql(df.head(0)) n'a aucune valeur a inspecter
+    et cree une colonne TEXT plutot que TIMESTAMP ; les dates y sont alors
+    stockees en texte ISO puis re-parsees ailleurs avec dayfirst=True, qui
+    inverse jour/mois silencieusement -- bug reel trouve le 2026-08-12,
+    cause de l'anomalie conducteur_sk=0 : voir memoire de session).
+
     Retourne (n_rows, elapsed_seconds).
     """
     full_name = f"dwh.{table_name}"
     t0 = datetime.now(timezone.utc)
 
-    df.head(0).to_sql(
+    export = df.copy()
+    for col in export.columns:
+        if export[col].dtype == object:
+            non_null = export[col].dropna()
+            if len(non_null) > 0 and non_null.map(lambda v: isinstance(v, (pd.Timestamp, datetime))).all():
+                export[col] = pd.to_datetime(export[col])
+
+    export.head(0).to_sql(
         table_name,
         engine,
         schema="dwh",
@@ -165,16 +182,15 @@ def write_to_dwh(
         index=False,
     )
 
-    n = len(df)
+    n = len(export)
     if n > 0:
-        columns = list(df.columns)
+        columns = list(export.columns)
         columns_sql = ", ".join(f'"{c}"' for c in columns)
         copy_sql = (
             f"COPY {full_name} ({columns_sql}) "
             f"FROM STDIN WITH (FORMAT CSV, HEADER FALSE, DELIMITER E'\\t', NULL '\\N')"
         )
 
-        export = df.copy()
         datetime_cols = export.select_dtypes(include=["datetime64[ns]", "datetimetz"]).columns
         for col in datetime_cols:
             export[col] = export[col].dt.strftime("%Y-%m-%d %H:%M:%S.%f")
