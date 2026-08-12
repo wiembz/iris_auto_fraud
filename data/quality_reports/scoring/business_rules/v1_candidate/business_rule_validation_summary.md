@@ -1,6 +1,6 @@
 # Claim business rule signal V1 candidate validation
 
-- **Run ID:** `IRIS_CLAIM_BUSINESS_RULE_SIGNAL_V1_CANDIDATE_20260802_005052`
+- **Run ID:** `IRIS_CLAIM_BUSINESS_RULE_SIGNAL_V1_CANDIDATE_20260812_111159`
 - **Signal version:** `IRIS_CLAIM_BUSINESS_RULE_SIGNAL_V1_CANDIDATE`
 - **Signal rows:** 421475
 

@@ -1,6 +1,6 @@
 # Claim ML anomaly signal V1 candidate validation
 
-- **Run ID:** `IRIS_CLAIM_ML_ANOMALY_SIGNAL_V1_CANDIDATE_20260727_111631`
+- **Run ID:** `IRIS_CLAIM_ML_ANOMALY_SIGNAL_V1_CANDIDATE_20260812_112545`
 - **Signal version:** `IRIS_CLAIM_ML_ANOMALY_SIGNAL_V1_CANDIDATE`
 - **Signal rows:** 367464
 

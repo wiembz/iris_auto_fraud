@@ -1,6 +1,6 @@
 # Post-inspection signal V1 candidate validation summary
 
-- **Run ID:** `IRIS_POST_INSPECTION_SIGNAL_V1_CANDIDATE_20260727_111523`
+- **Run ID:** `IRIS_POST_INSPECTION_SIGNAL_V1_CANDIDATE_20260812_112449`
 - **Signal version:** `IRIS_POST_INSPECTION_SIGNAL_V1_CANDIDATE`
 - **Scenario implemented:** `A_INSPECTION_TO_CLAIM`
 - **Signal rows:** 118

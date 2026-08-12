@@ -1,8 +1,8 @@
 # VHS_BALANCED_V4_CANDIDATE -- Audit Summary
 
-    **Run ID:** `VHS_BALANCED_V4_CANDIDATE_20260807_115527`
+    **Run ID:** `VHS_BALANCED_V4_CANDIDATE_20260812_105224`
     **Profile:** `VHS_BALANCED_V4_CANDIDATE`
-    **Date:** 2026-08-07
+    **Date:** 2026-08-12
 
     ## 1. Objectif & Philosophie
 

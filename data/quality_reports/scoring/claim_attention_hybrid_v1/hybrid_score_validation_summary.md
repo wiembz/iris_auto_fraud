@@ -1,6 +1,6 @@
 # Claim Attention Hybrid V1 candidate validation
 
-- **Run ID:** `IRIS_CLAIM_ATTENTION_HYBRID_V1_CANDIDATE_20260802_010740`
+- **Run ID:** `IRIS_CLAIM_ATTENTION_HYBRID_V1_CANDIDATE_20260812_113830`
 - **Score version:** `IRIS_CLAIM_ATTENTION_HYBRID_V1_CANDIDATE`
 - **Score rows:** 367464
 - **Signal detail rows:** 410555
