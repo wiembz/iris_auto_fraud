@@ -93,6 +93,30 @@ COLUMN_RENAME_MAP: dict[str, str] = {
     "Commentaire.4":          "commentaire_entretien",
 }
 
+def _norm_source_column_name(name: object) -> str:
+    """Normalize Excel headers for robust source-to-staging mapping."""
+    text = unicodedata.normalize("NFKD", str(name).strip())
+    text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+_RENAME_LOOKUP: dict[str, str] = {
+    _norm_source_column_name(source): target
+    for source, target in COLUMN_RENAME_MAP.items()
+}
+
+
+def _build_rename_map(columns: pd.Index) -> dict[str, str]:
+    """Build a robust rename map while keeping the first source per target."""
+    rename_eff: dict[str, str] = {}
+    seen_targets: set[str] = set()
+    for col in columns:
+        target = _RENAME_LOOKUP.get(_norm_source_column_name(col))
+        if target and target not in seen_targets:
+            rename_eff[col] = target
+            seen_targets.add(target)
+    return rename_eff
+
 
 # ---------------------------------------------------------------------------
 # Colonnes checkpoint par section (noms UTF-8 exacts du fichier Excel)
@@ -175,7 +199,7 @@ ENCODING_MAP: dict[str, float] = {
     "Contrôle non OK":                              0.0,
 }
 
-# Colonnes images — exclues du staging analytique
+# Colonnes images - conservees comme liens documentaires en staging
 COLS_IMAGES: list[str] = [f"image{i}" for i in range(1, 11)]
 
 # ---------------------------------------------------------------------------
@@ -635,11 +659,12 @@ def transform_inspection(
     # ── 1. Normalisation noms de colonnes ──────────────────────────────────
     logger.info("  [STEP 1] Renommage colonnes")
     df.columns = [c.strip() for c in df.columns]
-    rename_eff  = {k: v for k, v in COLUMN_RENAME_MAP.items() if k in df.columns}
+    rename_eff = _build_rename_map(df.columns)
     df = df.rename(columns=rename_eff)
 
-    # Supprimer colonnes images (non analytiques)
-    df = df.drop(columns=[c for c in COLS_IMAGES if c in df.columns], errors="ignore")
+    # Conserver les colonnes image1..image10 en staging comme preuves documentaires.
+    # Elles ne participent pas au scoring, mais enrichissent la fiche
+    # d'inspection affichee cote plateforme.
 
     # ── 2. Nettoyage apostrophes dans checkpoints ──────────────────────────
     for col in ALL_CHECKPOINT_COLS:
@@ -772,7 +797,8 @@ def transform_inspection(
     # Les enc_* restent dans df_working mais ne sont pas dans STAGING_COLS.
     # Les colonnes checkpoint brutes détectées dynamiquement (étape 15)
     # sont ajoutées après STAGING_COLS.
-    _all_staging_cols = STAGING_COLS + _raw_ck_cols_added
+    _image_cols_added = [c for c in COLS_IMAGES if c in df.columns]
+    _all_staging_cols = STAGING_COLS + _raw_ck_cols_added + _image_cols_added
     for col in _all_staging_cols:
         if col not in df.columns:
             df[col] = None
@@ -793,6 +819,7 @@ def transform_inspection(
         "n_critique":        int((df_final["niveau_etat_vehicule"] == "CRITIQUE").sum()),
         "dist_niveau":       df_final["niveau_etat_vehicule"].value_counts().to_dict(),
         "km_median":         int(df_final["kilometrage"].median()) if df_final["kilometrage"].notna().any() else None,
+        "image_cols_preserved": len(_image_cols_added),
     }
 
     return df_final, metrics

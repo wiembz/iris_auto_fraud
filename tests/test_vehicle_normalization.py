@@ -45,3 +45,17 @@ class TestNormalizeImmatriculation:
         assert normalize_immatriculation("567TU1234") == "1234TU567"
         assert normalize_immatriculation("4639TU204") == "4639TU204"
         assert normalize_immatriculation("429TU146") == "429TU146"
+
+    def test_tn_middle_typo_is_treated_as_tu(self):
+        # STAFIM saisit parfois "TN" au lieu de "TU" au meme emplacement
+        # (inversion de frappe, pas un code distinct comme NT/RS) : doit
+        # rejoindre la meme plaque que la saisie correcte en TU.
+        assert normalize_immatriculation("9788TN115") == "9788TU115"
+        assert normalize_immatriculation("288TN157") == normalize_immatriculation("288TU157")
+
+    def test_arabic_nt_is_transliterated_before_normalization(self):
+        # Certaines fiches ecrivent le code "NT" en lettres arabes (nun + ta),
+        # avec ou sans espace : ne doit pas etre efface silencieusement par
+        # le nettoyage alphanumerique, doit rejoindre la logique NT existante.
+        assert normalize_immatriculation("226989 ن ت") == "226989NT"
+        assert normalize_immatriculation("226989نت") == "226989NT"

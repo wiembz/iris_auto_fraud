@@ -1,0 +1,155 @@
+<div class="decision-dashboard">
+  <header class="iris-page-hero">
+    <div>
+      <p class="iris-eyebrow">{{ user()?.roleLabel ?? 'Espace IRIS' }}</p>
+      <h1>{{ dashboardTitle() }}</h1>
+      <p>{{ dashboardSubtitle() }}</p>
+    </div>
+
+    <div class="iris-page-hero__status">
+      <span class="dashboard-pulse-dot" [style.background]="summary() ? null : 'var(--iris-neutral)'" aria-hidden="true"></span>
+      @if (summary(); as s) {
+        <span>Analyse active - {{ s.total_claims.toLocaleString('fr-FR') }} dossiers</span>
+      } @else {
+        <span>Chargement...</span>
+      }
+    </div>
+  </header>
+
+  @if (loading()) {
+    <section class="dashboard-loading" aria-label="Chargement du dashboard">
+      <span></span><span></span><span></span><span></span>
+    </section>
+  } @else if (errorMessage()) {
+    <section class="dashboard-error iris-card">
+      <strong>Resume indisponible</strong>
+      <p>{{ errorMessage() }}</p>
+      <a class="iris-button iris-button--ghost" routerLink="/app/claims">Aller a la file de travail</a>
+    </section>
+  } @else {
+    @if (isHandlerDashboard()) {
+      <section class="dashboard-kpi-grid" aria-label="Indicateurs gestionnaire">
+        @for (kpi of handlerKpis(); track kpi.label) {
+          <app-kpi-card
+            [label]="kpi.label"
+            [value]="kpi.value"
+            [suffix]="kpi.suffix ?? ''"
+            [helper]="kpi.helper"
+            [tone]="kpi.tone"
+            [status]="kpi.status ?? 'available'"
+          />
+        }
+      </section>
+
+      <section class="dashboard-section-title">
+        <div>
+          <span>Revue quotidienne</span>
+          <h2>Consulter, comprendre, prioriser</h2>
+        </div>
+        <a class="iris-button iris-button--primary" routerLink="/app/claims">Ouvrir la file de travail</a>
+      </section>
+
+      <section class="dashboard-layout dashboard-layout--handler">
+        <app-workload-chart
+          title="Priorites de revue"
+          subtitle="Synthese operationnelle de la derniere analyse"
+          [rows]="workloadRows()"
+        />
+        <app-attention-chart
+          title="Niveaux d attention"
+          subtitle="Lecture rapide des dossiers a traiter"
+          [rows]="attentionRows()"
+          mode="stacked"
+        />
+        <app-workload-chart
+          title="Raisons visibles"
+          subtitle="Raisons principales observees dans la liste prioritaire"
+          [rows]="signalFamilyRows()"
+        />
+        <app-recent-claims
+          title="Acces rapide a la file de travail"
+          subtitle="Dossiers les plus prioritaires a examiner"
+          [claims]="topClaims()"
+        />
+      </section>
+    } @else {
+      <!-- Cockpit operationnel : 4 KPI cliquables, une file, une activite,
+           une seule tendance. Les analyses approfondies (garantie, causes,
+           qualite des donnees) vivent dans Analytique Power BI, pas ici. -->
+      <section class="dashboard-kpi-grid" aria-label="Indicateurs manager">
+        @for (kpi of managerKpis(); track kpi.label) {
+          <app-kpi-card
+            [label]="kpi.label"
+            [value]="kpi.value"
+            [suffix]="kpi.suffix ?? ''"
+            [helper]="kpi.helper"
+            [tone]="kpi.tone"
+            [status]="kpi.status ?? 'available'"
+            [link]="kpi.link"
+            [queryParams]="kpi.queryParams"
+          />
+        }
+      </section>
+
+      <section class="dashboard-row dashboard-row--full">
+        <app-recent-claims
+          title="Priorites du jour"
+          subtitle="Motif, score et anciennete - ouvrez un dossier en un clic"
+          [claims]="topClaims()"
+          [alertCount]="priorityAlertCount()"
+        />
+      </section>
+
+      <section class="dashboard-card recent-activity" aria-labelledby="recent-activity-title">
+        <header class="dashboard-card__head">
+          <div class="dashboard-card__heading">
+            <h2 id="recent-activity-title">Activite recente</h2>
+            <p>Dernieres decisions enregistrees par l equipe</p>
+          </div>
+          <div class="dashboard-card__actions">
+            <a class="dashboard-card__link" routerLink="/app/feedback">Voir les validations</a>
+            <button
+              type="button"
+              class="dashboard-card__toggle"
+              [class.dashboard-card__toggle--collapsed]="activityCollapsed()"
+              [attr.aria-expanded]="!activityCollapsed()"
+              (click)="toggleActivityCollapsed()"
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        @if (!activityCollapsed()) {
+          @if (recentDecisions().length === 0) {
+            <div class="dashboard-empty">Aucune decision enregistree pour le moment.</div>
+          } @else {
+            <ul class="activity-strip">
+              @for (item of recentDecisions(); track item.decision_id) {
+                <li>
+                  <a [routerLink]="['/app/claims', item.claim_sk]" class="activity-chip">
+                    <span class="worklist-badge" [attr.data-tone]="decisionTone(item.decision)">
+                      {{ decisionLabel(item.decision) }}
+                    </span>
+                    <span class="activity-chip__claim">{{ item.claim_business_id ?? '#' + item.claim_sk }}</span>
+                    <span class="activity-chip__meta">{{ item.reviewer_email }} - {{ item.decided_at | date: 'dd/MM HH:mm' }}</span>
+                  </a>
+                </li>
+              }
+            </ul>
+          }
+        }
+      </section>
+
+      <section class="dashboard-row dashboard-row--full">
+        <app-trend-chart
+          title="Evolution des dossiers prioritaires"
+          subtitle="Volume de dossiers et part en examen prioritaire, mois par mois"
+          [points]="trendPoints()"
+        />
+      </section>
+    }
+  }
+</div>

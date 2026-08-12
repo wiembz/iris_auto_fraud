@@ -1,0 +1,5 @@
+services:
+  airflow:
+    environment:
+      DB_NAME: iris_auto_fraud_restore_verify_20260725
+      IRIS_TARGET_DB: iris_auto_fraud_restore_verify_20260725

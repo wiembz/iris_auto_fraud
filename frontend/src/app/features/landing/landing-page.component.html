@@ -1,0 +1,349 @@
+<main class="lp">
+  <!-- ============================== HERO ============================== -->
+  <section class="lp-hero" aria-labelledby="hero-title">
+    <div class="lp-hero__bg" aria-hidden="true">
+      <span class="lp-orb lp-orb--1"></span>
+      <span class="lp-orb lp-orb--2"></span>
+      <span class="lp-grid"></span>
+    </div>
+
+    <div class="lp-hero__copy">
+      <div class="lp-kicker" lpReveal>
+        <iris-logo [size]="18" />
+        <span>Plateforme intelligente · Sinistres automobiles</span>
+      </div>
+
+      <h1 id="hero-title" lpReveal [lpRevealDelay]="80">
+        L'œil intelligent de la
+        <span class="lp-gradient-text">gestion des sinistres</span>.
+      </h1>
+
+      <p class="lp-lead" lpReveal [lpRevealDelay]="160">
+        IRIS réunit tout le dossier sinistre en une vision claire, révèle les signaux
+        qui comptent et guide vos équipes vers la bonne décision — plus vite,
+        avec plus de confiance.
+      </p>
+
+      <div class="lp-hero__actions" lpReveal [lpRevealDelay]="240">
+        <a class="lp-btn lp-btn--primary" routerLink="/login">
+          Accéder à la plateforme <span aria-hidden="true">→</span>
+        </a>
+        <a class="lp-btn lp-btn--ghost" href="#valeur">Découvrir IRIS</a>
+      </div>
+
+      <p class="lp-hero__trust" lpReveal [lpRevealDelay]="320">
+        <span class="lp-pulse-dot" aria-hidden="true"></span>
+        Conçu et déployé au sein de <strong>BNA Assurance</strong>
+      </p>
+
+      <div class="lp-hero__chips" lpReveal [lpRevealDelay]="400">
+        @for (chip of heroChips; track chip.title) {
+          <article class="lp-chip">
+            <strong>{{ chip.title }}</strong>
+            <span>{{ chip.text }}</span>
+          </article>
+        }
+      </div>
+    </div>
+
+    <div class="lp-hero__visual" aria-hidden="true">
+      <div class="lp-stage">
+        <app-iris-eye-scene />
+
+        <div class="lp-stage__satellites">
+          <span class="lp-sat lp-sat--1">Client</span>
+          <span class="lp-sat lp-sat--2">Contrat</span>
+          <span class="lp-sat lp-sat--3">Véhicule</span>
+          <span class="lp-sat lp-sat--4">Garanties</span>
+        </div>
+
+        <div class="lp-float-card lp-float-card--claim">
+          <header>
+            <span class="lp-float-card__ref">SIN-2847</span>
+            <span class="lp-badge lp-badge--high">Priorité haute</span>
+          </header>
+          <div class="lp-float-card__rows">
+            <span class="lp-mini-tag">Délai inhabituel</span>
+            <span class="lp-mini-tag">Historique chargé</span>
+          </div>
+          <footer>Voir les raisons →</footer>
+        </div>
+
+        <div class="lp-float-card lp-float-card--decision">
+          <span class="lp-float-card__check">✓</span>
+          <div>
+            <strong>Décision validée</strong>
+            <small>par le gestionnaire</small>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== MARQUEE ============================== -->
+  <div class="lp-marquee" aria-hidden="true">
+    <div class="lp-marquee__track">
+      @for (pass of [0, 1]; track pass) {
+        @for (item of marqueeItems; track item) {
+          <span class="lp-marquee__item"><i></i>{{ item }}</span>
+        }
+      }
+    </div>
+  </div>
+
+  <!-- ============================== POURQUOI IRIS ============================== -->
+  <section id="valeur" class="lp-section lp-anchor" aria-labelledby="valeur-title">
+    <header class="lp-section__head" lpReveal>
+      <p class="lp-eyebrow">Pourquoi IRIS</p>
+      <h2 id="valeur-title">
+        L'information existe déjà.<br />
+        <span class="lp-gradient-text">IRIS la rend visible.</span>
+      </h2>
+      <p class="lp-section__sub">
+        Un sinistre automobile, c'est un client, un contrat, un véhicule, un historique.
+        IRIS transforme cette matière dispersée en une lecture immédiate.
+      </p>
+    </header>
+
+    <div class="lp-value-grid">
+      @for (card of valueCards; track card.index; let i = $index) {
+        <article class="lp-card lp-spot" lpReveal [lpRevealDelay]="i * 90" (mousemove)="onSpotlightMove($event)">
+          <span class="lp-card__index">{{ card.index }}</span>
+          <h3>{{ card.title }}</h3>
+          <p>{{ card.text }}</p>
+        </article>
+      }
+    </div>
+  </section>
+
+  <!-- ============================== PARCOURS ============================== -->
+  <section id="parcours" class="lp-section lp-anchor" aria-labelledby="parcours-title">
+    <header class="lp-section__head" lpReveal>
+      <p class="lp-eyebrow">Le parcours</p>
+      <h2 id="parcours-title">Un flux de travail intelligent, <span class="lp-gradient-text">de bout en bout</span>.</h2>
+      <p class="lp-section__sub">
+        De la connexion à la décision, chaque étape est pensée pour amplifier
+        l'expertise de vos équipes.
+      </p>
+    </header>
+
+    <div class="lp-flow" lpReveal>
+      <ol class="lp-flow__steps">
+        @for (step of steps; track step.label; let i = $index) {
+          <li>
+            <button
+              type="button"
+              class="lp-flow__step"
+              [class.is-active]="activeStep() === i"
+              (click)="selectStep(i)"
+            >
+              <span class="lp-flow__num">{{ i + 1 }}</span>
+              <span class="lp-flow__meta">
+                <strong>{{ step.label }}</strong>
+                <small>{{ step.title }}</small>
+              </span>
+              @if (activeStep() === i && autoplay()) {
+                <span class="lp-flow__progress" aria-hidden="true"></span>
+              }
+            </button>
+          </li>
+        }
+      </ol>
+
+      <div class="lp-flow__panel">
+        @for (step of steps; track step.label; let i = $index) {
+          @if (activeStep() === i) {
+            <div class="lp-flow__detail">
+              <h3>{{ step.title }}</h3>
+              <p>{{ step.text }}</p>
+
+              <div class="lp-mock" [attr.data-mock]="step.mock">
+                @switch (step.mock) {
+                  @case ('login') {
+                    <div class="lp-mock__window">
+                      <div class="lp-mock__bar"><i></i><i></i><i></i></div>
+                      <div class="lp-mock__roles">
+                        <span class="is-on">Analyste</span>
+                        <span>Responsable</span>
+                        <span>Admin</span>
+                      </div>
+                      <div class="lp-mock__field"></div>
+                      <div class="lp-mock__field lp-mock__field--short"></div>
+                      <div class="lp-mock__cta">Entrer dans IRIS</div>
+                    </div>
+                  }
+                  @case ('dashboard') {
+                    <div class="lp-mock__window">
+                      <div class="lp-mock__bar"><i></i><i></i><i></i></div>
+                      <div class="lp-mock__kpis">
+                        <span><small>En cours</small><strong>128</strong></span>
+                        <span><small>Prioritaires</small><strong class="is-high">17</strong></span>
+                        <span><small>Traités</small><strong class="is-ok">64</strong></span>
+                      </div>
+                      <div class="lp-mock__chart">
+                        <i style="height: 32%"></i><i style="height: 58%"></i><i style="height: 44%"></i>
+                        <i style="height: 78%"></i><i style="height: 62%"></i><i style="height: 90%"></i>
+                        <i style="height: 70%"></i>
+                      </div>
+                    </div>
+                  }
+                  @case ('worklist') {
+                    <div class="lp-mock__window">
+                      <div class="lp-mock__bar"><i></i><i></i><i></i></div>
+                      <div class="lp-mock__row">
+                        <span>SIN-2847</span><span class="lp-badge lp-badge--high">Haute</span>
+                      </div>
+                      <div class="lp-mock__row">
+                        <span>SIN-2851</span><span class="lp-badge lp-badge--medium">Moyenne</span>
+                      </div>
+                      <div class="lp-mock__row">
+                        <span>SIN-2809</span><span class="lp-badge lp-badge--low">Modérée</span>
+                      </div>
+                      <div class="lp-mock__row is-dim">
+                        <span>SIN-2833</span><span class="lp-badge lp-badge--ok">Standard</span>
+                      </div>
+                    </div>
+                  }
+                  @case ('review') {
+                    <div class="lp-mock__window">
+                      <div class="lp-mock__bar"><i></i><i></i><i></i></div>
+                      <div class="lp-mock__signals">
+                        <span class="lp-mini-tag">Chronologie</span>
+                        <span class="lp-mini-tag">Historique véhicule</span>
+                        <span class="lp-mini-tag">Comparaison</span>
+                      </div>
+                      <div class="lp-mock__check"><i class="is-done"></i>Contexte du dossier consulté</div>
+                      <div class="lp-mock__check"><i class="is-done"></i>Signaux passés en revue</div>
+                      <div class="lp-mock__check"><i></i>Pièces justificatives vérifiées</div>
+                    </div>
+                  }
+                  @case ('decision') {
+                    <div class="lp-mock__window">
+                      <div class="lp-mock__bar"><i></i><i></i><i></i></div>
+                      <div class="lp-mock__decision">
+                        <span class="is-approve">✓ Valider</span>
+                        <span>Compléter</span>
+                        <span>Escalader</span>
+                      </div>
+                      <div class="lp-mock__trace">
+                        <i></i>
+                        <div>
+                          <strong>Décision enregistrée</strong>
+                          <small>Motivée · Horodatée · Traçable</small>
+                        </div>
+                      </div>
+                    </div>
+                  }
+                }
+              </div>
+            </div>
+          }
+        }
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== MODULES ============================== -->
+  <section id="modules" class="lp-section lp-anchor" aria-labelledby="modules-title">
+    <header class="lp-section__head" lpReveal>
+      <p class="lp-eyebrow">Les modules</p>
+      <h2 id="modules-title">Six regards complémentaires <span class="lp-gradient-text">sur chaque dossier</span>.</h2>
+      <p class="lp-section__sub">
+        Chaque module éclaire le dossier sous un angle différent. Ensemble,
+        ils composent une vision qu'aucun outil isolé ne peut offrir.
+      </p>
+    </header>
+
+    <div class="lp-module-grid">
+      @for (module of modules; track module.title; let i = $index) {
+        <article
+          class="lp-card lp-spot lp-module"
+          [attr.data-tone]="module.tone"
+          lpReveal
+          [lpRevealDelay]="(i % 3) * 90"
+          (mousemove)="onSpotlightMove($event)"
+        >
+          <span class="lp-module__code">{{ module.code }}</span>
+          <h3>{{ module.title }}</h3>
+          <p>{{ module.text }}</p>
+        </article>
+      }
+    </div>
+  </section>
+
+  <!-- ============================== REPÈRES ============================== -->
+  <section class="lp-section" aria-label="IRIS en quelques repères">
+    <div class="lp-stats" #statsBand lpReveal>
+      <span class="lp-stats__glow" aria-hidden="true"></span>
+      @for (stat of stats; track stat.label; let i = $index) {
+        <div class="lp-stats__item">
+          <strong>{{ statValues()[i] }}{{ stat.suffix }}</strong>
+          <span>{{ stat.label }}</span>
+        </div>
+      }
+    </div>
+  </section>
+
+  <!-- ============================== CONFIANCE ============================== -->
+  <section id="confiance" class="lp-section lp-anchor" aria-labelledby="confiance-title">
+    <div class="lp-trust">
+      <div class="lp-trust__copy" lpReveal>
+        <p class="lp-eyebrow">La confiance, par conception</p>
+        <h2 id="confiance-title">L'IA éclaire.<br /><span class="lp-gradient-text">Vos experts décident.</span></h2>
+        <p class="lp-section__sub">
+          IRIS a été conçu autour d'un principe simple : la technologie révèle,
+          l'humain tranche. C'est ce qui en fait un outil que les équipes adoptent —
+          et auquel elles font confiance.
+        </p>
+      </div>
+
+      <div class="lp-trust__pillars">
+        @for (pillar of pillars; track pillar.title; let i = $index) {
+          <article class="lp-pillar" lpReveal [lpRevealDelay]="i * 110">
+            <span class="lp-pillar__dot" aria-hidden="true"></span>
+            <strong>{{ pillar.title }}</strong>
+            <p>{{ pillar.text }}</p>
+          </article>
+        }
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== CTA ============================== -->
+  <section class="lp-cta" lpReveal>
+    <span class="lp-cta__glow" aria-hidden="true"></span>
+    <iris-logo [size]="64" [animated]="true" />
+    <h2>Prêt à voir vos sinistres <span class="lp-gradient-text">autrement</span> ?</h2>
+    <p>
+      IRIS est déployé au sein de BNA Assurance.
+      Connectez-vous pour découvrir votre espace décisionnel.
+    </p>
+    <a class="lp-btn lp-btn--primary lp-btn--lg" routerLink="/login">
+      Se connecter à IRIS <span aria-hidden="true">→</span>
+    </a>
+  </section>
+
+  <!-- ============================== FOOTER ============================== -->
+  <footer class="lp-footer">
+    <div class="lp-footer__brand">
+      <span class="lp-footer__logo">
+        <iris-logo [size]="30" />
+        <strong>IRIS</strong>
+      </span>
+      <p>
+        Plateforme intelligente d'aide à la décision pour les sinistres automobiles,
+        conçue au sein de BNA Assurance.
+      </p>
+    </div>
+
+    <nav class="lp-footer__nav" aria-label="Navigation pied de page">
+      <a href="#valeur">Pourquoi IRIS</a>
+      <a href="#parcours">Le parcours</a>
+      <a href="#modules">Modules</a>
+      <a href="#confiance">Confiance</a>
+      <a routerLink="/login">Se connecter</a>
+    </nav>
+
+    <p class="lp-footer__legal">© 2026 IRIS · BNA Assurance</p>
+  </footer>
+</main>

@@ -17,6 +17,7 @@ CONFIG_PATH = BASE_DIR / "config" / "claim_attention" / "rules_v2_candidate.json
 RULE_CATALOG_VERSION = "IRIS_CLAIM_BUSINESS_RULES_V2_CANDIDATE"
 SCORE_VERSION = "IRIS_CLAIM_ATTENTION_V2_CANDIDATE"
 ALLOWED_OPERATORS = {">=", ">", "<=", "==", "in", "is_true"}
+ALLOWED_RULE_GRAINS = {"GUARANTEE", "DOSSIER"}
 KNOWN_ACTION_CODES = {
     "ACT_VERIFY_CHRONOLOGY",
     "ACT_REVIEW_CLIENT_HISTORY",
@@ -127,6 +128,7 @@ def validate_rule_catalog(catalog: dict[str, Any]) -> None:
             "rule_code",
             "rule_family",
             "version",
+            "grain",
             "label_business",
             "description",
             "attention_level",
@@ -137,10 +139,21 @@ def validate_rule_catalog(catalog: dict[str, Any]) -> None:
             "is_active",
             "business_explanation",
             "suggested_action_code",
+            "threshold_source",
+            "validated_by",
+            "validated_on",
         ]:
             if key not in rule:
                 raise ValueError(f"Rule {rule.get('rule_code')} missing {key}")
         rule_code = str(rule["rule_code"])
+        if rule["grain"] not in ALLOWED_RULE_GRAINS:
+            raise ValueError(f"Rule {rule_code} grain must be one of {sorted(ALLOWED_RULE_GRAINS)}")
+        if not isinstance(rule["threshold_source"], str) or not rule["threshold_source"].strip():
+            raise ValueError(f"Rule {rule_code} threshold_source must be a non-empty string")
+        for validation_key in ["validated_by", "validated_on"]:
+            value = rule[validation_key]
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f"Rule {rule_code} {validation_key} must be null or a non-empty string")
         if rule_code in seen:
             raise ValueError(f"Duplicate rule_code: {rule_code}")
         seen.add(rule_code)

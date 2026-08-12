@@ -1,0 +1,42 @@
+<section class="dashboard-card trend-chart" aria-labelledby="trend-title">
+  <header class="dashboard-card__head">
+    <div>
+      <h2 id="trend-title">{{ title }}</h2>
+      <p>{{ subtitle }}</p>
+    </div>
+    <div class="trend-chart__legend" aria-hidden="true">
+      <span><i class="trend-chart__dot trend-chart__dot--volume"></i>Volume mensuel</span>
+      <span><i class="trend-chart__dot trend-chart__dot--priority"></i>Dont examen prioritaire</span>
+    </div>
+  </header>
+
+  @if (columns().length === 0) {
+    <p class="dashboard-empty">Aucune donnee temporelle disponible pour le moment.</p>
+  } @else {
+    <div class="trend-chart__body">
+      <div class="trend-chart__columns">
+        @for (col of columns(); track col.key) {
+          <div
+            class="trend-chart__column"
+            [class.is-hovered]="hoveredKey() === col.key"
+            (mouseenter)="hover(col.key)"
+            (mouseleave)="hover(null)"
+          >
+            <div class="trend-chart__priority-marker" [style.bottom.%]="col.priorityDotPct">
+              <span class="trend-chart__priority-value">{{ col.priorityClaims }}</span>
+            </div>
+            <div class="trend-chart__bar" [style.height.%]="col.volumeSharePct">
+              <span class="trend-chart__bar-value">{{ col.claims.toLocaleString('fr-FR') }}</span>
+            </div>
+            <span class="trend-chart__month">{{ col.monthLabel }}</span>
+          </div>
+        }
+      </div>
+    </div>
+
+    <footer class="trend-chart__summary">
+      <span><strong>{{ totalClaims().toLocaleString('fr-FR') }}</strong> dossiers sur la periode</span>
+      <span><strong>{{ totalPriority().toLocaleString('fr-FR') }}</strong> en examen prioritaire</span>
+    </footer>
+  }
+</section>

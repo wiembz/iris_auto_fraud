@@ -35,11 +35,21 @@ def _backend_text() -> str:
     ).lower()
 
 
-def _service_text() -> str:
+def _strip_comment_lines(source: str) -> str:
+    """Drop whole-line '#' comments before scanning for forbidden SQL keywords --
+    a comment explaining *why* some other layer once ran ALTER/DROP is documentation,
+    not executable code, and shouldn't trip a read-only guard on this service."""
+    return "\n".join(
+        line for line in source.splitlines() if not line.strip().startswith("#")
+    )
+
+
+def _service_text(exclude: tuple[str, ...] = ()) -> str:
     services_dir = BACKEND_DIR / "services"
     return "\n".join(
-        path.read_text(encoding="utf-8")
+        _strip_comment_lines(path.read_text(encoding="utf-8"))
         for path in services_dir.rglob("*.py")
+        if path.name not in exclude
     ).lower()
 
 
@@ -69,11 +79,18 @@ def test_serialization_converts_common_database_values():
 
 
 def test_backend_service_sql_stays_read_only():
-    text = _service_text()
+    # decision_service.py and workflow_service.py are the deliberate write
+    # paths (schema `app`, append-only, DB triggers block UPDATE/DELETE).
+    # inspection_image_service.py is a third: it owns app.inspection_image_asset
+    # (idempotent CREATE TABLE IF NOT EXISTS, same pattern every ETL mart
+    # script already uses for its own tables). All three are excluded here
+    # and, where warranted, checked precisely instead of weakening this
+    # guarantee for every other service.
+    text = _service_text(exclude=("decision_service.py", "workflow_service.py", "inspection_image_service.py"))
 
     forbidden_patterns = [
         r"(?<!path\.)\binsert\b",
-        r"\bupdate\b",
+        r"(?<!\.)\bupdate\b",  # allow dict.update(...); SQL UPDATE is never preceded by a dot
         r"\bdelete\b",
         r"\bdrop\b",
         r"\btruncate\b",
@@ -83,6 +100,37 @@ def test_backend_service_sql_stays_read_only():
     ]
     for pattern in forbidden_patterns:
         assert re.search(pattern, text) is None
+
+
+def test_decision_service_only_writes_to_app_schema():
+    decision_text = (BACKEND_DIR / "services" / "decision_service.py").read_text(encoding="utf-8").lower()
+
+    assert "insert into app.claim_review_decision" in decision_text
+    assert "update " not in decision_text
+    assert "delete " not in decision_text
+    assert "drop " not in decision_text
+    assert "truncate" not in decision_text
+    assert "alter " not in decision_text
+    # Le seul write autorise reste confine au schema applicatif `app` :
+    # jamais d'ecriture dans dwh/mart/staging depuis les services backend.
+    assert "insert into dwh." not in decision_text
+    assert "insert into mart." not in decision_text
+    assert "insert into staging." not in decision_text
+
+
+def test_workflow_service_only_writes_to_app_schema():
+    workflow_text = (BACKEND_DIR / "services" / "workflow_service.py").read_text(encoding="utf-8").lower()
+
+    assert "insert into app.claim_workflow_event" in workflow_text
+    assert "update " not in workflow_text
+    assert "delete " not in workflow_text
+    assert "drop " not in workflow_text
+    assert "truncate" not in workflow_text
+    assert "alter " not in workflow_text
+    # Meme garantie que decision_service : jamais d'ecriture dans dwh/mart/staging.
+    assert "insert into dwh." not in workflow_text
+    assert "insert into mart." not in workflow_text
+    assert "insert into staging." not in workflow_text
 
 
 def test_claim_list_query_uses_exists_instead_of_signal_joins():
@@ -122,23 +170,269 @@ def test_backend_wording_stays_non_accusatory():
     assert not contains_forbidden_business_wording(_backend_text())
 
 def test_declared_mvp_routes_are_present_in_routes_source():
-    routes_text = (BACKEND_DIR / "routes" / "claims_routes.py").read_text(encoding="utf-8")
-    summary_text = (BACKEND_DIR / "routes" / "summary_routes.py").read_text(encoding="utf-8")
+    from backend.app import app as fastapi_app
 
-    assert '@claims_bp.get("/claims")' in routes_text
-    assert '@claims_bp.get("/claims/<int:claim_sk>")' in routes_text
-    assert '@claims_bp.get("/claims/<int:claim_sk>/review")' in routes_text
-    assert '@claims_bp.get("/claims/<int:claim_sk>/signals")' in routes_text
-    assert '@claims_bp.get("/claims/<int:claim_sk>/ml-anomaly")' in routes_text
-    assert '@claims_bp.get("/claims/<int:claim_sk>/post-inspection")' in routes_text
-    assert '@claims_bp.get("/claims/<int:claim_sk>/timeline")' in routes_text
-    assert '@summary_bp.get("/summary")' in summary_text
+    paths = set(fastapi_app.openapi()["paths"].keys())
+
+    assert "/api/claims" in paths
+    assert "/api/claims/{claim_sk}" in paths
+    assert "/api/claims/{claim_sk}/review" in paths
+    assert "/api/claims/{claim_sk}/signals" in paths
+    assert "/api/claims/{claim_sk}/ml-anomaly" in paths
+    assert "/api/claims/{claim_sk}/post-inspection" in paths
+    assert "/api/claims/{claim_sk}/timeline" in paths
+    assert "/api/summary" in paths
 
 def test_backend_claim_review_service_is_available_for_future_frontend():
-    routes_text = (BACKEND_DIR / "routes" / "claims_routes.py").read_text(encoding="utf-8")
+    from backend.app import app as fastapi_app
+
+    paths = set(fastapi_app.openapi()["paths"].keys())
     service_text = (BACKEND_DIR / "services" / "claim_review_service.py").read_text(encoding="utf-8")
 
-    assert '@claims_bp.get("/claims/<int:claim_sk>/review")' in routes_text
+    assert "/api/claims/{claim_sk}/review" in paths
     assert "def get_claim_review(" in service_text
+
+
+def test_confidence_explanation_flags_unknown_driver_even_when_confidence_high():
+    from backend.services.claim_review_service import _confidence_explanation
+
+    explanation = _confidence_explanation(
+        conf_level="HIGH",
+        missing_keys=0,
+        unknown_dims=1,
+        weak_join=False,
+        missing_driver=True,
+        missing_client=False,
+    )
+    assert explanation == "Qualité partielle — conducteur non identifié."
+
+
+def test_confidence_explanation_lists_both_identity_gaps():
+    from backend.services.claim_review_service import _confidence_explanation
+
+    explanation = _confidence_explanation(
+        conf_level="HIGH",
+        missing_keys=0,
+        unknown_dims=2,
+        weak_join=False,
+        missing_driver=True,
+        missing_client=True,
+    )
+    assert explanation == "Qualité partielle — conducteur non identifié, client non identifié."
+
+
+def test_confidence_explanation_still_reports_optimal_when_no_identity_gap():
+    from backend.services.claim_review_service import _confidence_explanation
+
+    explanation = _confidence_explanation(
+        conf_level="HIGH",
+        missing_keys=0,
+        unknown_dims=0,
+        weak_join=False,
+        missing_driver=False,
+        missing_client=False,
+    )
+    assert explanation == "Qualité de données optimale : aucune clé manquante, jointures complètes, géolocalisation cohérente."
+
+
+def test_confidence_explanation_medium_and_low_unchanged_without_identity_gap():
+    from backend.services.claim_review_service import _confidence_explanation
+
+    medium = _confidence_explanation("MEDIUM", 1, 0, False, False, False)
+    assert medium == "Confiance modérée : 1 clé(s) manquante(s)."
+
+    low = _confidence_explanation("LOW", 0, 0, True, False, False)
+    assert low == "Confiance limitée : jointures défaillantes."
+
+
+class _FakeRow:
+    """Minimal stand-in for a SQLAlchemy Row exposing ._mapping like the real rows."""
+
+    def __init__(self, mapping: dict):
+        self._mapping = mapping
+
+
+def test_timeline_groups_same_stafim_inspection_into_one_event():
+    from backend.services.claim_review_service import _timeline_from_feature_and_inspections
+
+    inspection_rows = [
+        _FakeRow({
+            "inspection_sk": 500,
+            "vehicule_sk": 12776,
+            "inspection_date": "2025-10-23",
+            "days_inspection_to_claim": 42,
+            "defective_zone": "ENTRETIEN",
+            "business_explanation": "Un sinistre est survenu peu apres une inspection STAFFIM du meme vehicule.",
+        }),
+        _FakeRow({
+            "inspection_sk": 500,
+            "vehicule_sk": 12776,
+            "inspection_date": "2025-10-23",
+            "days_inspection_to_claim": 42,
+            "defective_zone": "INTERIEUR",
+            "business_explanation": "Un sinistre est survenu peu apres une inspection STAFFIM du meme vehicule.",
+        }),
+        _FakeRow({
+            "inspection_sk": 500,
+            "vehicule_sk": 12776,
+            "inspection_date": "2025-10-23",
+            "days_inspection_to_claim": 42,
+            "defective_zone": "SOUS_VEHICULE",
+            "business_explanation": "Un sinistre est survenu peu apres une inspection STAFFIM du meme vehicule.",
+        }),
+    ]
+
+    timeline = _timeline_from_feature_and_inspections(None, inspection_rows)
+
+    stafim_events = [e for e in timeline if e["event_type"] == "Inspection STAFFIM"]
+    assert len(stafim_events) == 1
+    assert "ENTRETIEN" in stafim_events[0]["description"]
+    assert "INTERIEUR" in stafim_events[0]["description"]
+    assert "SOUS_VEHICULE" in stafim_events[0]["description"]
+
+
+def test_contract_validity_uses_effet_dates_when_present():
+    from datetime import date
+    from backend.services.claim_review_service import _contract_validity_at_claim_date
+
+    contract = _FakeRow({
+        "date_debut_effet": date(2024, 1, 1),
+        "date_fin_effet": date(2025, 1, 1),
+        "date_debut_contrat": date(2020, 1, 1),
+        "date_fin_contrat": date(2030, 1, 1),
+        "statut_contrat": "EN COURS",
+    })
+
+    result = _contract_validity_at_claim_date(contract, date(2024, 6, 1))
+    assert result == {"is_valid_at_claim_date": True, "reference": "effet", "statut_contrat": "EN COURS"}
+
+
+def test_contract_validity_false_when_claim_before_or_after_coverage():
+    from datetime import date
+    from backend.services.claim_review_service import _contract_validity_at_claim_date
+
+    contract = _FakeRow({
+        "date_debut_effet": date(2024, 1, 1),
+        "date_fin_effet": date(2025, 1, 1),
+        "date_debut_contrat": None,
+        "date_fin_contrat": None,
+        "statut_contrat": "EXPIRE",
+    })
+
+    before = _contract_validity_at_claim_date(contract, date(2023, 12, 31))
+    after = _contract_validity_at_claim_date(contract, date(2025, 1, 2))
+    assert before["is_valid_at_claim_date"] is False
+    assert after["is_valid_at_claim_date"] is False
+
+
+def test_contract_validity_falls_back_to_contract_dates_without_effet():
+    from datetime import date
+    from backend.services.claim_review_service import _contract_validity_at_claim_date
+
+    contract = _FakeRow({
+        "date_debut_effet": None,
+        "date_fin_effet": None,
+        "date_debut_contrat": date(2020, 1, 1),
+        "date_fin_contrat": date(2030, 1, 1),
+        "statut_contrat": "EN COURS",
+    })
+
+    result = _contract_validity_at_claim_date(contract, date(2024, 6, 1))
+    assert result["is_valid_at_claim_date"] is True
+    assert result["reference"] == "contrat"
+
+
+def test_contract_validity_true_when_no_end_date_yet():
+    from datetime import date
+    from backend.services.claim_review_service import _contract_validity_at_claim_date
+
+    contract = _FakeRow({
+        "date_debut_effet": date(2024, 1, 1),
+        "date_fin_effet": None,
+        "date_debut_contrat": None,
+        "date_fin_contrat": None,
+        "statut_contrat": "EN COURS",
+    })
+
+    result = _contract_validity_at_claim_date(contract, date(2030, 6, 1))
+    assert result["is_valid_at_claim_date"] is True
+
+
+def test_contract_validity_none_without_contract_or_claim_date():
+    from datetime import date
+    from backend.services.claim_review_service import _contract_validity_at_claim_date
+
+    contract = _FakeRow({
+        "date_debut_effet": date(2024, 1, 1),
+        "date_fin_effet": None,
+        "date_debut_contrat": None,
+        "date_fin_contrat": None,
+        "statut_contrat": "EN COURS",
+    })
+
+    assert _contract_validity_at_claim_date(None, date(2024, 6, 1)) is None
+    assert _contract_validity_at_claim_date(contract, None) is None
+
+
+def test_contract_validity_handles_mixed_date_and_datetime_types():
+    # dwh.fact_sinistre.claim_date is DATE but dwh.dim_contrat's dates are
+    # TIMESTAMP: this mirrors the real column types (regression test for a
+    # TypeError: can't compare datetime.datetime to datetime.date).
+    from datetime import date, datetime
+    from backend.services.claim_review_service import _contract_validity_at_claim_date
+
+    contract = _FakeRow({
+        "date_debut_effet": datetime(2024, 1, 1, 0, 0, 0),
+        "date_fin_effet": datetime(2025, 1, 1, 0, 0, 0),
+        "date_debut_contrat": None,
+        "date_fin_contrat": None,
+        "statut_contrat": "EN COURS",
+    })
+
+    result = _contract_validity_at_claim_date(contract, date(2024, 6, 1))
+    assert result["is_valid_at_claim_date"] is True
+
+
+def test_contract_validity_unknown_when_no_start_date_at_all():
+    from datetime import date
+    from backend.services.claim_review_service import _contract_validity_at_claim_date
+
+    contract = _FakeRow({
+        "date_debut_effet": None,
+        "date_fin_effet": None,
+        "date_debut_contrat": None,
+        "date_fin_contrat": None,
+        "statut_contrat": "INCONNU",
+    })
+
+    result = _contract_validity_at_claim_date(contract, date(2024, 6, 1))
+    assert result == {"is_valid_at_claim_date": None, "reference": None, "statut_contrat": "INCONNU"}
+
+
+def test_timeline_keeps_distinct_inspections_separate():
+    from backend.services.claim_review_service import _timeline_from_feature_and_inspections
+
+    inspection_rows = [
+        _FakeRow({
+            "inspection_sk": 500,
+            "vehicule_sk": 12776,
+            "inspection_date": "2025-10-23",
+            "days_inspection_to_claim": 42,
+            "defective_zone": "ENTRETIEN",
+            "business_explanation": "x",
+        }),
+        _FakeRow({
+            "inspection_sk": 501,
+            "vehicule_sk": 12776,
+            "inspection_date": "2025-06-01",
+            "days_inspection_to_claim": 186,
+            "defective_zone": "SOUS_CAPOT",
+            "business_explanation": "y",
+        }),
+    ]
+
+    timeline = _timeline_from_feature_and_inspections(None, inspection_rows)
+    stafim_events = [e for e in timeline if e["event_type"] == "Inspection STAFFIM"]
+    assert len(stafim_events) == 2
 
 

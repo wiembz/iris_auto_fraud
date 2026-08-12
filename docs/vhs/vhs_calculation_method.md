@@ -1,9 +1,22 @@
 # VHS — Vehicle Health Score : Méthode de calcul
 
-> **Version candidate :** `VHS_BALANCED_V3_CANDIDATE`
+> **⚠️ Document décrivant la méthodologie V3.** La version candidate actuellement
+> retenue et servie par l'API est **`VHS_BALANCED_V4_CANDIDATE`**
+> (`etl/mart/compute_vhs_v4_candidate.py`). V4 reprend intégralement la
+> méthode ci-dessous (normalisation des statuts, grade de sécurité, décision)
+> et n'en change que l'agrégation du score continu : plafond de pénalité par
+> système fonctionnel (au lieu d'une somme sans plafond par checkpoint) et
+> score plancher de 5 points pour tout véhicule roulable. Voir
+> `docs/vhs/vhs_validation_summary.md` (section « Pourquoi V4 ») et
+> `docs/vhs/vhs_final_module_summary.md` (section 4.7) pour le détail chiffré
+> du correctif et le récit V3 → V4. Ce document reste la référence valide
+> pour tout ce qui concerne le mapping des statuts checkpoint et la logique
+> de décision/grade, inchangés en V4.
 >
-> Cette version est la recommandation finale issue des audits STAFFIM.
-> Elle doit être validée métier par BNA Assurances avant d'être promue en version officielle.
+> **Version candidate (méthodologie décrite ci-dessous) :** `VHS_BALANCED_V3_CANDIDATE`
+>
+> Cette version était la recommandation finale issue des audits STAFFIM au
+> moment de sa rédaction (juillet 2026).
 >
 > **Statut :** Exploratoire / candidat — ne modifie pas `VHS_BALANCED_V2`.
 

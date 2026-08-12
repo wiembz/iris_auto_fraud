@@ -1,46 +1,68 @@
-﻿"""Flask application factory for the IRIS read-only claim review API."""
-from __future__ import annotations
+"""FastAPI application factory for the IRIS read-only claim review API.
 
+Migrated from Flask (see docs/architecture/MIGRATION_FASTAPI_PLAN.md):
+same service layer, same `/api/...` endpoints, same JSON response shapes,
+same HTTP status codes, same `{"message": "..."}` business-error format.
+"""
+from __future__ import annotations
 
 from pathlib import Path
 import sys
-from flask import Flask, jsonify
-
-try:
-    from flask_cors import CORS
-except ModuleNotFoundError:  # CORS is optional for unit tests and local API checks.
-    CORS = None
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from backend.api.errors import register_error_handlers
+from backend.api.routers import (
+    auth,
+    claims,
+    decisions,
+    portfolio,
+    powerbi,
+    summary,
+    vhs,
+    workflow,
+)
 from backend.config import load_config
 from backend.db import get_engine
-from backend.routes import register_blueprints
 
 
-def create_app(test_config: dict | None = None) -> Flask:
-    app = Flask(__name__)
+def create_app(test_config: dict | None = None) -> FastAPI:
+    app = FastAPI(
+        title="IRIS API",
+        description="Read-only claim review API for the IRIS auto-fraud decision platform.",
+        version="1.0.0",
+    )
 
-    api_config = load_config()
-    app.config["IRIS_API_CONFIG"] = api_config
-    app.config["IRIS_ENGINE"] = get_engine()
-    app.config["JSON_SORT_KEYS"] = False
+    app.state.api_config = load_config()
+    app.state.engine = get_engine()
 
     if test_config:
-        app.config.update(test_config)
+        for key, value in test_config.items():
+            setattr(app.state, key, value)
 
-    if CORS is not None:
-        CORS(app, resources={r"/api/*": {"origins": "*"}})
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-    register_blueprints(app)
+    register_error_handlers(app)
 
-    @app.errorhandler(500)
-    def internal_error(error):  # noqa: ARG001
-        return jsonify({
-            "message": "Erreur technique API. Aucun calcul ou ecriture n'a ete execute.",
-        }), 500
+    app.include_router(auth.router)
+    app.include_router(summary.router)
+    app.include_router(claims.router)
+    app.include_router(decisions.router)
+    app.include_router(portfolio.router)
+    app.include_router(powerbi.router)
+    app.include_router(vhs.router)
+    app.include_router(workflow.router)
 
     return app
 
@@ -49,5 +71,6 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    import uvicorn
 
+    uvicorn.run(app, host="127.0.0.1", port=5000)

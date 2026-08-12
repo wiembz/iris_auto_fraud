@@ -1,0 +1,67 @@
+<section class="dashboard-card recent-claims" aria-labelledby="recent-claims-title">
+  <header class="dashboard-card__head">
+    <div class="dashboard-card__heading">
+      <h2 id="recent-claims-title">
+        {{ title }}
+        @if (alertCount !== null && alertCount > 0) {
+          <span class="dashboard-card__alert-badge">{{ alertCount.toLocaleString('fr-FR') }}</span>
+        }
+      </h2>
+      <p>{{ subtitle }}</p>
+    </div>
+    <div class="dashboard-card__actions">
+      <a class="dashboard-card__link" routerLink="/app/claims">Ouvrir la file de travail</a>
+      <button
+        type="button"
+        class="dashboard-card__toggle"
+        [class.dashboard-card__toggle--collapsed]="collapsed()"
+        [attr.aria-expanded]="!collapsed()"
+        (click)="toggleCollapsed()"
+      >
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  @if (!collapsed()) {
+    @if (claims.length === 0) {
+      <div class="dashboard-empty">Aucun dossier prioritaire a afficher pour le moment.</div>
+    } @else {
+      <div class="priority-list">
+        <div class="priority-row priority-row--head" aria-hidden="true">
+          <span>Dossier</span>
+          <span>Score</span>
+          <span>Motif principal</span>
+          <span>Confiance</span>
+          <span></span>
+        </div>
+        @for (claim of claims; track claim.claim_sk) {
+          <a class="priority-row" [routerLink]="['/app/claims', claimRoute(claim)]">
+            <span class="priority-row__id">
+              <strong>{{ claim.claim_business_id ?? '#' + claim.claim_sk }}</strong>
+              <small class="priority-row__level" [attr.data-tone]="toneFor(claim.attention_level)">
+                {{ claim.attention_level }}
+              </small>
+            </span>
+            <span class="priority-row__score">{{ claim.attention_score }}</span>
+            <span class="priority-row__reason">
+              <span class="priority-row__reason-main">{{ mainReason(claim) }}</span>
+              @if (extraReasonsCount(claim) > 0) {
+                <small>+{{ extraReasonsCount(claim) }} autre(s) signal(aux)</small>
+              }
+            </span>
+            <span class="priority-row__confidence">{{ confidenceLabel(claim.confidence_level) }}</span>
+            <span class="priority-row__action">
+              <span>Ouvrir</span>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </span>
+          </a>
+        }
+      </div>
+    }
+  }
+</section>

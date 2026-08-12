@@ -1,0 +1,1055 @@
+﻿<div class="claim-review">
+  <div class="claim-review__topbar">
+    <a class="claim-review__back" routerLink="/app/claims">&#8592; Retour a la file de travail</a>
+    @if (claim()) {
+      <button type="button" class="iris-button iris-button--ghost claim-review__print" (click)="printDossier()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 6 2 18 2 18 9" />
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+          <rect x="6" y="14" width="12" height="8" />
+        </svg>
+        Imprimer / PDF
+      </button>
+    }
+  </div>
+
+  @if (showReturnToWorkClaim()) {
+    <aside class="claim-review__return-context" aria-label="Retour au dossier en cours">
+      <span>Consultation d'un dossier lié</span>
+      <a [routerLink]="['/app/claims', returnToClaimSk()]">Revenir au dossier en cours de traitement</a>
+    </aside>
+  }
+
+  @if (loading()) {
+    <section class="claim-review__loading" aria-label="Chargement du dossier">
+      <span></span><span></span><span></span>
+    </section>
+  } @else if (errorMessage()) {
+    <section class="iris-card claim-review__error">
+      <strong>Dossier indisponible</strong>
+      <p>{{ errorMessage() }}</p>
+      <a class="iris-button iris-button--ghost" routerLink="/app/claims">Revenir a la file de travail</a>
+    </section>
+  } @else if (claim(); as c) {
+    <header class="claim-review__hero iris-card" [attr.data-tone]="scoreTone()">
+      <div class="claim-review__gauge" role="img" [attr.aria-label]="'Score attention ' + c.attention_score + ' sur 100'">
+        <svg viewBox="0 0 120 120" width="76" height="76">
+          <circle class="gauge-track" cx="60" cy="60" r="54" />
+          <circle
+            class="gauge-value"
+            cx="60" cy="60" r="54"
+            [style.strokeDashoffset.px]="scoreGaugeDashOffset()"
+          />
+        </svg>
+        <div class="claim-review__gauge-label">
+          <b>{{ c.attention_score }}</b>
+          <small>/ 100</small>
+        </div>
+      </div>
+
+      <div class="claim-review__identity">
+        <p class="iris-eyebrow">Revue dossier</p>
+        <h1>{{ c.claim_business_id ?? c.numero_sinistre ?? 'Dossier ' + c.claim_sk }}</h1>
+        <div class="claim-review__badge-row">
+          <app-attention-badge [label]="c.attention_level" />
+          <app-attention-badge [label]="confidenceLabel(c.confidence_level)" variant="confidence" />
+          @if (c.confidence_explanation) {
+            <span class="claim-review__confidence-exp">{{ c.confidence_explanation }}</span>
+          }
+        </div>
+        <p class="claim-review__reasons">
+          @if (c.main_reason_1) { <span>{{ c.main_reason_1 }}</span> }
+          @if (c.main_reason_2) { <span>{{ c.main_reason_2 }}</span> }
+          @if (c.main_reason_3) { <span>{{ c.main_reason_3 }}</span> }
+        </p>
+      </div>
+    </header>
+
+    <div class="claim-review__grid">
+      <div class="claim-review__main">
+        <section class="iris-card claim-review__section" aria-label="Raisons d attention">
+          <h2>Pourquoi ce dossier attire l attention</h2>
+          <p class="claim-review__hint">
+            Chaque element ci-dessous contribue au score. Cliquez sur un element pour voir
+            les chiffres exacts qui le justifient. Aucun element ne conclut a lui seul.
+          </p>
+          @if (signalGroups().length === 0) {
+            <p class="claim-review__empty">Aucun signal particulier n a ete releve sur ce dossier.</p>
+          }
+          @for (group of signalGroups(); track group.family) {
+            <article class="signal-group">
+              <header>
+                <strong>{{ group.familyLabel }}</strong>
+                <span class="signal-group__points">{{ group.totalPoints }} pts</span>
+              </header>
+              <ul>
+                @for (item of group.signals; track item.key) {
+                  <li [attr.data-severity]="item.tone" [attr.data-expanded]="isSignalExpanded(item.key)">
+                    <button
+                      type="button"
+                      class="signal-row__trigger"
+                      [attr.aria-expanded]="isSignalExpanded(item.key)"
+                      (click)="toggleSignal(item.key)"
+                    >
+                      <span class="signal-row__bar-track">
+                        <span class="signal-row__bar-fill" [style.width.%]="item.pointsShare"></span>
+                      </span>
+                      <span class="signal-row__label">{{ item.label }}</span>
+                      <span class="signal-row__points">+{{ item.points }}</span>
+                      <svg class="signal-row__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
+                    @if (isSignalExpanded(item.key)) {
+                      <div class="signal-row__panel">
+                        @if (item.explanation) {
+                          <p class="signal-row__explanation">{{ item.explanation }}</p>
+                        }
+                        @if (item.details.length > 0) {
+                          <div class="signal-row__details">
+                            <span class="signal-row__details-title">Details fiables</span>
+                            <dl>
+                              @for (detail of item.details; track detail.label) {
+                                <div>
+                                  <dt>{{ detail.label }}</dt>
+                                  <dd>{{ detail.value }}</dd>
+                                </div>
+                              }
+                            </dl>
+                          </div>
+                        }
+                      </div>
+                    }
+                  </li>
+                }
+              </ul>
+            </article>
+          }
+        </section>
+
+        <section class="iris-card claim-review__section claim-review__360" aria-label="Vue 360">
+          <h2>Vue 360° métier</h2>
+          <p class="claim-review__hint">
+            Un aperçu global du contexte de ce dossier pour faciliter l'investigation.
+          </p>
+          <div class="cards-360">
+            <!-- Client -->
+            <article class="card-360">
+              <header>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <h3>Client</h3>
+              </header>
+              <ul>
+                <li><span>Nature / âge</span> <strong>{{ client360().anciennete }}</strong></li>
+                <li><span>Identifiant client</span> <strong>{{ client360().contratsActifs }}</strong></li>
+                <li><span>Sinistres (24m)</span> <strong>{{ client360().sinistres24m }}</strong></li>
+                <li><span>Profil déclaré</span> <strong>{{ client360().dernierSinistre }}</strong></li>
+              </ul>
+            </article>
+
+            <!-- Véhicule -->
+            <article class="card-360">
+              <header>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="8" rx="2" ry="2"/><path d="M3 11l2-5h14l2 5"/><circle cx="7" cy="19" r="1.5"/><circle cx="17" cy="19" r="1.5"/></svg>
+                <h3>Véhicule</h3>
+              </header>
+              <ul>
+                <li><span>Immatriculation</span> <strong>{{ vehicule360().marqueModele }}</strong></li>
+                <li><span>Grade sécurité VHS</span> <strong>{{ vehicule360().annee }}</strong></li>
+                <li><span>Kilométrage</span> <strong>{{ vehicule360().kilometrage }}</strong></li>
+                <li><span>VHS</span> <strong>{{ vehicule360().vhs }}</strong></li>
+              </ul>
+            </article>
+
+            <!-- Conducteur -->
+            <article class="card-360">
+              <header>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 9.36l-7.1 7.1a1 1 0 0 1-1.4 0l-2.8-2.8a1 1 0 0 1 0-1.4l7.1-7.1a6 6 0 0 1 9.36-7.94z"/></svg>
+                <h3>Conducteur</h3>
+              </header>
+              <ul>
+                <li><span>Identité</span> <strong>{{ conducteur360().sinistres }}</strong></li>
+                <li><span>Permis</span> <strong>{{ conducteur360().retraitPermis }}</strong></li>
+              </ul>
+            </article>
+
+            <!-- Contrat -->
+            <article class="card-360">
+              <header>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                <h3>Contrat</h3>
+              </header>
+              <ul>
+                <li><span>Statut</span> <strong>{{ contrat360().type }}</strong></li>
+                <li>
+                  <span>Début du contrat</span>
+                  <strong>{{ (contrat360().dateDebutEffet ?? null) ? (contrat360().dateDebutEffet | date: 'dd/MM/yyyy') : (contrat360().depuis ?? '—') }}</strong>
+                </li>
+                <li>
+                  <span>Fin du contrat</span>
+                  <strong>{{ (contrat360().dateFinEffet ?? contrat360().dateFin) ? ((contrat360().dateFinEffet ?? contrat360().dateFin) | date: 'dd/MM/yyyy') : 'Non renseignée' }}</strong>
+                </li>
+                <li><span>Numéro de contrat</span> <strong>{{ contrat360().prime }}</strong></li>
+                <li [attr.data-tone]="contrat360().isValidAtClaimDate === false ? 'high' : contrat360().isValidAtClaimDate === true ? 'ok' : 'unknown'">
+                  <span>Validité à la date du sinistre</span> <strong>{{ contrat360().validiteLabel }}</strong>
+                </li>
+              </ul>
+            </article>
+
+            <!-- Tiers -->
+            <article class="card-360">
+              <header>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <h3>Tiers</h3>
+              </header>
+              <ul>
+                <li><span>Identité</span> <strong>{{ tiers360().compagnie }}</strong></li>
+                <li><span>Immatriculation</span> <strong>{{ tiers360().garage }}</strong></li>
+                <li><span>Contrat tiers</span> <strong>{{ tiers360().expert }}</strong></li>
+              </ul>
+            </article>
+
+            <!-- Documents -->
+            <article class="card-360 card-360--docs">
+              <header>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                <h3>Documents</h3>
+              </header>
+              <ul>
+                @for (doc of documents360(); track doc.type) {
+                  <li [attr.data-status]="doc.status">
+                    <span>{{ doc.type }}</span>
+                    <small>{{ doc.label }}</small>
+                  </li>
+                }
+              </ul>
+            </article>
+            
+            <!-- Géographie -->
+            <article class="card-360">
+              <header>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                <h3>Géographie</h3>
+              </header>
+              <ul>
+                <li><span>Lieu</span> <strong>{{ geographie360().lieu }}</strong></li>
+                <li><span>Région</span> <strong>{{ geographie360().distanceDomicile }}</strong></li>
+                <li><span>Pays</span> <strong>{{ geographie360().zoneSinistralite }}</strong></li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        @if (sameSinistreGuarantees().length > 1 || clientHistory24m().length > 0) {
+          <section class="iris-card claim-review__section claim-review__evidence" aria-label="Preuves et dossiers lies">
+            <h2>Preuves et dossiers liés</h2>
+            <p class="claim-review__hint">
+              Les compteurs affichés sont rattachés aux lignes sources disponibles dans le mart. Le gestionnaire peut vérifier les garanties du même sinistre et l'historique client utilisé par IRIS.
+            </p>
+
+            <div class="evidence-grid">
+              @if (sameSinistreGuarantees().length > 1) {
+                <article class="evidence-card">
+                  <header>
+                    <h3>Même sinistre, garanties liées</h3>
+                    <span>{{ sameSinistreGuarantees().length }} garantie(s)</span>
+                  </header>
+                  <ul>
+                    @for (item of sameSinistreGuarantees(); track item.claim_sk) {
+                      <li [class.is-current]="item.claim_sk === claim()?.claim_sk">
+                        <a [routerLink]="['/app/claims', item.claim_sk]" [queryParams]="relatedClaimQueryParams()">
+                          <strong>{{ relatedClaimLabel(item) }}</strong>
+                          <small>
+                            {{ item.claim_date ? (item.claim_date | date:'dd/MM/yyyy') : 'Date inconnue' }} ·
+                            {{ relatedClaimAmount(item) }}
+                            @if (item.attention_score !== null && item.attention_score !== undefined) {
+                              · score {{ item.attention_score }}/100
+                            }
+                          </small>
+                        </a>
+                      </li>
+                    }
+                  </ul>
+                </article>
+              }
+
+              <article class="evidence-card">
+                <header>
+                  <h3>Preuve historique client</h3>
+                  <span>{{ clientHistory12m().length }} / {{ clientHistory24m().length }}</span>
+                </header>
+                <p class="evidence-card__summary">
+                  Compteur dossier : {{ claim()?.client_claim_count_12m ?? 0 }} sinistre(s) sur 12 mois,
+                  {{ claim()?.client_claim_count_24m ?? 0 }} sur 24 mois.
+                </p>
+                @if (clientHistory24m().length > 0) {
+                  <ul>
+                    @for (item of clientHistory24m(); track item.claim_sk) {
+                      <li>
+                        <a [routerLink]="['/app/claims', item.claim_sk]" [queryParams]="relatedClaimQueryParams()">
+                          <strong>{{ relatedClaimLabel(item) }}</strong>
+                          <small>
+                            {{ item.claim_date ? (item.claim_date | date:'dd/MM/yyyy') : 'Date inconnue' }} ·
+                            {{ relatedClaimAmount(item) }}
+                          </small>
+                        </a>
+                      </li>
+                    }
+                  </ul>
+                } @else {
+                  <p class="claim-review__empty">Aucune ligne historique détaillée disponible pour ce client dans la fenêtre 24 mois.</p>
+                }
+              </article>
+            </div>
+          </section>
+        }
+        <section class="iris-card claim-review__section" aria-label="Chronologie">
+          <h2>Chronologie du dossier</h2>
+          <p class="claim-review__hint">
+            Les délais entre étapes peuvent révéler un contexte utile a la decision.
+          </p>
+          @if (timelineNodes().length === 0) {
+            <p class="claim-review__empty">Aucun evenement date n est disponible pour ce dossier.</p>
+          } @else {
+            <ol class="timeline">
+              @for (node of timelineNodes(); track $index) {
+                @if (node.gapFromPrevious; as gap) {
+                  <li class="timeline__gap" [attr.data-tone]="gap.tone">
+                    <span class="timeline__gap-line"></span>
+                    <span class="timeline__gap-label">
+                      {{ gap.label }}
+                      @if (gap.tone === 'alert') { <b>· delai court avant sinistre</b> }
+                    </span>
+                  </li>
+                }
+                <li class="timeline__event" [attr.data-icon]="node.icon">
+                  <span class="timeline__dot"></span>
+                  <span class="timeline__date">{{ node.event.event_date | date: 'dd/MM/yyyy' }}</span>
+                  <div class="timeline__body">
+                    <strong>{{ node.event.event_type }}</strong>
+                    @if (node.event.description) { <p>{{ node.event.description }}</p> }
+                    @if (node.event.business_explanation) { <p class="timeline__note">{{ node.event.business_explanation }}</p> }
+                  </div>
+                </li>
+              }
+            </ol>
+          }
+        </section>
+      </div>
+
+      <aside class="claim-review__rail">
+        <section class="iris-card claim-review__section" aria-label="L essentiel">
+          <h2>L essentiel</h2>
+          <dl class="fact-list">
+            <div>
+              <dt>Montant du sinistre</dt>
+              <dd>
+                @if (amountOf(c.claim_amount); as amount) {
+                  {{ amount | number: '1.0-0' }} TND
+                } @else { — }
+              </dd>
+            </div>
+            <div>
+              <dt>Garantie</dt>
+              <dd>{{ displayText(c.code_garantie) }}</dd>
+            </div>
+            <div>
+              <dt>Survenance</dt>
+              <dd>{{ c.claim_date ? (c.claim_date | date: 'dd/MM/yyyy') : '—' }}</dd>
+            </div>
+            <div>
+              <dt>Declaration</dt>
+              <dd>{{ c.declaration_date ? (c.declaration_date | date: 'dd/MM/yyyy') : '—' }}</dd>
+            </div>
+            <div>
+              <dt>Delai de declaration</dt>
+              <dd>
+                @if (c.days_claim_to_declaration !== null && c.days_claim_to_declaration !== undefined) {
+                  {{ c.days_claim_to_declaration }} jours
+                } @else { — }
+              </dd>
+            </div>
+            <div>
+              <dt>Sinistres du client (12 mois)</dt>
+              <dd>{{ displayText(c.client_claim_count_12m) }}</dd>
+            </div>
+            <div>
+              <dt>Sinistres du client (24 mois)</dt>
+              <dd>{{ displayText(c.client_claim_count_24m) }}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="iris-card claim-review__section" aria-label="Situation financiere">
+          <h2>Situation financière</h2>
+          <dl class="fact-list">
+            <div>
+              <dt>Montant déclaré</dt>
+              <dd>
+                @if (amountOf(c.claim_amount); as amount) {
+                  {{ amount | number: '1.0-0' }} TND
+                } @else { — }
+              </dd>
+            </div>
+            <div>
+              <dt>Réserve</dt>
+              <dd>
+                @if (amountOf(c.reserve_amount) !== null) {
+                  {{ amountOf(c.reserve_amount) | number: '1.0-0' }} TND
+                } @else { — }
+              </dd>
+            </div>
+            <div>
+              <dt>Montant payé</dt>
+              <dd>
+                @if (amountOf(c.paid_amount) !== null) {
+                  {{ amountOf(c.paid_amount) | number: '1.0-0' }} TND
+                } @else { — }
+              </dd>
+            </div>
+            <div>
+              <dt>Franchise</dt>
+              <dd>
+                @if (amountOf(c.franchise_amount) !== null) {
+                  {{ amountOf(c.franchise_amount) | number: '1.0-0' }} TND
+                } @else { Non renseignée dans la source }
+              </dd>
+            </div>
+            <div>
+              <dt>Recours</dt>
+              <dd>
+                @if (amountOf(c.recourse_amount) !== null) {
+                  {{ amountOf(c.recourse_amount) | number: '1.0-0' }} TND
+                } @else { — }
+              </dd>
+            </div>
+            <div>
+              <dt>Statut de la garantie</dt>
+              <dd>{{ guaranteeStatusLabel(c.guarantee_status) }}</dd>
+            </div>
+            <div>
+              <dt>État du dossier</dt>
+              <dd>{{ c.is_closed === true ? 'Clôturé' : c.is_closed === false ? 'Ouvert' : '—' }}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="iris-card claim-review__section" aria-label="Vehicule et inspection">
+          <h2>Vehicule</h2>
+          @if (hasVehicleIdentified()) {
+            <dl class="fact-list fact-list--tight">
+              <div>
+                        <dt>Immatriculation</dt>
+                <dd>{{ displayText(vehicle()?.immatriculation) }}</dd>
+              </div>
+            </dl>
+
+            @if (postInspections().length > 0) {
+              @for (item of postInspections(); track item.inspection_sk ?? item.inspection_date) {
+                <article class="inspection-card inspection-card--clickable" [attr.data-tone]="inspectionDelayTone(item)" (click)="openVhsModal(item)" title="Cliquer pour voir la fiche d'inspection complète STAFIM">
+                  <header>
+                    <strong>Inspection avant sinistre</strong>
+                    <span class="inspection-card__delay">
+                      {{ item.days_inspection_to_claim }} jours avant le sinistre
+                    </span>
+                  </header>
+                  <p class="inspection-card__meta">
+                    {{ item.inspection_date | date: 'dd/MM/yyyy' }}
+                    @if (item.delay_bucket) { · {{ delayBucketLabel(item.delay_bucket) }} }
+                  </p>
+                  @if (item.defective_zones.length > 0) {
+                    <div class="inspection-card__zones">
+                      <span>Zones relevees lors de l inspection</span>
+                      <ul>
+                        @for (zone of item.defective_zones; track zone) {
+                          <li>{{ zone }}</li>
+                        }
+                      </ul>
+                    </div>
+                  }
+                  @if (item.checkpoint_labels.length > 0) {
+                    <ul class="inspection-card__checkpoints">
+                      @for (label of item.checkpoint_labels; track label) {
+                        <li>{{ label }}</li>
+                      }
+                    </ul>
+                  }
+                  @if (item.signal_count > 1) {
+                    <p class="inspection-card__merge-note">
+                      {{ item.signal_count }} signaux techniques regroupes dans une seule inspection STAFIM.
+                    </p>
+                  }
+                  @if (item.business_explanation) {
+                    <p class="claim-review__hint">{{ item.business_explanation }}</p>
+                  }
+                </article>
+              }
+            } @else {
+              <p class="claim-review__empty">Aucune inspection récente n est rattachee a ce vehicule.</p>
+            }
+          } @else {
+            <p class="claim-review__empty">
+              Le véhicule n a pas pu etre identifié dans ce dossier. C est une information
+              en soi : un dossier sans vehicule identifiable merite une lecture attentive.
+            </p>
+          }
+        </section>
+
+        @if (mlAnomaly(); as ml) {
+          <section class="iris-card claim-review__section" aria-label="Signal statistique">
+            <h2>Signal statistique</h2>
+            <p class="claim-review__hint">
+              Ce dossier ressort comme atypique par rapport aux dossiers comparables.
+              C est un eclairage complementaire : il ne remplace pas votre jugement.
+            </p>
+            @if (mlPercentileText(); as percentileText) {
+              <div class="ml-gauge">
+                <span class="ml-gauge__track">
+                  <span class="ml-gauge__fill" [style.width.%]="mlGaugeShare()"></span>
+                </span>
+                <p class="claim-review__ml-headline">{{ percentileText }}</p>
+              </div>
+            }
+            @if (mlTopFactors().length > 0) {
+              <ul class="factor-list">
+                @for (factor of mlTopFactors(); track factor.label) {
+                  <li>
+                    <strong>{{ factor.label }}</strong>
+                    @if (factor.reading) { <span>{{ factor.reading }}</span> }
+                  </li>
+                }
+              </ul>
+            }
+          </section>
+        }
+      </aside>
+    </div>
+
+    <section class="iris-card claim-review__checklist" aria-label="Actions recommandées">
+      <h2>Ce qu'il faut vérifier</h2>
+      <p class="claim-review__hint">
+        Cochez les vérifications réalisées. Votre progression est conservée pour ce dossier et ce profil sur cet appareil.
+      </p>
+      <div class="checklist">
+        @for (action of recommendedActions(); track action.id) {
+          <label class="checklist__item" [class.is-done]="checkedActions().has(action.id)">
+            <input 
+              type="checkbox" 
+              [checked]="checkedActions().has(action.id)"
+              (change)="toggleChecklistItem(action.id)"
+            >
+            <span class="checklist__box"></span>
+            <span class="checklist__label">{{ action.label }}</span>
+          </label>
+        }
+      </div>
+    </section>
+
+    <section class="iris-card claim-review__workflow" aria-label="Suivi du dossier">
+      <div class="workflow-head">
+        <div>
+          <h2>Suivi du dossier</h2>
+          <p class="claim-review__hint">
+            Statut operationnel, affectation et taches de ce dossier. Chaque changement est
+            trace (aucune notification automatique n est envoyee).
+          </p>
+        </div>
+        <div class="workflow-current">
+          <span>Statut actuel</span>
+          <strong [attr.data-status]="workflowState()?.status">
+            {{ workflowStatusLabel(workflowState()?.status) }}
+          </strong>
+          @if (workflowState()?.assignee_email; as assignee) {
+            <small>Affecte a {{ assignee }}</small>
+          } @else {
+            <small>Non affecte</small>
+          }
+        </div>
+      </div>
+
+      <div class="workflow-grid">
+        <div class="workflow-block">
+          <span class="workflow-block__label">Changer le statut</span>
+          <select class="workflow-select" [value]="selectedWorkflowStatus()" (change)="onWorkflowStatusSelect($event)">
+            <option value="" disabled>Choisir un statut...</option>
+            @for (status of workflowStatusOrder; track status) {
+              <option [value]="status">{{ workflowStatusLabel(status) }}</option>
+            }
+          </select>
+          <textarea
+            class="workflow-textarea"
+            rows="2"
+            [value]="workflowStatusComment()"
+            (input)="onWorkflowStatusCommentInput($event)"
+            placeholder="Commentaire (optionnel)..."
+          ></textarea>
+          @if (workflowStatusError(); as err) {
+            <p class="workflow-error">{{ err }}</p>
+          }
+          @if (workflowStatusSuccess()) {
+            <p class="workflow-success">Statut mis a jour.</p>
+          }
+          <button
+            type="button"
+            class="iris-button iris-button--primary"
+            [disabled]="!selectedWorkflowStatus() || submittingWorkflowStatus()"
+            (click)="submitWorkflowStatus()"
+          >
+            @if (submittingWorkflowStatus()) { Enregistrement... } @else { Mettre a jour le statut }
+          </button>
+        </div>
+
+        <div class="workflow-block">
+          <span class="workflow-block__label">Affecter a un gestionnaire</span>
+          <input
+            type="email"
+            class="workflow-input"
+            [value]="assigneeEmailInput()"
+            (input)="onAssigneeEmailInput($event)"
+            placeholder="gestionnaire@bna.tn (vide pour desaffecter)"
+          />
+          @if (workflowAssignmentError(); as err) {
+            <p class="workflow-error">{{ err }}</p>
+          }
+          @if (workflowAssignmentSuccess()) {
+            <p class="workflow-success">Affectation mise a jour.</p>
+          }
+          <button
+            type="button"
+            class="iris-button iris-button--primary"
+            [disabled]="submittingWorkflowAssignment()"
+            (click)="submitWorkflowAssignment()"
+          >
+            @if (submittingWorkflowAssignment()) { Enregistrement... } @else { Enregistrer l affectation }
+          </button>
+        </div>
+      </div>
+
+      <div class="workflow-tasks">
+        <span class="workflow-block__label">Taches / relances</span>
+        <div class="workflow-task-add">
+          <input
+            type="text"
+            class="workflow-input"
+            [value]="newTaskLabel()"
+            (input)="onNewTaskLabelInput($event)"
+            placeholder="Nouvelle tache (ex : relancer l assure pour le constat)..."
+          />
+          <button
+            type="button"
+            class="iris-button iris-button--soft"
+            [disabled]="!newTaskLabel().trim() || submittingWorkflowTask()"
+            (click)="submitNewTask()"
+          >
+            Ajouter
+          </button>
+        </div>
+        @if (workflowTaskError(); as err) {
+          <p class="workflow-error">{{ err }}</p>
+        }
+
+        @if (workflowState()?.open_tasks?.length) {
+          <ul class="workflow-task-list">
+            @for (task of workflowState()!.open_tasks; track task.task_ref_id) {
+              <li>
+                <span>{{ task.task_label }}</span>
+                <small>{{ task.created_by }} · {{ task.created_at | date: 'dd/MM/yyyy HH:mm' }}</small>
+                <button
+                  type="button"
+                  class="workflow-task-complete"
+                  [disabled]="completingTaskId() === task.task_ref_id"
+                  (click)="completeWorkflowTask(task.task_ref_id)"
+                >
+                  @if (completingTaskId() === task.task_ref_id) { ... } @else { Terminer }
+                </button>
+              </li>
+            }
+          </ul>
+        } @else {
+          <p class="workflow-tasks-empty">Aucune tache en cours.</p>
+        }
+      </div>
+
+      @if (workflowHistory().length > 0) {
+        <details class="workflow-history">
+          <summary>Historique du suivi ({{ workflowHistory().length }})</summary>
+          <ul>
+            @for (item of workflowHistory(); track item.event_id) {
+              <li>
+                <span class="workflow-history__badge" [attr.data-type]="item.event_type">
+                  {{ workflowEventLabel(item) }}
+                </span>
+                <span class="decision-history__meta">
+                  {{ item.actor_email }} · {{ item.created_at | date: 'dd/MM/yyyy HH:mm' }}
+                </span>
+                @if (item.comment) { <p>{{ item.comment }}</p> }
+              </li>
+            }
+          </ul>
+        </details>
+      }
+    </section>
+
+    <section class="iris-card claim-review__decision" aria-label="Votre decision">
+      <div class="decision-head">
+        <div>
+          <h2>Votre decision</h2>
+          <p class="claim-review__hint">
+            @if (isCorrection()) {
+              Une decision existe deja pour ce dossier. Choisir une nouvelle option ci-dessous
+              enregistre une correction : l ancienne decision est conservee dans l historique,
+              jamais modifiee ni supprimee.
+            } @else {
+              Cette decision reste corrigeable a tout moment : chaque choix est enregistre et
+              l historique complet est conserve, en cas de faute de frappe ou de reexamen.
+            }
+          </p>
+        </div>
+        @if (latestDecision(); as ld) {
+          <div class="decision-current" [attr.data-decision]="ld.decision">
+            <span>Statut actuel</span>
+            <strong>{{ decisionLabel(ld.decision) }}</strong>
+            <small>{{ ld.reviewer_email }} · {{ ld.decided_at | date: 'dd/MM/yyyy HH:mm' }}</small>
+          </div>
+        }
+      </div>
+
+      <div class="decision-options" role="radiogroup" aria-label="Choix de decision">
+        <button
+          type="button"
+          class="decision-option"
+          data-value="SUSPICION_CONFIRMED"
+          [class.is-selected]="selectedDecision() === 'SUSPICION_CONFIRMED'"
+          (click)="selectDecision('SUSPICION_CONFIRMED')"
+        >
+          <strong>Dossier fraude</strong>
+          <span>Les elements reunis confirment une fraude ; le dossier est transmis a l equipe fraude pour suite a donner.</span>
+        </button>
+        <button
+          type="button"
+          class="decision-option"
+          data-value="CONFORME"
+          [class.is-selected]="selectedDecision() === 'CONFORME'"
+          (click)="selectDecision('CONFORME')"
+        >
+          <strong>Dossier non fraude</strong>
+          <span>Aucune anomalie retenue apres verification.</span>
+        </button>
+        <button
+          type="button"
+          class="decision-option"
+          data-value="A_COMPLETER"
+          [class.is-selected]="selectedDecision() === 'A_COMPLETER'"
+          (click)="selectDecision('A_COMPLETER')"
+        >
+          <strong>Dossier incomplet</strong>
+          <span>Des elements manquent pour trancher ce dossier.</span>
+        </button>
+      </div>
+
+      @if (selectedDecision(); as sel) {
+        <p class="decision-preview" [attr.data-redundant]="isRedundantSelection()">
+          @if (isRedundantSelection()) {
+            Vous confirmez a nouveau la decision actuelle ({{ decisionLabel(sel) }}).
+          } @else if (isCorrection()) {
+            Cette correction remplacera « {{ decisionLabel(latestDecision()!.decision) }} » par
+            « {{ decisionLabel(sel) }} ».
+          }
+        </p>
+      }
+
+      <label class="decision-comment">
+        <span>Commentaire{{ isCorrection() ? ' — motif de la correction conseille' : ' (optionnel)' }}</span>
+        <textarea
+          rows="3"
+          [value]="commentText()"
+          (input)="onCommentInput($event)"
+          placeholder="Precisez votre analyse pour la tracabilite..."
+        ></textarea>
+      </label>
+
+      @if (decisionError(); as err) {
+        <p class="decision-error">{{ err }}</p>
+      }
+      @if (decisionSuccess()) {
+        <p class="decision-success">Decision enregistree.</p>
+      }
+
+      <div class="decision-actions">
+        <button
+          type="button"
+          class="iris-button iris-button--primary"
+          [disabled]="!selectedDecision() || submittingDecision()"
+          (click)="submitDecision()"
+        >
+          @if (submittingDecision()) {
+            Enregistrement...
+          } @else if (isCorrection()) {
+            Corriger la decision
+          } @else {
+            Enregistrer ma decision
+          }
+        </button>
+      </div>
+
+      @if (decisionHistory().length > 0) {
+        <details class="decision-history">
+          <summary>Historique des decisions ({{ decisionHistory().length }})</summary>
+          <ul>
+            @for (item of decisionHistory(); track item.decision_id) {
+              <li>
+                <span class="decision-history__badge" [attr.data-decision]="item.decision">
+                  {{ decisionLabel(item.decision) }}
+                </span>
+                <span class="decision-history__meta">
+                  {{ item.reviewer_email }} · {{ item.decided_at | date: 'dd/MM/yyyy HH:mm' }}
+                </span>
+                @if (correctionNote(item); as note) {
+                  <p class="decision-history__correction">{{ note }}</p>
+                }
+                @if (item.comment) { <p>{{ item.comment }}</p> }
+              </li>
+            }
+          </ul>
+        </details>
+      }
+    </section>
+  }
+</div>
+
+@if (activeVhsDetail(); as vhs) {
+  <div class="vhs-modal-backdrop" (click)="closeVhsModal()">
+    <div class="vhs-modal-card" (click)="$event.stopPropagation()">
+      <header class="vhs-modal-header">
+        <div>
+          <h2>Fiche d'Inspection STAFIM</h2>
+          <p class="vhs-modal-meta">
+            {{ vhs.immatriculation_norm }} · 
+            {{ vhs.kilometrage ? (roundScore(vhs.kilometrage).toLocaleString('fr-FR') + ' km') : 'Kilométrage inconnu' }} · 
+            {{ inspectionDate(vhs.date_inspection_sk) }}
+          </p>
+        </div>
+        <button type="button" class="vhs-modal-close" (click)="closeVhsModal()" aria-label="Fermer">&times;</button>
+      </header>
+
+      <div class="vhs-modal-body">
+        <div class="vhs-modal-score-row">
+          <div class="vhs-modal-score-box">
+            <span>Score de Santé VHS</span>
+            <strong class="vhs-score-value" [attr.data-tone]="vhsScoreTone(vhs.vhs_final_score)">
+              {{ roundScore(vhs.vhs_final_score) }}<small>/100</small>
+            </strong>
+            <span class="vhs-decision-badge" [attr.data-tone]="vhsScoreTone(vhs.vhs_final_score)">
+              {{ vhs.decision }}
+            </span>
+          </div>
+          <div class="vhs-modal-stats">
+            <div><span>Points contrôlés</span><strong>{{ vhs.nb_checkpoints_scored }}</strong></div>
+            <div><span>En bon état</span><strong>{{ vhs.nb_ok }}</strong></div>
+            <div><span>Usés (simple/fort)</span><strong>{{ vhs.nb_worn }} / {{ vhs.nb_worn_strong }}</strong></div>
+            <div><span>Défaillants</span><strong>{{ vhs.nb_broken }}</strong></div>
+          </div>
+        </div>
+
+        <div class="vhs-modal-meta-grid">
+          <div>
+            <span>Atelier / Concessionnaire</span>
+            <strong>{{ displayText(vhs.nom_agent_inspection) }}</strong>
+          </div>
+          <div>
+            <span>Propriétaire / Téléphone</span>
+            <strong>
+              {{ displayText(vhs.nom_personne_inspection) }}
+              @if (vhs.telephone_personne_inspection) { ({{ vhs.telephone_personne_inspection }}) }
+            </strong>
+          </div>
+          <div>
+            <span>N° Châssis (VIN)</span>
+            <strong class="vhs-monospace">{{ displayText(vhs.vin) }}</strong>
+          </div>
+          <div>
+            <span>N° Commande Travaux</span>
+            <strong>{{ displayText(vhs.numero_commande_travaux) }}</strong>
+          </div>
+          <div>
+            <span>Motorisation (Carburant)</span>
+            <strong>{{ displayText(vhs.motorisation) }}</strong>
+          </div>
+          <div>
+            <span>Heure d'entrée</span>
+            <strong>{{ displayText(vhs.heure_entree) }}</strong>
+          </div>
+        </div>
+
+        @if (vhs.image_links && vhs.image_links.length > 0) {
+          <section class="vhs-modal-photos" aria-label="Photos inspection">
+            <header>
+              <div>
+                <h3>Photos d'inspection</h3>
+                <p>Photos STAFIM affichees depuis IRIS apres import et generation d'apercu.</p>
+              </div>
+              <span>{{ vhs.image_links.length }} photo(s)</span>
+            </header>
+            <div class="vhs-modal-photo-grid">
+              @for (image of vhs.image_links; track image.slot) {
+                <article class="vhs-modal-photo-card" [attr.data-imported]="image.is_imported === true">
+                  @if (inspectionImageUrl(image); as photoUrl) {
+                    @if (inspectionAssetKind(image) === 'image') {
+                      <button type="button" class="vhs-modal-photo-preview" (click)="openInspectionPhoto(image)">
+                        <img [src]="photoUrl" [alt]="inspectionImageLabel(image)" loading="lazy" />
+                      </button>
+                    } @else {
+                      <div class="vhs-modal-photo-missing" aria-hidden="true">Apercu a generer</div>
+                    }
+                  } @else {
+                    <div class="vhs-modal-photo-missing" aria-hidden="true">Photo non integree</div>
+                  }
+                  <div class="vhs-modal-photo-meta">
+                    <strong>{{ inspectionImageLabel(image) }}</strong>
+                    <span>{{ inspectionImageStatusLabel(image) }}</span>
+                    @if (image.file_size_bytes) {
+                      <small>{{ (image.file_size_bytes / 1024) | number:'1.0-0' }} Ko</small>
+                    }
+                  </div>
+                </article>
+              }
+            </div>
+          </section>
+        }
+
+
+        <div class="vhs-modal-details-grid">
+          <!-- Sous-scores -->
+          <div class="vhs-modal-card-sub">
+            <h3>Sous-scores par pilier</h3>
+            <ul class="vhs-modal-sublist">
+              <li>
+                <span>Sécurité (Freinage, pneus, etc.)</span>
+                <strong>{{ vhs.safety_score ?? '—' }}%</strong>
+              </li>
+              <li>
+                <span>Fonctionnel (Moteur, éclairage, etc.)</span>
+                <strong>{{ vhs.functional_score ?? '—' }}%</strong>
+              </li>
+              <li>
+                <span>Carrosserie (Cosmétique)</span>
+                <strong>{{ vhs.cosmetic_score ?? '—' }}%</strong>
+              </li>
+            </ul>
+          </div>
+
+
+
+          <!-- Fiche complete -->
+          <div class="vhs-modal-card-checkpoints">
+            <header class="vhs-checkpoint-head">
+              <div>
+                <h3>Fiche checkpoints complete</h3>
+                <p>Lecture zone par zone des points controles : conforme, anomalie ou point critique.</p>
+              </div>
+              <div class="vhs-checkpoint-filters" role="group" aria-label="Filtrer les checkpoints">
+                @for (filter of inspectionFilters; track filter) {
+                  <button
+                    type="button"
+                    [class.is-active]="inspectionCheckpointFilter() === filter"
+                    (click)="setInspectionCheckpointFilter(filter)"
+                  >
+                    {{ inspectionCheckpointFilterLabel(filter) }}
+                  </button>
+                }
+              </div>
+            </header>
+
+            @if (vhsCheckpointGroups().length > 0) {
+              <div class="vhs-checkpoint-groups">
+                @for (group of vhsCheckpointGroups(); track group.zone) {
+                  <details class="vhs-checkpoint-zone" open>
+                    <summary>
+                      <strong>{{ group.label }}</strong>
+                      <span>{{ group.anomalies }}/{{ group.total }} anomalie(s)</span>
+                      @if (group.critical > 0) { <b>{{ group.critical }} critique(s)</b> }
+                    </summary>
+                    <ul>
+                      @for (checkpoint of group.checkpoints; track checkpoint.checkpoint_code) {
+                        <li [attr.data-tone]="checkpointTone(checkpoint)">
+                          <span class="vhs-checkpoint-status">{{ statusLabel(checkpoint.observed_status) }}</span>
+                          <span class="vhs-checkpoint-label">
+                            {{ checkpoint.checkpoint_libelle }}
+                            @if (checkpoint.systeme_fonctionnel && checkpoint.systeme_fonctionnel !== 'SYS_INDEPENDANT') {
+                              <small class="vhs-modal-system-tag">[{{ checkpoint.systeme_fonctionnel.replace('SYS_', '') }}]</small>
+                            }
+                          </span>
+                          <span class="vhs-checkpoint-value">{{ displayText(checkpoint.valeur_controle) }}</span>
+                          @if (checkpoint.penalty_applied > 0) {
+                            <span class="vhs-checkpoint-penalty">-{{ checkpoint.penalty_applied }} pts</span>
+                          }
+                          @if (checkpoint.is_vital) { <span class="vhs-checkpoint-flag">Vital</span> }
+                          @if (checkpoint.is_immobilizing) { <span class="vhs-checkpoint-flag">Immobilisant</span> }
+                          @if (checkpoint.commentaire_zone) {
+                            <p>{{ checkpoint.commentaire_zone }}</p>
+                          }
+                        </li>
+                      }
+                    </ul>
+                  </details>
+                }
+              </div>
+            } @else {
+              <p class="vhs-modal-empty">Aucun checkpoint ne correspond a ce filtre.</p>
+            }
+          </div>
+
+          <!-- Anomalies -->
+          <div class="vhs-modal-card-anomalies">
+            <h3>Anomalies pénalisantes relevées</h3>
+            @if (vhs.penalties && vhs.penalties.length > 0) {
+              <div class="vhs-modal-penalties">
+                @for (penalty of vhs.penalties; track penalty.checkpoint_code) {
+                  <div class="vhs-modal-penalty-item" [attr.data-critical]="penalty.est_anomalie_critique === true">
+                    <div class="vhs-modal-pen-left">
+                      <strong class="vhs-modal-checkpoint-name">
+                        {{ penalty.checkpoint_libelle }}
+                        @if (penalty.systeme_fonctionnel && penalty.systeme_fonctionnel !== 'SYS_INDEPENDANT') {
+                          <span class="vhs-modal-system-tag">[{{ penalty.systeme_fonctionnel.replace('SYS_', '') }}]</span>
+                        }
+                      </strong>
+                      <span class="vhs-modal-pen-meta">
+                        État : <span class="vhs-modal-status-txt">{{ statusLabel(penalty.observed_status) }}</span> · 
+                        Zone : {{ penalty.zone_controle ?? '—' }}
+                      </span>
+                    </div>
+                    <div class="vhs-modal-pen-right">
+                      @if (penalty.penalty_capped_by_system) {
+                        <del class="vhs-modal-raw-points">-{{ penalty.penalty_raw_checkpoint }}</del>
+                      }
+                      <span class="vhs-modal-applied-points">-{{ penalty.penalty_applied }} pts</span>
+                    </div>
+                  </div>
+                }
+              </div>
+            } @else {
+              <p class="vhs-modal-empty">Aucune anomalie pénalisante constatée lors de l'inspection.</p>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+@if (selectedInspectionPhoto(); as photo) {
+  <div class="inspection-photo-lightbox" role="dialog" aria-modal="true" [attr.aria-label]="photo.label" (click)="closeInspectionPhoto()">
+    <button type="button" class="inspection-photo-lightbox__close" aria-label="Fermer la photo" (click)="closeInspectionPhoto(); $event.stopPropagation()">×</button>
+    <figure class="inspection-photo-lightbox__frame" (click)="$event.stopPropagation()">
+      <img [src]="photo.url" [alt]="photo.label" />
+      <figcaption>{{ photo.label }}</figcaption>
+    </figure>
+  </div>
+}
+
+
+
+
+
+
+
+

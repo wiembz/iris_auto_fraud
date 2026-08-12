@@ -323,7 +323,25 @@ def transform_dim_sinistre(
         if col not in df_best.columns:
             df_best[col] = None
 
-    df_final = df_best[FINAL_COLS].copy()
+    # ── 10. Ligne technique UNKNOWN (sinistre_sk = 0) ────────────────────────
+    # Les facts référencent sinistre_sk = 0 quand le sinistre source est
+    # introuvable. Indicateurs à NON_RENSEIGNE pour rester dans le domaine.
+    unknown_row = pd.DataFrame([{
+        "sinistre_sk":            0,
+        "numero_sinistre":        "UNKNOWN",
+        "cause_sinistre":         None,
+        "libelle_cause_sinistre": None,
+        "code_etat":              None,
+        "indicateur_forcage":     "NON_RENSEIGNE",
+        "cas_ida":                None,
+        "coassur":                "NON_RENSEIGNE",
+        "reassur":                "NON_RENSEIGNE",
+        "indicateur_transaction": "NON_RENSEIGNE",
+        "source_system":          "TECHNICAL",
+        "created_at":             TODAY,
+    }])
+    df_final = pd.concat([unknown_row[FINAL_COLS], df_best[FINAL_COLS]], ignore_index=True)
+    df_final["sinistre_sk"] = df_final["sinistre_sk"].astype("int64")
 
     # ── Métriques ─────────────────────────────────────────────────────────────
     n_loaded = len(df_final)

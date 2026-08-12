@@ -6,6 +6,8 @@ from etl.mart.compute_claim_scoring_features_v1 import (
     compute_amount_features,
     compute_claim_scoring_features,
     compute_client_recurrence,
+    compute_recent_avenant_features,
+    compute_tiers_repeat_features,
     date_key_to_timestamp,
     is_missing_key,
 )
@@ -117,3 +119,175 @@ def test_contract_start_features_join_on_contract_without_future_leakage():
     assert result.loc[0, "contract_start_date_sk"] == 20240101
     assert result.loc[0, "days_contract_start_to_claim"] == 14
     assert not result.loc[0, "claim_before_contract_start_flag"]
+
+
+def test_recent_avenant_flag_only_counts_genuine_amendments_before_claim():
+    df = pd.DataFrame({
+        "contrat_sk": [1, 2, 3],
+        "claim_date": pd.to_datetime(["2024-06-01", "2024-06-01", "2024-06-01"]),
+    })
+    contracts = pd.DataFrame({
+        "contrat_sk": [1, 1, 2, 3],
+        # Contract 1: original subscription (est_avenant=False, ignored) then
+        # a genuine avenant 30 days before the claim -> recent.
+        # Contract 2: a genuine avenant, but it happened AFTER the claim date
+        # (future leakage) -> must not count, no other avenant exists.
+        # Contract 3: no avenant rows at all -> stays NA/False.
+        "est_avenant": [False, True, True, False],
+        "date_derniere_operation_sk": [20230101, 20240502, 20240701, 20230101],
+    })
+
+    result = compute_recent_avenant_features(df, contracts, window_days=90)
+
+    assert result.loc[0, "days_since_last_avenant"] == 30
+    assert result.loc[0, "recent_contract_change_flag"]
+
+    assert pd.isna(result.loc[1, "days_since_last_avenant"])
+    assert not result.loc[1, "recent_contract_change_flag"]
+
+    assert pd.isna(result.loc[2, "days_since_last_avenant"])
+    assert not result.loc[2, "recent_contract_change_flag"]
+
+
+def test_recent_avenant_flag_respects_window_and_wires_through_full_pipeline():
+    claims = pd.DataFrame({
+        "fact_sinistre_sk": [1],
+        "numero_sinistre": ["S1"],
+        "code_garantie": ["G1"],
+        "sinistre_garantie_key": ["S1|G1"],
+        "client_sk": [1],
+        "contrat_sk": [77],
+        "vehicule_sk": [0],
+        "garantie_sk": [3],
+        "conducteur_sk": [0],
+        "tiers_sk": [0],
+        "camtier_sk": [0],
+        "geo_sinistre_sk": [0],
+        "date_survenance_sk": [20240601],
+        "date_declaration_sk": [20240605],
+        "montant_evaluation": [500.0],
+    })
+    contracts = pd.DataFrame({
+        "contrat_sk": [77, 77],
+        "date_debut_contrat_sk": [20200101, 20200101],
+        "est_avenant": [False, True],
+        "date_derniere_operation_sk": [20200101, 20240201],
+    })
+
+    result = compute_claim_scoring_features(claims, contracts, run_id="TEST", as_of_date=date(2024, 6, 10))
+
+    # 121 days between the avenant (2024-02-01) and the claim (2024-06-01):
+    # outside the 90-day "recent" window, so the flag must not fire even
+    # though days_since_last_avenant is populated.
+    assert result.loc[0, "days_since_last_avenant"] == 121
+    assert not result.loc[0, "recent_contract_change_flag"]
+
+
+def test_rapid_declaration_after_subscription_uses_declaration_not_claim_date():
+    claims = pd.DataFrame({
+        "fact_sinistre_sk": [1, 2],
+        "numero_sinistre": ["S1", "S2"],
+        "code_garantie": ["G1", "G1"],
+        "sinistre_garantie_key": ["S1|G1", "S2|G1"],
+        "client_sk": [1, 1],
+        "contrat_sk": [77, 78],
+        "vehicule_sk": [0, 0],
+        "garantie_sk": [3, 3],
+        "conducteur_sk": [0, 0],
+        "tiers_sk": [0, 0],
+        "camtier_sk": [0, 0],
+        "geo_sinistre_sk": [0, 0],
+        # Claim 1: declaration lands 20 days after subscription -> rapid.
+        # Claim 2: declaration lands 121 days after subscription -> not rapid.
+        "date_survenance_sk": [20240115, 20240301],
+        "date_declaration_sk": [20240121, 20240501],
+        "montant_evaluation": [500.0, 500.0],
+    })
+    contracts = pd.DataFrame({
+        "contrat_sk": [77, 78],
+        "date_debut_contrat_sk": [20240101, 20240101],
+    })
+
+    result = compute_claim_scoring_features(claims, contracts, run_id="TEST", as_of_date=date(2024, 6, 1))
+    by_claim = result.set_index("claim_sk")
+
+    assert by_claim.loc[1, "days_contract_start_to_declaration"] == 20
+    assert by_claim.loc[1, "rapid_declaration_after_subscription_flag"]
+
+    assert by_claim.loc[2, "days_contract_start_to_declaration"] == 121
+    assert not by_claim.loc[2, "rapid_declaration_after_subscription_flag"]
+
+
+def test_tiers_identity_incomplete_flag_only_fires_when_a_tiers_is_linked():
+    claims = pd.DataFrame({
+        "fact_sinistre_sk": [1, 2, 3],
+        "numero_sinistre": ["S1", "S2", "S3"],
+        "code_garantie": ["G1", "G1", "G1"],
+        "sinistre_garantie_key": ["S1|G1", "S2|G1", "S3|G1"],
+        "client_sk": [1, 1, 1],
+        "contrat_sk": [77, 77, 77],
+        "vehicule_sk": [0, 0, 0],
+        "garantie_sk": [3, 3, 3],
+        "conducteur_sk": [0, 0, 0],
+        # Claim 1: tiers linked, but its nom_tiers is blank -> incomplete.
+        # Claim 2: tiers linked with a real name -> complete, no flag.
+        # Claim 3: no tiers linked at all (tiers_sk=0) -> not applicable.
+        "tiers_sk": [501, 502, 0],
+        "camtier_sk": [0, 0, 0],
+        "geo_sinistre_sk": [0, 0, 0],
+        "date_survenance_sk": [20240115, 20240115, 20240115],
+        "date_declaration_sk": [20240116, 20240116, 20240116],
+        "montant_evaluation": [500.0, 500.0, 500.0],
+    })
+    tiers = pd.DataFrame({
+        "tiers_sk": [501, 502],
+        "nom_tiers": ["", "Dupont"],
+    })
+
+    result = compute_claim_scoring_features(claims, df_tiers=tiers, run_id="TEST", as_of_date=date(2024, 2, 1))
+    by_claim = result.set_index("claim_sk")
+
+    assert by_claim.loc[1, "tiers_identity_incomplete_flag"]
+    assert not by_claim.loc[2, "tiers_identity_incomplete_flag"]
+    assert not by_claim.loc[3, "tiers_identity_incomplete_flag"]
+
+
+def test_tiers_repeat_features_count_distinct_clients_and_pair_reuse():
+    df = pd.DataFrame({
+        "claim_sk": [1, 2, 3, 4, 5, 6],
+        # Tiers 501 ("Dupont") is named by clients 10 and 11 -> 2 distinct
+        # clients. Client 10 names it in TWO DIFFERENT accidents (claims 1
+        # and 2, distinct numero_sinistre) -> pair genuinely reused.
+        # Claim 6 shares claim 1's numero_sinistre (same accident split
+        # across two garantie lines) -> must NOT count as a second
+        # occurrence of the pair.
+        # Tiers 502 ("Martin") is only ever named by client 12 once.
+        "client_sk": [10, 10, 11, 12, 0, 10],
+        "tiers_sk": [501, 501, 501, 502, 501, 501],
+        "numero_sinistre": ["S1", "S2", "S3", "S4", "S5", "S1"],
+    })
+    tiers = pd.DataFrame({
+        "tiers_sk": [501, 502],
+        "nom_tiers": ["Dupont", "Martin"],
+    })
+
+    result = compute_tiers_repeat_features(df, tiers)
+    by_claim = result.set_index("claim_sk")
+
+    assert by_claim.loc[1, "tiers_repeat_client_count"] == 2
+    assert by_claim.loc[1, "client_tiers_pair_repeat_count"] == 2
+    assert by_claim.loc[2, "client_tiers_pair_repeat_count"] == 2
+    assert by_claim.loc[3, "tiers_repeat_client_count"] == 2
+    assert by_claim.loc[3, "client_tiers_pair_repeat_count"] == 1
+
+    assert by_claim.loc[4, "tiers_repeat_client_count"] == 1
+    assert by_claim.loc[4, "client_tiers_pair_repeat_count"] == 1
+
+    # Claim 5 has no client_sk (missing key) -> not counted at all.
+    assert by_claim.loc[5, "tiers_repeat_client_count"] == 0
+    assert by_claim.loc[5, "client_tiers_pair_repeat_count"] == 0
+
+    # Claim 6 is the SAME accident as claim 1 (numero_sinistre="S1") split
+    # across a second garantie line -> still only 2 distinct occurrences,
+    # not 3.
+    assert by_claim.loc[6, "client_tiers_pair_repeat_count"] == 2

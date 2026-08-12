@@ -1,0 +1,29 @@
+{
+  "model_version": "IRIS_CLAIM_ATTENTION_ACADEMIC_IF_V1_CANDIDATE",
+  "created_at_utc": "2026-07-12T02:49:21.550188+00:00",
+  "feature_version": "IRIS_CLAIM_ATTENTION_FEATURES_V1_CANDIDATE",
+  "feature_run_id": "IRIS_CLAIM_ATTENTION_FEATURES_V1_CANDIDATE_20260708_144724",
+  "features": [
+    "days_claim_to_declaration",
+    "days_contract_start_to_claim",
+    "amount_percentile_by_guarantee",
+    "claim_amount",
+    "client_claim_count_12m",
+    "client_claim_count_24m",
+    "client_guarantee_claim_count_12m",
+    "days_since_previous_claim",
+    "driver_claim_count_12m",
+    "vehicle_claim_count_12m",
+    "vehicle_days_since_previous_claim"
+  ],
+  "calibration": "population_percentile",
+  "review_threshold": 0.95,
+  "intended_use": "Priorisation humaine de dossiers a examiner",
+  "prohibited_use": "Decision automatique ou preuve de fraude",
+  "limitations": [
+    "Absence de labels humains confirmes",
+    "Percentile relatif au run",
+    "Validation temporelle requise",
+    "SHAP explique le modele, pas une causalite"
+  ]
+}

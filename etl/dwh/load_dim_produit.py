@@ -191,7 +191,19 @@ def transform_dim_produit(df_raw: pd.DataFrame, logger) -> tuple[pd.DataFrame, d
         "created_at",
     ]
 
-    df_final = df[final_cols].copy()
+    # Ligne technique UNKNOWN (produit_sk = 0) : fact_contrat référence
+    # produit_sk = 0 quand le produit source est absent ou hors périmètre.
+    unknown_row = pd.DataFrame([{
+        "produit_sk":      0,
+        "code_produit":    "UNKNOWN",
+        "libelle_produit": "UNKNOWN",
+        "code_famille":    "UNKNOWN",
+        "libelle_famille": "UNKNOWN",
+        "source_system":   "TECHNICAL",
+        "created_at":      TODAY,
+    }])
+    df_final = pd.concat([unknown_row[final_cols], df[final_cols]], ignore_index=True)
+    df_final["produit_sk"] = df_final["produit_sk"].astype("int64")
 
     n_non_mappe = int((df_final["libelle_produit"] == "NON_MAPPE").sum())
 

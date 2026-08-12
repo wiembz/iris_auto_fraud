@@ -1,0 +1,85 @@
+-- ============================================================
+-- IRIS - Mesures DAX a coller dans la table _Mesures
+-- (Accueil > Entrer des donnees > table vide nommee _Mesures,
+--  puis clic droit > Nouvelle mesure, une par une)
+-- Formats : % -> 0,00%  ·  montants/volumes -> # ##0
+-- ============================================================
+
+Dossiers Scores = DISTINCTCOUNT('v_dossier_attention'[claim_root_id])
+
+Dossiers Haute Attention =
+CALCULATE([Dossiers Scores],
+    'v_dossier_attention'[dossier_attention_level]
+        IN {"Examen renforce suggere", "Examen prioritaire suggere"})
+
+Pct Haute Attention = DIVIDE([Dossiers Haute Attention], [Dossiers Scores])
+
+Dossiers Prioritaires =
+CALCULATE([Dossiers Scores],
+    'v_dossier_attention'[dossier_attention_level] = "Examen prioritaire suggere")
+
+Score Median = MEDIAN('v_dossier_attention'[dossier_attention_score])
+
+Montant Sinistres = SUM('v_dossier_attention'[dossier_claim_amount])
+
+Pct Confiance Haute =
+DIVIDE(
+    CALCULATE([Dossiers Scores], 'v_dossier_attention'[confidence_level] = "HIGH"),
+    [Dossiers Scores])
+
+Lignes Garantie = COUNTROWS('v_claim_attention_guarantee')
+
+Signaux Emis = COUNTROWS('v_signal_detail')
+
+Points Attribues = SUM('v_signal_detail'[points])
+
+Dossiers Avec Signal = DISTINCTCOUNT('v_signal_detail'[claim_root_id])
+
+Clients Identifies = COUNTROWS('v_client_cohort')
+
+Clients Multisinistres 12M =
+CALCULATE(COUNTROWS('v_client_cohort'), 'v_client_cohort'[is_multiclaim_12m] = TRUE())
+
+Montant Cumule Clients = SUM('v_client_cohort'[total_claim_amount])
+
+Inspections = COUNTROWS('v_inspection')
+
+Pct Inspections Avec Defaut =
+DIVIDE(
+    CALCULATE(COUNTROWS('v_inspection'), 'v_inspection'[defect_count] > 0),
+    COUNTROWS('v_inspection'))
+
+Defauts Observes = SUM('v_inspection_checkpoint_defect'[defect_count])
+
+Inspections VHS = COUNTROWS('v_vhs_score')
+
+Score VHS Moyen = AVERAGE('v_vhs_score'[vhs_final_score])
+
+Signaux Post Inspection = COUNTROWS('v_post_inspection_signal')
+
+Delai Moyen Inspection Sinistre = AVERAGE('v_post_inspection_signal'[days_inspection_to_claim])
+
+Dossiers ML Top 5 Pct =
+CALCULATE(DISTINCTCOUNT('v_ml_anomaly'[claim_sk]),
+    'v_ml_anomaly'[anomaly_percentile_score] >= 0.95)
+
+Pct Client Inconnu = MAX('v_quality_kpis'[pct_unknown_client])
+Pct Dates Invalides = MAX('v_quality_kpis'[pct_invalid_dates])
+Pct Migration 2019 = MAX('v_quality_kpis'[pct_migration_2019])
+
+-- ============================================================
+-- Colonnes calculees (Nouvelle colonne, dans la table indiquee)
+-- ============================================================
+
+-- Dans v_dossier_attention :
+score_bin = INT('v_dossier_attention'[dossier_attention_score] / 5) * 5
+
+claim_month =
+IF(
+    ISBLANK('v_dossier_attention'[claim_date]), BLANK(),
+    DATE(YEAR('v_dossier_attention'[claim_date]), MONTH('v_dossier_attention'[claim_date]), 1)
+)
+
+-- Dans v_client_cohort :
+tranche_sinistres =
+IF('v_client_cohort'[dossier_count] >= 5, "5+", FORMAT('v_client_cohort'[dossier_count], "0"))

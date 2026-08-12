@@ -1,0 +1,15 @@
+{
+  "name": "IrisTheme",
+  "dataColors": ["#8FA6BC", "#E8B54D", "#D97B29", "#B3392F", "#2C6E8F", "#7BA88F", "#5B6E82", "#C9A66B"],
+  "background": "#FFFFFF",
+  "foreground": "#252423",
+  "tableAccent": "#2C6E8F",
+  "visualStyles": {
+    "*": {
+      "*": {
+        "title": [{ "fontSize": 11, "fontColor": "#252423", "bold": true }],
+        "labels": [{ "fontSize": 9, "color": "#605E5C" }]
+      }
+    }
+  }
+}

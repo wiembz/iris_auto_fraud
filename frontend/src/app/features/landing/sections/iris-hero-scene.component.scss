@@ -1,0 +1,17 @@
+:host {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+}
+
+.iris-hero-scene {
+  width: 100%;
+  height: 100%;
+}
+
+.iris-hero-scene canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}

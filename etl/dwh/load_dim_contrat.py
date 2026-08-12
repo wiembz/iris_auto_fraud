@@ -30,6 +30,12 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dwh_utils
 
+try:
+    from etl.utils.date_parsing import parse_date_series
+except ModuleNotFoundError:  # exécution standalone
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+    from etl.utils.date_parsing import parse_date_series
+
 
 # ---------------------------------------------------------------------------
 # Constantes
@@ -117,11 +123,12 @@ def _to_numeric_sort(value) -> float:
 def _parse_date_series(series: pd.Series | None, index) -> pd.Series:
     """
     Parse une sÃ©rie date avec robustesse.
-    """
-    if series is None:
-        return pd.Series(pd.NaT, index=index)
 
-    return pd.to_datetime(series, errors="coerce", dayfirst=True)
+    stg_production stocke debcnt/fincnt/debeffet/fineffet en entiers YYYYMMDD :
+    pd.to_datetime brut les interprÃ©tait en nanosecondes epoch (tout en 1970).
+    DÃ©lÃ¨gue Ã  etl.utils.date_parsing (format %Y%m%d explicite).
+    """
+    return parse_date_series(series, index=index)
 
 
 # ---------------------------------------------------------------------------

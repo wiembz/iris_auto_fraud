@@ -30,6 +30,7 @@ Usage :
 """
 from __future__ import annotations
 
+import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -97,6 +98,36 @@ _INVALID = frozenset({
     "", "NULL", "NAN", "NONE", "INCONNU",
     "NON RENSEIGNE", "NON RENSEIGNÉ", "N/A", "NA", "#N/A", "ND", "NR",
 })
+
+# Numero_permis fictifs/génériques connus : toujours traités comme non-identifiants,
+# même peu fréquents dans un extrait donné (cf. rapport d'impact dim_conducteur).
+_PERMIS_PLACEHOLDER_LITERALS = frozenset({
+    "0", "1", "00", "01", "/", "0 /00000", "UNKNOWN",
+    "SANS COND", "SANS CONDU", "STATIONNE", "NON FOURNI",
+})
+
+# Seuil au-delà duquel un numero_permis partagé par des lignes sans nom/date de
+# naissance/date de permis est traité comme une valeur de repli plutôt qu'une
+# identité réelle. Dérivé empiriquement : sur staging.stg_sinistres (audit du
+# 2026-07-24, cf. data/quality_reports/dim_conducteur/), toutes les valeurs
+# utilisées plus de 20 fois dans ce contexte sont des motifs de repli
+# reconnaissables (chiffres répétés, "SANS COND", "STATIONNE", "NON FOURNI",
+# "/"...) ; en dessous, les valeurs sont rares et sans motif suspect — donc
+# traitées comme des permis plausibles et conservées.
+#
+# Configurable via la variable d'environnement IRIS_DRIVER_WEAK_PERMIS_THRESHOLD
+# (ex. pour re-valider le seuil sur un nouvel extrait staging sans modifier le
+# code). Valeur invalide ou absente -> défaut ci-dessous.
+_DEFAULT_WEAK_PERMIS_ABNORMAL_USE_THRESHOLD = 20
+try:
+    WEAK_PERMIS_ABNORMAL_USE_THRESHOLD = int(
+        os.environ.get(
+            "IRIS_DRIVER_WEAK_PERMIS_THRESHOLD",
+            _DEFAULT_WEAK_PERMIS_ABNORMAL_USE_THRESHOLD,
+        )
+    )
+except ValueError:
+    WEAK_PERMIS_ABNORMAL_USE_THRESHOLD = _DEFAULT_WEAK_PERMIS_ABNORMAL_USE_THRESHOLD
 
 # Civilités à supprimer du nom conducteur
 _CIVILITES = re.compile(
@@ -289,15 +320,55 @@ def transform_dim_conducteur(
     else:
         df["_date_sinistre"] = pd.NaT
 
-    # ── 5. Filtrage : exclure les lignes totalement vides ─────────────────────
+    # ── 5. Filtrage : exclure les lignes sans identité fiable ─────────────────
+    # Une ligne sans nom, ni date de naissance, ni date de permis n'est
+    # identifiée que par son numero_permis. Ce numero seul ne vaut identité
+    # distincte que s'il n'est pas une valeur de repli : les valeurs partagées
+    # par un grand nombre de telles lignes (chiffres répétés, "SANS COND",
+    # "STATIONNE", "/"...) ne désignent pas un conducteur réel et créeraient,
+    # dédupliquées ensemble, un conducteur_sk fantôme agrégeant des sinistres
+    # non liés (cf. bug récurrence conducteur 12 mois : valeur aberrante
+    # 10585+ sur un dossier réel, causée par numero_permis="1" partagé par
+    # 15 375 lignes). Un numero_permis rare et sans motif de repli reste en
+    # revanche traité comme une identité plausible, même sans nom.
     data_cols = ["nom_conducteur", "date_naissance_conducteur",
                  "numero_permis", "categorie_permis", "date_permis"]
     mask_vide = df[data_cols].isnull().all(axis=1)
-    n_vides   = int(mask_vide.sum())
-    df = df[~mask_vide].copy()
+
+    mask_permis_seul = (
+        df["nom_conducteur"].isnull()
+        & df["date_naissance_conducteur"].isnull()
+        & df["date_permis"].isnull()
+        & df["numero_permis"].notnull()
+    )
+    permis_seul_counts = df.loc[mask_permis_seul, "numero_permis"].value_counts()
+    permis_abusifs = set(
+        permis_seul_counts[permis_seul_counts > WEAK_PERMIS_ABNORMAL_USE_THRESHOLD].index
+    )
+    permis_suspects = permis_abusifs | _PERMIS_PLACEHOLDER_LITERALS
+
+    mask_identite_faible = mask_permis_seul & df["numero_permis"].isin(permis_suspects)
+    mask_exclue = mask_vide | mask_identite_faible
+
+    n_vides            = int(mask_vide.sum())
+    n_identite_faible   = int(mask_identite_faible.sum())
+    n_permis_seul_garde = int((mask_permis_seul & ~mask_identite_faible).sum())
+    n_valeurs_suspectes = len(permis_suspects & set(permis_seul_counts.index))
+
+    df = df[~mask_exclue].copy()
     n_candidates = len(df)
     if n_vides:
         logger.info(f"  Lignes totalement vides exclues : {n_vides}")
+    if n_identite_faible:
+        logger.info(
+            f"  Lignes à identité non fiable exclues (numero_permis de repli, "
+            f"{n_valeurs_suspectes} valeur(s) suspecte(s)) : {n_identite_faible}"
+        )
+    if n_permis_seul_garde:
+        logger.info(
+            f"  Lignes identifiées par numero_permis seul (rare, conservées) : "
+            f"{n_permis_seul_garde}"
+        )
     logger.info(f"  Lignes candidates conducteur : {n_candidates}")
 
     # ── 6. Déduplication sur la clé fonctionnelle ─────────────────────────────
@@ -414,6 +485,9 @@ def transform_dim_conducteur(
         "n_raw":                  n_raw,
         "n_candidates":           n_candidates,
         "n_vides":                n_vides,
+        "n_identite_faible":      n_identite_faible,
+        "n_permis_seul_garde":    n_permis_seul_garde,
+        "n_valeurs_suspectes":    n_valeurs_suspectes,
         "n_dupes":                n_dupes,
         "n_real_conducteur":      n_real,
         "n_total_with_unknown":   n_total,
@@ -445,6 +519,7 @@ def load_dim_conducteur(run_id: str, engine, logger) -> int:
     Retourne le nombre de lignes chargées.
     """
     logger.info(f"[RUN {run_id}] {SOURCE_TABLE} -> dwh.{TABLE_NAME}")
+    logger.info(f"  Seuil permis-repli (WEAK_PERMIS_ABNORMAL_USE_THRESHOLD) : {WEAK_PERMIS_ABNORMAL_USE_THRESHOLD}")
 
     # Vérifier que la table source existe
     with engine.connect() as conn:
@@ -473,6 +548,9 @@ def load_dim_conducteur(run_id: str, engine, logger) -> int:
     logger.info(f"  lignes lues depuis staging          : {m['n_raw']}")
     logger.info(f"  lignes candidates conducteur        : {m['n_candidates']}")
     logger.info(f"  lignes totalement vides exclues     : {m['n_vides']}")
+    logger.info(f"  lignes à identité non fiable exclues: {m['n_identite_faible']} "
+                f"({m['n_valeurs_suspectes']} valeur(s) numero_permis suspecte(s))")
+    logger.info(f"  lignes permis-seul conservées (rares): {m['n_permis_seul_garde']}")
     logger.info(f"  doublons fonctionnels supprimés     : {m['n_dupes']}")
     logger.info(f"  conducteurs réels distincts chargés : {m['n_real_conducteur']}")
     logger.info(f"  total lignes avec UNKNOWN           : {m['n_total_with_unknown']}")

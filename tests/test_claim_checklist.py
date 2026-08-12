@@ -37,9 +37,15 @@ def test_checklist_does_not_mix_multiple_runs():
 
     assert len(checklist[checklist["action_code"].eq("ACT_VERIFY_CHRONOLOGY")]) == 2
     assert set(checklist["score_run_id"]) == {"RUN_A", "RUN_B"}
+    # CLAIM_BEFORE_CONTRACT_START (DATA_QUALITY, ACT_COMPLETE_INFORMATION) also
+    # fires alongside CHR_DECLARATION_DELAY_HIGH (ACT_VERIFY_CHRONOLOGY) since
+    # the fixture sets claim_before_contract_start_flag=True — it no longer
+    # shares the chronology action code, so it shows up as its own item.
     assert set(checklist["checklist_item_id"]) == {
         "RUN_A:1:ACT_VERIFY_CHRONOLOGY",
         "RUN_B:1:ACT_VERIFY_CHRONOLOGY",
+        "RUN_A:1:ACT_COMPLETE_INFORMATION",
+        "RUN_B:1:ACT_COMPLETE_INFORMATION",
     }
 
 

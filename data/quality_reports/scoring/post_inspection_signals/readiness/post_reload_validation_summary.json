@@ -1,0 +1,156 @@
+{
+  "dim_vehicule": [
+    {
+      "total_vehicles": 128038,
+      "zero_or_missing_vehicule_sk_rows": 0,
+      "distinct_immatriculations": 128038,
+      "vehicles_with_vin": 280,
+      "vehicles_with_motorisation": 0
+    }
+  ],
+  "claim_vehicle_linkage": [
+    {
+      "total_claim_rows": 381893,
+      "missing_vehicule_sk_rows": 3923,
+      "linked_vehicule_sk_rows": 377970,
+      "distinct_linked_vehicles": 127989,
+      "previous_missing_vehicule_sk_rows": 380968,
+      "previous_total_claim_rows": 381893,
+      "missing_rows_improvement": 377045,
+      "missing_rate_after_pct": 1.0273,
+      "missing_rate_before_pct": 99.7578
+    }
+  ],
+  "inspection_stability": [
+    {
+      "total_inspections": 286,
+      "missing_vehicule_sk": 2,
+      "missing_immatriculation_norm": 2,
+      "missing_date_inspection_sk": 2,
+      "distinct_valid_vehicles": 280,
+      "previous_total_inspections": 286,
+      "previous_missing_vehicule_sk": 2,
+      "previous_missing_immatriculation_norm": 2
+    }
+  ],
+  "claim_link_counts": [
+    {
+      "inspection_claim_pairs_by_vehicule_sk_all_dates": 937,
+      "post_inspection_claim_pairs_0_90d": 61,
+      "post_inspection_claim_pairs_0_7d": 10,
+      "post_inspection_claim_pairs_8_30d": 18,
+      "post_inspection_claim_pairs_31_90d": 33,
+      "pre_inspection_claim_pairs": 842,
+      "post_inspection_claim_pairs_after_90d": 34
+    }
+  ],
+  "anomaly_links": [
+    {
+      "candidate_links_0_90d": 61,
+      "candidate_links_with_inspection_anomaly": 50,
+      "distinct_claims_after_anomalous_inspection": 49,
+      "distinct_anomalous_inspections_with_post_claim": 26
+    }
+  ],
+  "zone_links": [
+    {
+      "zone_controle": "SOUS_VEHICULE",
+      "candidate_link_zone_rows": 35,
+      "distinct_inspections": 20,
+      "distinct_claims": 34,
+      "anomaly_checkpoint_rows_linked": 84
+    },
+    {
+      "zone_controle": "TOUR_DU_VEHICULE",
+      "candidate_link_zone_rows": 34,
+      "distinct_inspections": 18,
+      "distinct_claims": 34,
+      "anomaly_checkpoint_rows_linked": 90
+    },
+    {
+      "zone_controle": "INTERIEUR",
+      "candidate_link_zone_rows": 27,
+      "distinct_inspections": 11,
+      "distinct_claims": 27,
+      "anomaly_checkpoint_rows_linked": 74
+    },
+    {
+      "zone_controle": "ENTRETIEN",
+      "candidate_link_zone_rows": 21,
+      "distinct_inspections": 12,
+      "distinct_claims": 21,
+      "anomaly_checkpoint_rows_linked": 47
+    },
+    {
+      "zone_controle": "SOUS_CAPOT",
+      "candidate_link_zone_rows": 20,
+      "distinct_inspections": 11,
+      "distinct_claims": 20,
+      "anomaly_checkpoint_rows_linked": 37
+    },
+    {
+      "zone_controle": "NO_DOCUMENTED_ANOMALY",
+      "candidate_link_zone_rows": 11,
+      "distinct_inspections": 5,
+      "distinct_claims": 11,
+      "anomaly_checkpoint_rows_linked": 0
+    }
+  ],
+  "avenant_counts": [
+    {
+      "fact_contrat_available": true,
+      "inspection_to_avenant_pairs_0_90d": 16,
+      "pairs_0_7d": 1,
+      "pairs_8_30d": 3,
+      "pairs_31_90d": 12,
+      "distinct_inspections": 15,
+      "distinct_contracts": 15,
+      "coverage_change_observable_flag_count": 0,
+      "note": "Avenant linkage measurable through claim-derived contrat_sk bridge; coverage change detail not proven."
+    }
+  ],
+  "decision": [
+    {
+      "run_ts": "2026-07-08 10:21:38+0000",
+      "scenario_code": "A_INSPECTION_TO_CLAIM",
+      "readiness_decision": "GO",
+      "candidate_links_0_90d": 61,
+      "candidate_links_with_documented_inspection_anomaly": 50,
+      "linked_claim_vehicle_rows": 377970,
+      "missing_claim_vehicle_rows": 3923,
+      "reason": "Vehicle linkage is now strong enough and post-inspection claim candidates with documented inspection anomalies exist.",
+      "recommended_next_action": "Specify post-inspection signal rules and zone matching; do not add score points yet."
+    },
+    {
+      "run_ts": "2026-07-08 10:21:38+0000",
+      "scenario_code": "B_INSPECTION_TO_AVENANT",
+      "readiness_decision": "PARTIAL",
+      "candidate_links_0_90d": 16,
+      "candidate_links_with_documented_inspection_anomaly": null,
+      "linked_claim_vehicle_rows": 377970,
+      "missing_claim_vehicle_rows": 3923,
+      "reason": "Avenant timing is measurable, but exact coverage/guarantee change is not proven.",
+      "recommended_next_action": "Audit guarantee/product change detail before using as an attention signal."
+    }
+  ],
+  "generated_reports": [
+    "claim_damage_area_candidate_values.csv",
+    "claim_raw_immat_length_distribution.csv",
+    "claim_raw_immat_profile.csv",
+    "claim_raw_immat_top_values.csv",
+    "claim_vehicle_linkage_summary.csv",
+    "contract_avenant_readiness_summary.csv",
+    "inspection_checkpoint_area_summary.csv",
+    "inspection_readiness_summary.csv",
+    "inspection_to_avenant_candidate_links.csv",
+    "inspection_to_claim_candidate_links.csv",
+    "post_inspection_readiness_decision.csv",
+    "post_reload_candidate_links_by_inspection_zone.csv",
+    "post_reload_claim_links_with_anomaly_summary.csv",
+    "post_reload_claim_vehicle_linkage_summary.csv",
+    "post_reload_dim_vehicule_coverage.csv",
+    "post_reload_inspection_linkage_stability.csv",
+    "post_reload_inspection_to_avenant_counts.csv",
+    "post_reload_inspection_to_claim_counts.csv"
+  ]
+}

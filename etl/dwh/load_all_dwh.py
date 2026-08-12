@@ -9,6 +9,8 @@ Execute les loaders dans l'ordre des dependances :
   Phase 2 — enrichissement post-dimension (enrich_dim_client_geo apres dim_client)
   Phase 3 — faits (fact_inspection_checkpoint APRES fact_inspection_vehicule,
             dont il importe les regles de normalisation et joint la table)
+  Phase 4 — gate qualite (audit_etl_quality_completeness, lecture seule ;
+            echoue si au moins un controle FAIL)
 
 Chaque loader est execute comme sous-processus independant : il garde
 exactement son comportement standalone (logs, rapports qualite, validations),
@@ -94,11 +96,22 @@ PIPELINE: list[tuple[str, tuple[str, ...]]] = [
         "load_fact_inspection_checkpoint",
         ("load_dim_date", "load_fact_inspection_vehicule"),
     ),
+    # Phase 4 — gate qualité : audit lecture seule, exit non nul si FAIL
+    (
+        "audit_etl_quality_completeness",
+        (
+            "load_fact_contrat",
+            "load_fact_sinistre",
+            "load_fact_inspection_vehicule",
+            "load_fact_inspection_checkpoint",
+        ),
+    ),
 ]
 
 FACT_STEPS = frozenset(
     name for name, _ in PIPELINE if name.startswith("load_fact_")
 )
+AUDIT_STEP = "audit_etl_quality_completeness"
 STEP_NAMES = [name for name, _ in PIPELINE]
 
 
@@ -110,7 +123,12 @@ def _select_steps(args: argparse.Namespace) -> list[tuple[str, tuple[str, ...]]]
         idx = STEP_NAMES.index(args.start_from)
         selected = PIPELINE[idx:]
     if args.skip_facts:
-        selected = [(n, d) for n, d in selected if n not in FACT_STEPS]
+        # Sans les facts, l'audit comparerait des facts obsolètes aux
+        # dimensions rechargées : on le retire aussi.
+        selected = [
+            (n, d) for n, d in selected
+            if n not in FACT_STEPS and n != AUDIT_STEP
+        ]
     return selected
 
 

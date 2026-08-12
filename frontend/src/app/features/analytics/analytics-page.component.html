@@ -1,0 +1,45 @@
+<div class="analytics-page">
+  <header class="iris-page-hero">
+    <div>
+      <p class="iris-eyebrow">Espace analytique</p>
+      <h1>Analyse du portefeuille avec Power BI</h1>
+      <p>
+        Cohortes, tendances et gouvernance du portefeuille — sur les memes donnees que
+        cette application.
+      </p>
+    </div>
+    @if (reportUrl) {
+      <a class="iris-page-hero__link" [href]="reportUrl" target="_blank" rel="noopener">
+        Ouvrir le rapport
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+          <path d="M15 3h6v6" /><path d="M10 14 21 3" />
+        </svg>
+      </a>
+    } @else {
+      <div class="iris-page-hero__status">
+        <span>Publication a venir — <strong>rapport en cours de deploiement sur Power BI Report Server</strong></span>
+      </div>
+    }
+  </header>
+
+  @if (reportEmbedUrl) {
+    <section class="iris-card analytics-embed" aria-label="Rapport Power BI">
+      @if (!reportEmbedLoaded()) {
+        <div class="analytics-embed__loading">
+          <div class="analytics-loading"><span></span><span></span><span></span></div>
+          <p>Chargement du rapport Power BI…</p>
+        </div>
+      }
+      <div class="analytics-embed__crop">
+        <iframe
+          class="analytics-embed__frame"
+          [class.analytics-embed__frame--loaded]="reportEmbedLoaded()"
+          [src]="reportEmbedUrl"
+          title="Rapport Power BI IRIS Auto Fraud"
+          (load)="reportEmbedLoaded.set(true)"
+        ></iframe>
+      </div>
+    </section>
+  }
+</div>

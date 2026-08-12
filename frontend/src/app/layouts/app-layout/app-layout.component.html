@@ -1,0 +1,70 @@
+<div class="app-shell">
+  <aside class="sidebar" [class.is-open]="mobileNavOpen()" aria-label="Navigation IRIS applicative">
+    <a class="brand" [routerLink]="homeRoute()">
+      <iris-logo [size]="32" />
+      <span class="brand-word">IRIS</span>
+    </a>
+
+    <p class="nav-label">Espace de travail</p>
+
+    <nav>
+      @for (item of visibleNavItems(); track item.route) {
+        <a [routerLink]="item.route" routerLinkActive="active" (click)="closeMobileNav()">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            @for (d of item.icon; track d) {
+              <path [attr.d]="d" />
+            }
+          </svg>
+          <span>{{ item.label }}</span>
+        </a>
+      }
+    </nav>
+
+    <section class="governance-note">
+      <span class="governance-note__dot" aria-hidden="true"></span>
+      <span>IRIS éclaire l'analyse — la décision finale reste humaine.</span>
+    </section>
+
+    <section class="user-card">
+      <span class="avatar" aria-hidden="true">{{ userInitials() }}</span>
+      <div class="user-card__meta">
+        <strong>{{ user()?.displayName }}</strong>
+        <small>{{ user()?.roleLabel }}</small>
+      </div>
+      <button type="button" class="user-card__logout" (click)="signOut()" title="Se déconnecter" aria-label="Se déconnecter">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <path d="m16 17 5-5-5-5" />
+          <path d="M21 12H9" />
+        </svg>
+      </button>
+    </section>
+  </aside>
+
+  <section class="workspace">
+    <header class="topbar">
+      <button type="button" class="mobile-menu" (click)="toggleMobileNav()" [attr.aria-expanded]="mobileNavOpen()" aria-label="Ouvrir la navigation">☰</button>
+      <div class="topbar-context">
+        <strong>{{ greeting }}{{ firstName() ? ', ' + firstName() : '' }}</strong>
+        <small>Voici l'état de vos dossiers sinistres.</small>
+      </div>
+
+<form class="iris-search topbar-search" role="search" (submit)="runGlobalSearch($event)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="iris-global-search" type="search" aria-label="Recherche globale" placeholder="Dossier, sinistre, garantie, client, plaque..." [value]="globalSearch()" (input)="onGlobalSearchInput($event)" (keydown.enter)="runGlobalSearch($event)" />
+      </form>
+
+      <div class="topbar-actions">
+        <button type="button" class="theme-toggle" (click)="toggleTheme()">
+          {{ theme === 'light' ? 'Sombre' : 'Clair' }}
+        </button>
+        <a class="iris-button iris-button--ghost" routerLink="/">Présentation</a>
+        <span class="avatar" aria-hidden="true">{{ userInitials() }}</span>
+      </div>
+    </header>
+
+    <main class="app-content">
+      <router-outlet />
+    </main>
+  </section>
+</div>
