@@ -4,7 +4,7 @@
     {
       "name": "iris-backend",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["backend/app.py"],
+      "runtimeArgs": ["-m", "uvicorn", "backend.app:app", "--host", "127.0.0.1", "--port", "5000"],
       "port": 5000
     },
     {

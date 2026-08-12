@@ -15,7 +15,7 @@ obtiendraient des erreurs.
 ## À faire manuellement avant le lancement (hors du contrôle de ce dépôt)
 - [ ] **Power BI** : désactiver ou reporter tout refresh planifié (Power BI Service / Gateway) qui
       pointe sur `iris_auto_fraud`, le temps du recalcul (durée observée sur la copie : ~91 min).
-- [ ] **Application** : arrêter le backend Flask (`python backend/app.py` ou équivalent) et le
+- [ ] **Application** : arrêter le backend FastAPI (`uvicorn backend.app:app`) et le
       frontend Angular en dev (`npm start` / `ng serve`) s'ils tournent, ou s'assurer qu'aucun
       utilisateur n'est en train de consulter un dossier.
 - [ ] **Outils SQL** : fermer toute session psql/pgAdmin/DBeaver ouverte sur `iris_auto_fraud`.

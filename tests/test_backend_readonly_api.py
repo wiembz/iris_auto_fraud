@@ -170,23 +170,26 @@ def test_backend_wording_stays_non_accusatory():
     assert not contains_forbidden_business_wording(_backend_text())
 
 def test_declared_mvp_routes_are_present_in_routes_source():
-    routes_text = (BACKEND_DIR / "routes" / "claims_routes.py").read_text(encoding="utf-8")
-    summary_text = (BACKEND_DIR / "routes" / "summary_routes.py").read_text(encoding="utf-8")
+    from backend.app import app as fastapi_app
 
-    assert '@claims_bp.get("/claims")' in routes_text
-    assert '@claims_bp.get("/claims/<int:claim_sk>")' in routes_text
-    assert '@claims_bp.get("/claims/<int:claim_sk>/review")' in routes_text
-    assert '@claims_bp.get("/claims/<int:claim_sk>/signals")' in routes_text
-    assert '@claims_bp.get("/claims/<int:claim_sk>/ml-anomaly")' in routes_text
-    assert '@claims_bp.get("/claims/<int:claim_sk>/post-inspection")' in routes_text
-    assert '@claims_bp.get("/claims/<int:claim_sk>/timeline")' in routes_text
-    assert '@summary_bp.get("/summary")' in summary_text
+    paths = set(fastapi_app.openapi()["paths"].keys())
+
+    assert "/api/claims" in paths
+    assert "/api/claims/{claim_sk}" in paths
+    assert "/api/claims/{claim_sk}/review" in paths
+    assert "/api/claims/{claim_sk}/signals" in paths
+    assert "/api/claims/{claim_sk}/ml-anomaly" in paths
+    assert "/api/claims/{claim_sk}/post-inspection" in paths
+    assert "/api/claims/{claim_sk}/timeline" in paths
+    assert "/api/summary" in paths
 
 def test_backend_claim_review_service_is_available_for_future_frontend():
-    routes_text = (BACKEND_DIR / "routes" / "claims_routes.py").read_text(encoding="utf-8")
+    from backend.app import app as fastapi_app
+
+    paths = set(fastapi_app.openapi()["paths"].keys())
     service_text = (BACKEND_DIR / "services" / "claim_review_service.py").read_text(encoding="utf-8")
 
-    assert '@claims_bp.get("/claims/<int:claim_sk>/review")' in routes_text
+    assert "/api/claims/{claim_sk}/review" in paths
     assert "def get_claim_review(" in service_text
 
 

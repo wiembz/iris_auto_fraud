@@ -13,7 +13,7 @@ DEFAULT_POST_INSPECTION_SIGNAL_VERSION = "IRIS_POST_INSPECTION_SIGNAL_V1_CANDIDA
 
 @dataclass(frozen=True)
 class ApiConfig:
-    """Runtime options for the Flask read-only API."""
+    """Runtime options for the read-only API."""
 
     default_score_version: str = DEFAULT_SCORE_VERSION
     base_score_version: str = DEFAULT_BASE_SCORE_VERSION

@@ -1,4 +1,5 @@
 import pytest
+from fastapi.testclient import TestClient
 
 from backend.app import create_app
 from backend.services.auth_service import RoleResolutionError, resolve_role
@@ -31,27 +32,27 @@ def test_resolve_role_rejects_missing_email():
 
 def test_resolve_role_route_returns_role_for_known_email():
     app = create_app()
-    client = app.test_client()
+    client = TestClient(app)
 
     response = client.post("/api/auth/resolve-role", json={"email": "admin.test@bnaassurance.com"})
 
     assert response.status_code == 200
-    assert response.get_json() == {"email": "admin.test@bnaassurance.com", "role": "administrateur"}
+    assert response.json() == {"email": "admin.test@bnaassurance.com", "role": "administrateur"}
 
 
 def test_resolve_role_route_rejects_unknown_email():
     app = create_app()
-    client = app.test_client()
+    client = TestClient(app)
 
     response = client.post("/api/auth/resolve-role", json={"email": "inconnu@bnaassurance.com"})
 
     assert response.status_code == 403
-    assert "message" in response.get_json()
+    assert "message" in response.json()
 
 
 def test_resolve_role_route_handles_missing_body():
     app = create_app()
-    client = app.test_client()
+    client = TestClient(app)
 
     response = client.post("/api/auth/resolve-role")
 
