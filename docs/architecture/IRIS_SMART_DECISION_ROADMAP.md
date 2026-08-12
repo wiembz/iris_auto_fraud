@@ -18,7 +18,7 @@ IRIS Smart Decision Support renforce la plateforme IRIS comme aide a l'analyse d
 
 - Modification du moteur VHS.
 - Remplacement ou reecriture de Claim Attention V1.
-- Recalcul temps reel depuis Angular ou Flask.
+- Recalcul temps reel depuis Angular ou FastAPI.
 - Geocodage externe ou calcul GPS avant validation GEO.
 - Integration forcee du signal ML dans le score principal.
 - Decision automatique, preuve, accusation ou probabilite de fraude.

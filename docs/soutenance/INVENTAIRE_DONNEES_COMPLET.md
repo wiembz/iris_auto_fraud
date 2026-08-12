@@ -23,7 +23,7 @@ mart.*  (résultats dérivés, recalculables, jamais écrasés)
         ▼
 powerbi_v.*  (vues de restitution, lecture seule, verrouillées sur score_version)
         │
-        ├──► Backend Flask (API read-only) ──► Frontend Angular (opérationnel, par dossier)
+        ├──► Backend FastAPI (API read-only) ──► Frontend Angular (opérationnel, par dossier)
         └──► Power BI Desktop ──► Rapport (analytique, par cohorte)
 ```
 

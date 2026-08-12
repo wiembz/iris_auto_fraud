@@ -8,7 +8,7 @@ obtiendraient des erreurs.
 ## Contrôles automatisés (déjà intégrés dans l'orchestrateur)
 - [x] L'orchestrateur refuse de démarrer si `--confirm-db` ne correspond pas à la base réelle.
 - [x] L'orchestrateur refuse de démarrer si `pg_stat_activity` détecte une autre connexion active
-      sur la base (backend Flask, psql/pgAdmin ouvert, refresh Power BI en cours...).
+      sur la base (backend FastAPI, psql/pgAdmin ouvert, refresh Power BI en cours...).
 - [x] Contrôles métier finaux automatiques après le recalcul (dossier de référence, stabilité du
       nombre de sinistres notés, bornes sur la population conducteur).
 

@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api", tags=["decisions"])
 @router.post("/claims/{claim_sk}/decision", status_code=201)
 def submit_claim_decision(
     claim_sk: int,
-    body: DecisionRequest,
+    body: DecisionRequest = DecisionRequest(),
     engine: Engine = Depends(get_db_engine),
     config: ApiConfig = Depends(get_api_config),
 ):

@@ -29,7 +29,7 @@ indépendants.
 
 4. **La fenêtre de maintenance est imposée, pas suggérée** — le paramètre
    `allow_active_connections=false` par défaut fait **échouer** le run si
-   une session (Flask, Power BI, pgAdmin) reste ouverte sur la base au
+   une session (FastAPI, Power BI, pgAdmin) reste ouverte sur la base au
    moment du déclenchement, plutôt que de risquer une lecture partielle
    pendant un rechargement en mode replace.
 

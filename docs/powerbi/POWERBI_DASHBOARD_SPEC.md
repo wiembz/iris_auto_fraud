@@ -14,7 +14,7 @@ Les deux restitutions lisent le meme mart mais ne font pas le meme metier :
 | Utilisateur | Gestionnaire | Management, analystes |
 | Geste | Agir sur UN dossier / UNE fiche (worklist, detail client, vehicule, inspection, checklist) | Comprendre le portefeuille (tendances, segments, agregats, gouvernance) |
 | Grain | Dossier et fiches individuelles | Agregats -> drill jusqu'a sinistre x garantie (page masquee uniquement) |
-| Acces | API Flask read-only | Vues mart dediees, lecture seule |
+| Acces | API FastAPI read-only | Vues mart dediees, lecture seule |
 
 Regles anti-duplication :
 

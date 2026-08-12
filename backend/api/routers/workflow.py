@@ -40,7 +40,7 @@ def workflow_history(claim_sk: int, engine: Engine = Depends(get_db_engine)):
 @router.post("/claims/{claim_sk}/workflow/status", status_code=201)
 def workflow_status_change(
     claim_sk: int,
-    body: WorkflowStatusRequest,
+    body: WorkflowStatusRequest = WorkflowStatusRequest(),
     engine: Engine = Depends(get_db_engine),
 ):
     try:
@@ -58,7 +58,7 @@ def workflow_status_change(
 @router.post("/claims/{claim_sk}/workflow/assignment", status_code=201)
 def workflow_assignment(
     claim_sk: int,
-    body: WorkflowAssignmentRequest,
+    body: WorkflowAssignmentRequest = WorkflowAssignmentRequest(),
     engine: Engine = Depends(get_db_engine),
 ):
     try:
@@ -76,7 +76,7 @@ def workflow_assignment(
 @router.post("/claims/{claim_sk}/workflow/tasks", status_code=201)
 def workflow_task_create(
     claim_sk: int,
-    body: WorkflowTaskCreateRequest,
+    body: WorkflowTaskCreateRequest = WorkflowTaskCreateRequest(),
     engine: Engine = Depends(get_db_engine),
 ):
     try:
@@ -94,7 +94,7 @@ def workflow_task_create(
 def workflow_task_complete(
     claim_sk: int,
     task_ref_id: int,
-    body: WorkflowTaskCompleteRequest,
+    body: WorkflowTaskCompleteRequest = WorkflowTaskCompleteRequest(),
     engine: Engine = Depends(get_db_engine),
 ):
     try:

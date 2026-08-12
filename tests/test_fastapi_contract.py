@@ -79,7 +79,7 @@ def test_openapi_docs_available():
     assert client.get("/openapi.json").status_code == 200
 
 
-def test_decision_missing_body_returns_business_error_not_422():
+def test_decision_empty_json_body_returns_business_error_not_422():
     # Every field is optional (permissive, like the old Flask `body.get(...)`) --
     # decision_service itself raises the business error on invalid content.
     response = _client().post("/api/claims/1/decision", json={})
@@ -87,7 +87,24 @@ def test_decision_missing_body_returns_business_error_not_422():
     assert "message" in response.json()
 
 
-def test_workflow_status_missing_body_returns_business_error_not_422():
+def test_workflow_status_empty_json_body_returns_business_error_not_422():
     response = _client().post("/api/claims/1/workflow/status", json={})
     assert response.status_code != 422
     assert "message" in response.json()
+
+
+def test_post_with_no_body_at_all_does_not_return_422():
+    # Distinct from the two tests above: no Content-Type, zero bytes, not
+    # even `{}` -- matches Flask's request.get_json(silent=True) or {},
+    # which never 422'd on a missing body. Every write endpoint's Pydantic
+    # body model must carry a default instance for this to hold.
+    client = _client()
+    for path in (
+        "/api/claims/1/decision",
+        "/api/claims/1/workflow/status",
+        "/api/claims/1/workflow/assignment",
+        "/api/claims/1/workflow/tasks",
+    ):
+        response = client.post(path)
+        assert response.status_code != 422, path
+        assert "message" in response.json(), path

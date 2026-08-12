@@ -2,6 +2,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { SortDirection } from '../models/claim-summary.model';
+import { API_BASE_URL } from '../config/api.config';
 
 export interface AttentionDistributionItem {
   attention_level: string;
@@ -520,7 +521,7 @@ export interface ClaimFilters {
 @Injectable({ providedIn: 'root' })
 export class IrisApiService {
   private readonly http = inject(HttpClient);
-  readonly apiBaseUrl = 'http://127.0.0.1:5000/api';
+  readonly apiBaseUrl = API_BASE_URL;
 
   getSummary(scoreVersion = 'IRIS_CLAIM_ATTENTION_HYBRID_ML_V1_CANDIDATE'): Observable<SummaryResponse> {
     const params = new HttpParams().set('score_version', scoreVersion);

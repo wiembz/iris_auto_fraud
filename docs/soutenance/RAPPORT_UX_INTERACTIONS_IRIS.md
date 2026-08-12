@@ -278,7 +278,7 @@ Le filtrage des données s'applique de manière stricte au niveau de la base de 
                   'dim_user_regions'[user_email], 
                   USERPRINCIPALNAME())
   ```
-- **Dans l'API Flask** : Les requêtes SQL injectent dynamiquement le paramètre `:user_email` dans les clauses `WHERE` pour s'assurer qu'aucun utilisateur ne puisse interroger un ID de dossier hors de son périmètre régional.
+- **Dans l'API FastAPI** : Les requêtes SQL injectent dynamiquement le paramètre `:user_email` dans les clauses `WHERE` pour s'assurer qu'aucun utilisateur ne puisse interroger un ID de dossier hors de son périmètre régional.
 
 ### 6.3 Traçabilité Absolue : Implémentation Append-Only
 Pour satisfaire aux exigences réglementaires et de conformité, toute décision prise sur la plateforme IRIS est historisée.

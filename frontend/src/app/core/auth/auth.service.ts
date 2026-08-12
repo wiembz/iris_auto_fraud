@@ -7,6 +7,7 @@ import {
   IrisRole,
   IrisUserContext
 } from '../models/user-role.model';
+import { API_BASE_URL } from '../config/api.config';
 
 const SESSION_KEY = 'iris.session.v1';
 
@@ -21,7 +22,7 @@ export class RoleResolutionError extends Error {}
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly http = inject(HttpClient);
-  private readonly apiBaseUrl = 'http://127.0.0.1:5000/api';
+  private readonly apiBaseUrl = API_BASE_URL;
   private readonly userSignal = signal<IrisUserContext | null>(restoreSession());
   readonly currentUser = this.userSignal.asReadonly();
 
