@@ -1,14 +1,13 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { Subscription, catchError, of, timeout } from 'rxjs';
+import { Subscription } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
 import {
   ClaimDecisionRecord,
   ClaimDecisionValue,
   ClaimListItem,
   IrisApiService,
-  PortfolioInsightsResponse,
   SummaryResponse
 } from '../../../core/services/iris-api.service';
 import { AttentionChartComponent, AttentionChartRow, AttentionTone } from '../components/attention-chart/attention-chart.component';
@@ -55,7 +54,6 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
   readonly loading = signal(true);
   readonly errorMessage = signal<string | null>(null);
   readonly summary = signal<SummaryResponse | null>(null);
-  readonly insights = signal<PortfolioInsightsResponse | null>(null);
   readonly attentionRows = signal<AttentionChartRow[]>([]);
   readonly managerKpis = signal<DashboardKpi[]>([]);
   readonly handlerKpis = signal<DashboardKpi[]>([]);
@@ -91,27 +89,14 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
     );
 
     if (!this.isHandlerDashboard()) {
-      // Chargement progressif : la vue generale devient utilisable des que le
-      // resume arrive. Les agregats plus lourds ne bloquent plus le premier rendu.
-      this.subscriptions.add(
-        this.api
-          .getPortfolioInsights(DEFAULT_SCORE_VERSION)
-          .pipe(
-            // get_portfolio_insights a un historique de requetes tres lentes
-            // (bug backend connu, non corrige). Un timeout cote frontend evite
-            // de laisser une requete ouverte des heures pendant une demo ; la
-            // tendance retombe simplement sur son etat vide deja gere.
-            timeout(15000),
-            catchError(() => of(null))
-          )
-          .subscribe((insights) => {
-            if (insights) {
-              this.applyInsights(insights);
-            } else {
-              this.insights.set(null);
-            }
-          })
-      );
+      // getPortfolioInsights() est desactive cote frontend : la requete SQL
+      // backend (get_portfolio_insights) est connue pour rester active des
+      // heures sur ce jeu de donnees (bug non corrige). Un timeout RxJS cote
+      // client n annule pas la requete cote serveur -- elle continue a tourner
+      // et sature la base (observe plusieurs fois : bloque /vhs/vehicles).
+      // Ne plus l appeler du tout est la seule mitigation fiable avant que la
+      // requete elle-meme soit corrigee. La tendance retombe sur son etat vide
+      // deja gere par TrendChartComponent.
       this.subscriptions.add(
         this.api.getDecisionsFeed(undefined, 8).subscribe({
           next: (decisions) => this.recentDecisions.set(decisions.items),
@@ -217,17 +202,6 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
     this.summary.set(summary);
     this.errorMessage.set(null);
     this.loading.set(false);
-  }
-
-  private applyInsights(insights: PortfolioInsightsResponse): void {
-    this.insights.set(insights);
-    this.trendPoints.set(
-      insights.monthly_trend.map((point) => ({
-        month: point.month,
-        claims: point.claims,
-        priorityClaims: point.priority_claims
-      }))
-    );
   }
 
   private updateManagerKpis(): void {
