@@ -40,6 +40,26 @@ const DECISION_LABELS: Record<ClaimDecisionValue, string> = {
   A_COMPLETER: 'Incomplet'
 };
 
+const VHS_DECISION_LABELS: Record<string, string> = {
+  OK: 'Bon etat',
+  DEGRADE: 'Etat degrade',
+  CRITIQUE: 'Etat critique',
+  IMMOBILISE: 'Immobilise'
+};
+
+const SYSTEM_LABELS: Record<string, string> = {
+  SYS_FREINAGE: 'Freinage',
+  SYS_SUSPENSION: 'Suspension / direction',
+  SYS_TRANSMISSION: 'Transmission',
+  SYS_MOTEUR: 'Moteur',
+  SYS_PNEUS_AV: 'Pneus avant',
+  SYS_PNEUS_AR: 'Pneus arriere',
+  SYS_STRUCTURE: 'Structure / chassis',
+  SYS_ECHAPPEMENT: 'Echappement',
+  SYS_ECLAIRAGE: 'Eclairage',
+  SYS_ELECTRIQUE: 'Circuit electrique'
+};
+
 const WORKFLOW_STATUS_LABELS: Record<WorkflowStatus, string> = {
   NOUVEAU: 'Nouveau',
   AFFECTE: 'Affecte',
@@ -1272,6 +1292,20 @@ export class ClaimDetailPageComponent implements OnInit, OnDestroy {
       return 'Autre';
     }
     return ZONE_LABELS[zone] ?? zone.toLowerCase().replace(/_/g, ' ');
+  }
+
+  vhsDecisionLabel(decision: string | null | undefined): string {
+    if (!decision) {
+      return '—';
+    }
+    return VHS_DECISION_LABELS[decision] ?? decision;
+  }
+
+  systemLabel(system: string | null | undefined): string | null {
+    if (!system || system === 'SYS_INDEPENDANT') {
+      return null;
+    }
+    return SYSTEM_LABELS[system] ?? system.replace(/^SYS_/, '').toLowerCase().replace(/_/g, ' ');
   }
 
   checkpointTone(checkpoint: VhsCheckpointItem): 'ok' | 'medium' | 'high' | 'unknown' {

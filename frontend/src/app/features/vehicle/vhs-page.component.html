@@ -204,8 +204,8 @@
                                 <li [attr.data-critical]="penalty.est_anomalie_critique === true">
                                   <span class="vhs-penalty__label">
                                     {{ penalty.checkpoint_libelle }}
-                                    @if (penalty.systeme_fonctionnel && penalty.systeme_fonctionnel !== 'SYS_INDEPENDANT') {
-                                      <small class="vhs-system-tag">[{{ penalty.systeme_fonctionnel.replace('SYS_', '') }}]</small>
+                                    @if (systemLabel(penalty.systeme_fonctionnel); as sys) {
+                                      <small class="vhs-system-tag">{{ sys }}</small>
                                     }
                                   </span>
                                   <span class="vhs-penalty__status">{{ statusLabel(penalty.observed_status) }}</span>
@@ -290,8 +290,8 @@
                                     <span class="vhs-checkpoint-status">{{ statusLabel(checkpoint.observed_status) }}</span>
                                     <span class="vhs-checkpoint-label">
                                       {{ checkpoint.checkpoint_libelle }}
-                                      @if (checkpoint.systeme_fonctionnel && checkpoint.systeme_fonctionnel !== 'SYS_INDEPENDANT') {
-                                        <small class="vhs-modal-system-tag">[{{ checkpoint.systeme_fonctionnel.replace('SYS_', '') }}]</small>
+                                      @if (systemLabel(checkpoint.systeme_fonctionnel); as sys) {
+                                        <small class="vhs-modal-system-tag">{{ sys }}</small>
                                       }
                                     </span>
                                     <span class="vhs-checkpoint-value">{{ checkpoint.valeur_controle ?? '—' }}</span>

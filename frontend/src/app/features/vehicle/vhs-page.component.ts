@@ -78,6 +78,19 @@ const ZONE_LABELS: Record<string, string> = {
   NO_DOCUMENTED_ANOMALY: 'Sans anomalie documentee'
 };
 
+const SYSTEM_LABELS: Record<string, string> = {
+  SYS_FREINAGE: 'Freinage',
+  SYS_SUSPENSION: 'Suspension / direction',
+  SYS_TRANSMISSION: 'Transmission',
+  SYS_MOTEUR: 'Moteur',
+  SYS_PNEUS_AV: 'Pneus avant',
+  SYS_PNEUS_AR: 'Pneus arriere',
+  SYS_STRUCTURE: 'Structure / chassis',
+  SYS_ECHAPPEMENT: 'Echappement',
+  SYS_ECLAIRAGE: 'Eclairage',
+  SYS_ELECTRIQUE: 'Circuit electrique'
+};
+
 const STATUS_LABELS: Record<string, string> = {
   OK: 'Bon etat',
   WORN: 'Use',
@@ -455,6 +468,13 @@ export class VhsPageComponent implements OnInit, OnDestroy {
       return 'Autre';
     }
     return ZONE_LABELS[zone] ?? zone.toLowerCase().replace(/_/g, ' ');
+  }
+
+  systemLabel(system: string | null | undefined): string | null {
+    if (!system || system === 'SYS_INDEPENDANT') {
+      return null;
+    }
+    return SYSTEM_LABELS[system] ?? system.replace(/^SYS_/, '').toLowerCase().replace(/_/g, ' ');
   }
 
   statusLabel(status: string | null | undefined): string {
