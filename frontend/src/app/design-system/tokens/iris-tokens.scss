@@ -116,5 +116,32 @@
   --iris-radius-sm: 5px;
   --iris-radius-md: 6px;
   --iris-radius-lg: 8px;
+  --iris-radius-pill: 999px;
   --iris-content-max: 1180px;
+
+  /* Echelle d'espacement (base 4px) -- refonte UX 2026 des pages demo. Additive :
+     rien n'est retire ni change ci-dessus, les pages hors perimetre (Audit,
+     Feedback, Assignments, Administration, Analytics) ne referencent pas ces
+     tokens et restent visuellement inchangees. */
+  --iris-space-1: 4px;
+  --iris-space-2: 8px;
+  --iris-space-3: 12px;
+  --iris-space-4: 16px;
+  --iris-space-5: 20px;
+  --iris-space-6: 24px;
+  --iris-space-7: 32px;
+  --iris-space-8: 40px;
+  --iris-space-9: 56px;
+
+  /* Echelle typographique -- consolide les tailles pixel deja utilisees dans le
+     code (aucune valeur inventee), pour que Dashboard/Worklist/Claim-detail/VHS
+     partagent un seul vocabulaire de tailles au lieu d'un pixel par occurrence. */
+  --iris-text-2xs: 11px;
+  --iris-text-xs: 12.5px;
+  --iris-text-sm: 13.5px;
+  --iris-text-base: 15px;
+  --iris-text-md: 17px;
+  --iris-text-lg: 21px;
+  --iris-text-xl: 28px;
+  --iris-text-2xl: 36px;
 }

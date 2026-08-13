@@ -1147,10 +1147,20 @@ a {
 .worklist-triage__chip.is-active {
   border-color: color-mix(in srgb, var(--iris-primary) 60%, var(--iris-border));
   background: var(--iris-primary-soft);
+  box-shadow: var(--iris-shadow-md);
+}
+
+/* Le niveau prioritaire reste visuellement dominant meme hors selection : c est
+   celui qui doit attirer l oeil en premier dans la bande de triage. La selection
+   active (regle suivante, meme specificite) doit toujours l emporter en ordre de
+   cascade sur ce simple renfort de tonalite. */
+.worklist-triage__chip[data-tone='high'] strong {
+  font-size: var(--iris-text-lg);
 }
 
 .worklist-triage__chip.is-active strong {
   color: var(--iris-primary-2);
+  font-size: var(--iris-text-xl);
 }
 
 @media (max-width: 980px) {
@@ -1363,14 +1373,14 @@ input:checked + .worklist-filter-toggles__box::after {
 .claim-table th,
 .claim-table td {
   border-bottom: 1px solid var(--iris-border);
-  padding: 14px 13px;
+  padding: var(--iris-space-3) var(--iris-space-3);
   text-align: left;
   vertical-align: top;
 }
 
 .claim-table-shell[data-view='compact'] .claim-table th,
 .claim-table-shell[data-view='compact'] .claim-table td {
-  padding-block: 9px;
+  padding-block: var(--iris-space-2);
 }
 
 .claim-table th {
@@ -1450,9 +1460,9 @@ input:checked + .worklist-filter-toggles__box::after {
 .score-cell__value {
   flex: none;
   color: var(--iris-text);
-  font: 700 17px/1 var(--iris-font-display);
+  font: 700 var(--iris-text-lg)/1 var(--iris-font-display);
   font-variant-numeric: tabular-nums;
-  min-width: 28px;
+  min-width: 30px;
 }
 
 .score-cell[data-tone='priority'] .score-cell__value { color: var(--iris-high); }
@@ -1526,12 +1536,25 @@ input:checked + .worklist-filter-toggles__box::after {
 .claim-table-pagination {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 14px;
+  justify-content: space-between;
+  gap: var(--iris-space-3);
+  padding: var(--iris-space-4);
+  border-top: 1px solid var(--iris-border);
 }
 
-.claim-table-pagination span {
+.claim-table-pagination__count {
+  color: var(--iris-text-2);
+  font-size: var(--iris-text-xs);
+  font-weight: 800;
+}
+
+.claim-table-pagination__nav {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--iris-space-3);
+}
+
+.claim-table-pagination__nav span {
   color: var(--iris-text-2);
   font-size: 13px;
   font-weight: 850;

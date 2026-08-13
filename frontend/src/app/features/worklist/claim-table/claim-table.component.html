@@ -79,9 +79,18 @@
     </div>
 
     <footer class="claim-table-pagination">
-      <button type="button" (click)="previousPage()" [disabled]="page <= 1">Precedent</button>
-      <span>Page {{ page }}{{ hasNextPage ? '+' : '' }}</span>
-      <button type="button" (click)="nextPage()" [disabled]="!canGoNext">Suivant</button>
+      <span class="claim-table-pagination__count">
+        @if (totalIsExact) {
+          {{ total.toLocaleString('fr-FR') }} dossier(s) au total
+        } @else {
+          au moins {{ total.toLocaleString('fr-FR') }} dossier(s)
+        }
+      </span>
+      <span class="claim-table-pagination__nav">
+        <button type="button" (click)="previousPage()" [disabled]="page <= 1">Precedent</button>
+        <span>Page {{ page }}{{ hasNextPage ? '+' : '' }}</span>
+        <button type="button" (click)="nextPage()" [disabled]="!canGoNext">Suivant</button>
+      </span>
     </footer>
   }
 </section>

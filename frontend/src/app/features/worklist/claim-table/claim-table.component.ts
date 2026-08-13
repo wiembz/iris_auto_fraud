@@ -31,6 +31,7 @@ export class ClaimTableComponent {
   @Input() loading = false;
   @Input() errorMessage: string | null = null;
   @Input() total = 0;
+  @Input() totalIsExact = false;
   @Input() page = 1;
   @Input() pageSize = 25;
   @Input() sortBy = 'attention_score';
