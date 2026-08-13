@@ -287,19 +287,23 @@
                               <ul>
                                 @for (checkpoint of group.checkpoints; track checkpoint.checkpoint_code) {
                                   <li [attr.data-tone]="checkpointTone(checkpoint)">
-                                    <span class="vhs-checkpoint-status">{{ statusLabel(checkpoint.observed_status) }}</span>
-                                    <span class="vhs-checkpoint-label">
-                                      {{ checkpoint.checkpoint_libelle }}
-                                      @if (systemLabel(checkpoint.systeme_fonctionnel); as sys) {
-                                        <small class="vhs-modal-system-tag">{{ sys }}</small>
+                                    <div class="vhs-checkpoint-row__primary">
+                                      <span class="vhs-checkpoint-status">{{ statusLabel(checkpoint.observed_status) }}</span>
+                                      <span class="vhs-checkpoint-label">{{ checkpoint.checkpoint_libelle }}</span>
+                                      <span class="vhs-checkpoint-value">{{ checkpoint.valeur_controle ?? '—' }}</span>
+                                      @if (checkpoint.penalty_applied > 0) {
+                                        <span class="vhs-checkpoint-penalty">-{{ checkpoint.penalty_applied }} pts</span>
                                       }
-                                    </span>
-                                    <span class="vhs-checkpoint-value">{{ checkpoint.valeur_controle ?? '—' }}</span>
-                                    @if (checkpoint.penalty_applied > 0) {
-                                      <span class="vhs-checkpoint-penalty">-{{ checkpoint.penalty_applied }} pts</span>
+                                    </div>
+                                    @if (systemLabel(checkpoint.systeme_fonctionnel) || checkpoint.is_vital || checkpoint.is_immobilizing) {
+                                      <div class="vhs-checkpoint-row__secondary">
+                                        @if (systemLabel(checkpoint.systeme_fonctionnel); as sys) {
+                                          <small class="vhs-modal-system-tag">{{ sys }}</small>
+                                        }
+                                        @if (checkpoint.is_vital) { <span class="vhs-checkpoint-flag">Vital</span> }
+                                        @if (checkpoint.is_immobilizing) { <span class="vhs-checkpoint-flag">Immobilisant</span> }
+                                      </div>
                                     }
-                                    @if (checkpoint.is_vital) { <span class="vhs-checkpoint-flag">Vital</span> }
-                                    @if (checkpoint.is_immobilizing) { <span class="vhs-checkpoint-flag">Immobilisant</span> }
                                     @if (checkpoint.commentaire_zone) {
                                       <p>{{ checkpoint.commentaire_zone }}</p>
                                     }
