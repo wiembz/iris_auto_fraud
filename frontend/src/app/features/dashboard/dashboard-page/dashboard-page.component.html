@@ -37,6 +37,7 @@
             [helper]="kpi.helper"
             [tone]="kpi.tone"
             [status]="kpi.status ?? 'available'"
+            [lead]="kpi.lead ?? false"
           />
         }
       </section>
@@ -87,6 +88,7 @@
             [status]="kpi.status ?? 'available'"
             [link]="kpi.link"
             [queryParams]="kpi.queryParams"
+            [lead]="kpi.lead ?? false"
           />
         }
       </section>
@@ -144,10 +146,10 @@
       </section>
 
       <section class="dashboard-row dashboard-row--full">
-        <app-trend-chart
-          title="Evolution des dossiers prioritaires"
-          subtitle="Volume de dossiers et part en examen prioritaire, mois par mois"
-          [points]="trendPoints()"
+        <app-workload-chart
+          title="Raisons visibles"
+          subtitle="Raisons principales observees dans la liste prioritaire"
+          [rows]="signalFamilyRows()"
         />
       </section>
     }

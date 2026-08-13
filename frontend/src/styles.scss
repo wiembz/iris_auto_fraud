@@ -198,6 +198,28 @@ a {
   background: color-mix(in srgb, var(--iris-neutral-bg) 40%, var(--iris-surface));
 }
 
+/* Tuile "lead" : une seule par cockpit, celle qui repond le plus directement a
+   "de quoi dois-je m occuper maintenant ?" -- poids visuel superieur, le reste
+   de la grille passe en rang secondaire (regle "l analyste ne doit jamais
+   chercher ou regarder"). */
+.dashboard-kpi--lead {
+  min-height: 112px;
+  border-width: 1.5px;
+  box-shadow: var(--iris-shadow-md);
+}
+
+.dashboard-kpi--lead .dashboard-kpi__accent {
+  width: 6px;
+}
+
+.dashboard-kpi--lead .dashboard-kpi__value {
+  font-size: var(--iris-text-2xl);
+}
+
+.dashboard-kpi--lead .dashboard-kpi__label {
+  font-size: var(--iris-text-xs);
+}
+
 .dashboard-kpi__accent {
   position: absolute;
   inset: 0 auto 0 0;

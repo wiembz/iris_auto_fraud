@@ -22,6 +22,10 @@ export class KpiCardComponent {
   // carte du cockpit doit pouvoir ouvrir la file deja filtree correspondante.
   @Input() link?: string;
   @Input() queryParams?: Record<string, string>;
+  // Une seule tuile "lead" par cockpit : celle qui repond le plus directement
+  // a "de quoi dois-je m occuper maintenant ?" recoit un poids visuel plus
+  // fort que le reste de la grille, qui passe en rang secondaire.
+  @Input() lead = false;
 
   formattedValue(): string {
     if (typeof this.value === 'number') {

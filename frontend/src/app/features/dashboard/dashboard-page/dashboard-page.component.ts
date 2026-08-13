@@ -13,7 +13,6 @@ import {
 import { AttentionChartComponent, AttentionChartRow, AttentionTone } from '../components/attention-chart/attention-chart.component';
 import { KpiCardComponent } from '../components/kpi-card/kpi-card.component';
 import { RecentClaimsComponent } from '../components/recent-claims/recent-claims.component';
-import { TrendChartComponent, TrendPoint } from '../components/trend-chart/trend-chart.component';
 import { WorkloadChartComponent, WorkloadRow } from '../components/workload-chart/workload-chart.component';
 
 interface DashboardKpi {
@@ -27,6 +26,7 @@ interface DashboardKpi {
   // ouvre la file de travail deja filtree sur ce qu il represente.
   link?: string;
   queryParams?: Record<string, string>;
+  lead?: boolean;
 }
 
 const DEFAULT_SCORE_VERSION = 'IRIS_CLAIM_ATTENTION_HYBRID_ML_V1_CANDIDATE';
@@ -40,8 +40,7 @@ const DEFAULT_SCORE_VERSION = 'IRIS_CLAIM_ATTENTION_HYBRID_ML_V1_CANDIDATE';
     KpiCardComponent,
     AttentionChartComponent,
     WorkloadChartComponent,
-    RecentClaimsComponent,
-    TrendChartComponent
+    RecentClaimsComponent
   ],
   templateUrl: './dashboard-page.component.html',
   styleUrl: './dashboard-page.component.scss'
@@ -58,7 +57,6 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
   readonly managerKpis = signal<DashboardKpi[]>([]);
   readonly handlerKpis = signal<DashboardKpi[]>([]);
   readonly workloadRows = signal<WorkloadRow[]>([]);
-  readonly trendPoints = signal<TrendPoint[]>([]);
   readonly signalFamilyRows = signal<WorkloadRow[]>([]);
   readonly topClaims = signal<ClaimListItem[]>([]);
   readonly recentDecisions = signal<ClaimDecisionRecord[]>([]);
@@ -95,8 +93,9 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
       // client n annule pas la requete cote serveur -- elle continue a tourner
       // et sature la base (observe plusieurs fois : bloque /vhs/vehicles).
       // Ne plus l appeler du tout est la seule mitigation fiable avant que la
-      // requete elle-meme soit corrigee. La tendance retombe sur son etat vide
-      // deja gere par TrendChartComponent.
+      // requete elle-meme soit corrigee. La vue pilotage reutilise signalFamilyRows
+      // (deja alimente par /summary pour les deux roles) a la place du graphique
+      // de tendance qui dependait de cette requete.
       this.subscriptions.add(
         this.api.getDecisionsFeed(undefined, 8).subscribe({
           next: (decisions) => this.recentDecisions.set(decisions.items),
@@ -152,7 +151,8 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
         label: 'Examen prioritaire',
         value: priorityCount,
         helper: 'dossiers au niveau le plus fort',
-        tone: 'high'
+        tone: 'high',
+        lead: true
       },
       {
         label: 'Examen renforce',
@@ -231,7 +231,8 @@ export class DashboardPageComponent implements OnInit, OnDestroy {
         helper: 'dossiers au niveau le plus fort',
         tone: 'high',
         link: '/app/claims',
-        queryParams: { attentionLevel: 'Examen prioritaire suggere' }
+        queryParams: { attentionLevel: 'Examen prioritaire suggere' },
+        lead: true
       },
       {
         label: 'Renforces',
