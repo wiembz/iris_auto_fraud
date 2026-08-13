@@ -88,6 +88,22 @@ INDEX_STATEMENTS = [
     CREATE INDEX IF NOT EXISTS idx_fcasd_claim_version_run
         ON mart.fact_claim_attention_signal_detail (claim_sk, score_version, score_run_id)
     """,
+    # Registre VHS (page Vehicule) : les index existants sur ces deux tables
+    # menent tous par (inspection_key, ..., run_id) avec run_id en DERNIERE
+    # position -> inutilisables pour un filtre "WHERE run_id = :latest_run"
+    # seul. Sans index dedie, le plan retombe sur un Nested Loop qui rescanne
+    # entierement fact_vhs_penalty_detail (179k lignes) une fois par vehicule
+    # du run (~280 fois) au lieu d'un hash join -- 22s mesures au lieu de
+    # quelques dizaines de ms.
+    """
+    CREATE INDEX IF NOT EXISTS idx_fvs_run_score
+        ON mart.fact_vhs_score (run_id, vhs_final_score)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_fvpd_run_inspection
+        ON mart.fact_vhs_penalty_detail (run_id, inspection_key)
+        WHERE penalty_applied > 0
+    """,
 ]
 
 
