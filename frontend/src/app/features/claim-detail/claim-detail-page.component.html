@@ -33,7 +33,7 @@
   } @else if (claim(); as c) {
     <header class="claim-review__hero iris-card" [attr.data-tone]="scoreTone()">
       <div class="claim-review__gauge" role="img" [attr.aria-label]="'Score attention ' + c.attention_score + ' sur 100'">
-        <svg viewBox="0 0 120 120" width="76" height="76">
+        <svg viewBox="0 0 120 120" width="88" height="88">
           <circle class="gauge-track" cx="60" cy="60" r="54" />
           <circle
             class="gauge-value"
@@ -63,70 +63,17 @@
           @if (c.main_reason_3) { <span>{{ c.main_reason_3 }}</span> }
         </p>
       </div>
+
+      <a class="claim-review__decision-cta" href="#claim-review-decision">
+        Aller à la décision
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14M19 12l-7 7-7-7" />
+        </svg>
+      </a>
     </header>
 
     <div class="claim-review__grid">
       <div class="claim-review__main">
-        <section class="iris-card claim-review__section" aria-label="Raisons d attention">
-          <h2>Pourquoi ce dossier attire l attention</h2>
-          <p class="claim-review__hint">
-            Chaque element ci-dessous contribue au score. Cliquez sur un element pour voir
-            les chiffres exacts qui le justifient. Aucun element ne conclut a lui seul.
-          </p>
-          @if (signalGroups().length === 0) {
-            <p class="claim-review__empty">Aucun signal particulier n a ete releve sur ce dossier.</p>
-          }
-          @for (group of signalGroups(); track group.family) {
-            <article class="signal-group">
-              <header>
-                <strong>{{ group.familyLabel }}</strong>
-                <span class="signal-group__points">{{ group.totalPoints }} pts</span>
-              </header>
-              <ul>
-                @for (item of group.signals; track item.key) {
-                  <li [attr.data-severity]="item.tone" [attr.data-expanded]="isSignalExpanded(item.key)">
-                    <button
-                      type="button"
-                      class="signal-row__trigger"
-                      [attr.aria-expanded]="isSignalExpanded(item.key)"
-                      (click)="toggleSignal(item.key)"
-                    >
-                      <span class="signal-row__bar-track">
-                        <span class="signal-row__bar-fill" [style.width.%]="item.pointsShare"></span>
-                      </span>
-                      <span class="signal-row__label">{{ item.label }}</span>
-                      <span class="signal-row__points">+{{ item.points }}</span>
-                      <svg class="signal-row__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="m6 9 6 6 6-6" />
-                      </svg>
-                    </button>
-                    @if (isSignalExpanded(item.key)) {
-                      <div class="signal-row__panel">
-                        @if (item.explanation) {
-                          <p class="signal-row__explanation">{{ item.explanation }}</p>
-                        }
-                        @if (item.details.length > 0) {
-                          <div class="signal-row__details">
-                            <span class="signal-row__details-title">Details fiables</span>
-                            <dl>
-                              @for (detail of item.details; track detail.label) {
-                                <div>
-                                  <dt>{{ detail.label }}</dt>
-                                  <dd>{{ detail.value }}</dd>
-                                </div>
-                              }
-                            </dl>
-                          </div>
-                        }
-                      </div>
-                    }
-                  </li>
-                }
-              </ul>
-            </article>
-          }
-        </section>
-
         <section class="iris-card claim-review__section claim-review__360" aria-label="Vue 360">
           <h2>Vue 360° métier</h2>
           <p class="claim-review__hint">
@@ -225,7 +172,7 @@
                 }
               </ul>
             </article>
-            
+
             <!-- Géographie -->
             <article class="card-360">
               <header>
@@ -239,6 +186,66 @@
               </ul>
             </article>
           </div>
+        </section>
+
+        <section class="iris-card claim-review__section" aria-label="Raisons d attention">
+          <h2>Pourquoi ce dossier attire l attention</h2>
+          <p class="claim-review__hint">
+            Chaque element ci-dessous contribue au score. Cliquez sur un element pour voir
+            les chiffres exacts qui le justifient. Aucun element ne conclut a lui seul.
+          </p>
+          @if (signalGroups().length === 0) {
+            <p class="claim-review__empty">Aucun signal particulier n a ete releve sur ce dossier.</p>
+          }
+          @for (group of signalGroups(); track group.family) {
+            <article class="signal-group">
+              <header>
+                <strong>{{ group.familyLabel }}</strong>
+                <span class="signal-group__points">{{ group.totalPoints }} pts</span>
+              </header>
+              <ul>
+                @for (item of group.signals; track item.key) {
+                  <li [attr.data-severity]="item.tone" [attr.data-expanded]="isSignalExpanded(item.key)">
+                    <button
+                      type="button"
+                      class="signal-row__trigger"
+                      [attr.aria-expanded]="isSignalExpanded(item.key)"
+                      (click)="toggleSignal(item.key)"
+                    >
+                      <span class="signal-row__bar-track">
+                        <span class="signal-row__bar-fill" [style.width.%]="item.pointsShare"></span>
+                      </span>
+                      <span class="signal-row__label">{{ item.label }}</span>
+                      <span class="signal-row__points">+{{ item.points }}</span>
+                      <svg class="signal-row__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
+                    @if (isSignalExpanded(item.key)) {
+                      <div class="signal-row__panel">
+                        @if (item.explanation) {
+                          <p class="signal-row__explanation">{{ item.explanation }}</p>
+                        }
+                        @if (item.details.length > 0) {
+                          <div class="signal-row__details">
+                            <span class="signal-row__details-title">Details fiables</span>
+                            <dl>
+                              @for (detail of item.details; track detail.label) {
+                                <div>
+                                  <dt>{{ detail.label }}</dt>
+                                  <dd>{{ detail.value }}</dd>
+                                </div>
+                              }
+                            </dl>
+                          </div>
+                        }
+                      </div>
+                    }
+                  </li>
+                }
+              </ul>
+            </article>
+          }
         </section>
 
         @if (sameSinistreGuarantees().length > 1 || clientHistory24m().length > 0) {
@@ -691,7 +698,7 @@
       }
     </section>
 
-    <section class="iris-card claim-review__decision" aria-label="Votre decision">
+    <section id="claim-review-decision" class="iris-card claim-review__decision" aria-label="Votre decision">
       <div class="decision-head">
         <div>
           <h2>Votre decision</h2>
@@ -973,19 +980,23 @@
                     <ul>
                       @for (checkpoint of group.checkpoints; track checkpoint.checkpoint_code) {
                         <li [attr.data-tone]="checkpointTone(checkpoint)">
-                          <span class="vhs-checkpoint-status">{{ statusLabel(checkpoint.observed_status) }}</span>
-                          <span class="vhs-checkpoint-label">
-                            {{ checkpoint.checkpoint_libelle }}
-                            @if (systemLabel(checkpoint.systeme_fonctionnel); as sys) {
-                              <small class="vhs-modal-system-tag">{{ sys }}</small>
+                          <div class="vhs-checkpoint-row__primary">
+                            <span class="vhs-checkpoint-status">{{ statusLabel(checkpoint.observed_status) }}</span>
+                            <span class="vhs-checkpoint-label">{{ checkpoint.checkpoint_libelle }}</span>
+                            <span class="vhs-checkpoint-value">{{ displayText(checkpoint.valeur_controle) }}</span>
+                            @if (checkpoint.penalty_applied > 0) {
+                              <span class="vhs-checkpoint-penalty">-{{ checkpoint.penalty_applied }} pts</span>
                             }
-                          </span>
-                          <span class="vhs-checkpoint-value">{{ displayText(checkpoint.valeur_controle) }}</span>
-                          @if (checkpoint.penalty_applied > 0) {
-                            <span class="vhs-checkpoint-penalty">-{{ checkpoint.penalty_applied }} pts</span>
+                          </div>
+                          @if (systemLabel(checkpoint.systeme_fonctionnel) || checkpoint.is_vital || checkpoint.is_immobilizing) {
+                            <div class="vhs-checkpoint-row__secondary">
+                              @if (systemLabel(checkpoint.systeme_fonctionnel); as sys) {
+                                <small class="vhs-modal-system-tag">{{ sys }}</small>
+                              }
+                              @if (checkpoint.is_vital) { <span class="vhs-checkpoint-flag">Vital</span> }
+                              @if (checkpoint.is_immobilizing) { <span class="vhs-checkpoint-flag">Immobilisant</span> }
+                            </div>
                           }
-                          @if (checkpoint.is_vital) { <span class="vhs-checkpoint-flag">Vital</span> }
-                          @if (checkpoint.is_immobilizing) { <span class="vhs-checkpoint-flag">Immobilisant</span> }
                           @if (checkpoint.commentaire_zone) {
                             <p>{{ checkpoint.commentaire_zone }}</p>
                           }
