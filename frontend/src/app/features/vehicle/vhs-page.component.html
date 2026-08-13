@@ -178,13 +178,7 @@
                           <div><dt>En bon etat</dt><dd>{{ d.nb_ok }}</dd></div>
                           <div><dt>Uses</dt><dd>{{ d.nb_worn + d.nb_worn_strong }}</dd></div>
                           <div><dt>Defaillants</dt><dd>{{ d.nb_broken }}</dd></div>
-                          @if (d.penalty_raw_before_cap && d.penalty_after_system_cap && d.penalty_raw_before_cap !== d.penalty_after_system_cap) {
-                            <div><dt>Penalites brutes</dt><dd class="vhs-detail__penalty-raw">-{{ d.penalty_raw_before_cap }} pts</dd></div>
-                            <div><dt>Cap systeme applique</dt><dd class="vhs-detail__penalty-cap">-{{ (d.penalty_raw_before_cap - d.penalty_after_system_cap).toFixed(1) }} pts</dd></div>
-                            <div><dt>Penalites appliquees</dt><dd class="vhs-detail__penalty-total">-{{ d.penalty_after_system_cap }} pts</dd></div>
-                          } @else {
-                            <div><dt>Penalites cumulees</dt><dd class="vhs-detail__penalty-total">-{{ detailTotalPenalty().toLocaleString('fr-FR') }} pts</dd></div>
-                          }
+                          <div><dt>Penalites cumulees</dt><dd class="vhs-detail__penalty-total">-{{ detailTotalPenalty().toLocaleString('fr-FR') }} pts</dd></div>
                         </dl>
                         @if (detailIsSaturated()) {
                           <p class="vhs-saturation-note">
@@ -215,12 +209,7 @@
                                     }
                                   </span>
                                   <span class="vhs-penalty__status">{{ statusLabel(penalty.observed_status) }}</span>
-                                  <span class="vhs-penalty__points">
-                                    @if (penalty.penalty_capped_by_system) {
-                                      <del class="vhs-raw-penalty">-{{ penalty.penalty_raw_checkpoint }}</del>
-                                    }
-                                    -{{ penalty.penalty_applied }}
-                                  </span>
+                                  <span class="vhs-penalty__points">-{{ penalty.penalty_applied }}</span>
                                   @if (penalty.is_vital) { <span class="vhs-flag vhs-flag--danger">Vital</span> }
                                   @if (penalty.is_immobilizing) { <span class="vhs-flag vhs-flag--danger">Immobilisant</span> }
                                 </li>
